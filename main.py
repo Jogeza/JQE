@@ -14,6 +14,10 @@ Indicator Engine
 Market Regime Detection
  ↓
 Signal Intelligence
+ ↓
+Risk Controller
+ ↓
+Trade Decision
 """
 
 
@@ -42,10 +46,13 @@ from strategy.signal_engine import (
     generate_signal
 )
 
+from risk.risk_controller import (
+    evaluate_trade
+)
+
 
 
 def main():
-
 
     print("\n==========================")
     print("JQE ENGINE ONLINE")
@@ -54,7 +61,7 @@ def main():
 
 
     # =========================
-    # CONNECT TO MT5
+    # CONNECT MT5
     # =========================
 
     if not connect():
@@ -68,7 +75,7 @@ def main():
 
 
     # =========================
-    # LOAD MARKET DATA
+    # GET MARKET DATA
     # =========================
 
     df = get_candles(
@@ -85,9 +92,8 @@ def main():
 
     if df is None:
 
-
         print(
-            "❌ No market data received"
+            "❌ No market data"
         )
 
         disconnect()
@@ -102,9 +108,8 @@ def main():
 
     if not validate_market_data(df):
 
-
         print(
-            "❌ Market data validation failed"
+            "❌ Data validation failed"
         )
 
         disconnect()
@@ -114,7 +119,7 @@ def main():
 
 
     # =========================
-    # ADD INDICATORS
+    # INDICATORS
     # =========================
 
     df = calculate_indicators(df)
@@ -122,7 +127,7 @@ def main():
 
 
     # =========================
-    # DETECT MARKET CONDITION
+    # MARKET REGIME
     # =========================
 
     regime = detect_regime(df)
@@ -130,7 +135,7 @@ def main():
 
 
     # =========================
-    # GENERATE SIGNAL
+    # SIGNAL GENERATION
     # =========================
 
     signal = generate_signal(
@@ -144,9 +149,26 @@ def main():
 
 
     # =========================
-    # DISPLAY ANALYSIS
+    # RISK CONTROL
     # =========================
 
+    trade_plan = evaluate_trade(
+
+        signal,
+
+        df,
+
+        balance=50,
+
+        risk_percent=1
+
+    )
+
+
+
+    # =========================
+    # DISPLAY RESULTS
+    # =========================
 
     print("\n==========================")
     print("JQE MARKET ANALYSIS")
@@ -176,6 +198,16 @@ def main():
 
     print(
         signal
+    )
+
+
+
+    print(
+        "\nRISK DECISION:"
+    )
+
+    print(
+        trade_plan
     )
 
 
