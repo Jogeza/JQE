@@ -1,21 +1,59 @@
-from core.mt5_connection import connect, disconnect
+"""
+JQE Main Engine
 
-from core.market_data import get_candles
+Pipeline:
 
-from core.data_validator import validate_market_data
+MT5
+ ↓
+Market Data
+ ↓
+Data Validation
+ ↓
+Indicators
+ ↓
+Market Regime Detection
+"""
 
-from core.indicators import calculate_indicators
+
+from core.mt5_connection import (
+    connect,
+    disconnect
+)
+
+from core.market_data import (
+    get_candles
+)
+
+from core.data_validator import (
+    validate_market_data
+)
+
+from core.indicators import (
+    calculate_indicators
+)
+
+from core.regime import (
+    detect_regime
+)
 
 
 
 def main():
 
 
+    # Connect MT5
+
     if not connect():
+
+        print(
+            "❌ MT5 connection failed"
+        )
 
         return
 
 
+
+    # Get market data
 
     df = get_candles(
 
@@ -29,17 +67,62 @@ def main():
 
 
 
-    if validate_market_data(df):
-
-
-        df = calculate_indicators(df)
-
-
-        print("\nLATEST MARKET ANALYSIS")
+    if df is None:
 
         print(
-            df.tail()
+            "❌ No market data"
         )
+
+        disconnect()
+
+        return
+
+
+
+    # Validate data
+
+    if not validate_market_data(df):
+
+        print(
+            "❌ Invalid market data"
+        )
+
+        disconnect()
+
+        return
+
+
+
+    # Calculate indicators
+
+    df = calculate_indicators(df)
+
+
+
+    # Detect market condition
+
+    regime = detect_regime(df)
+
+
+
+    print("\n==========================")
+
+    print("JQE MARKET ANALYSIS")
+
+    print("==========================")
+
+
+
+    print(
+        df.tail()
+    )
+
+
+
+    print(
+        "\nMARKET REGIME:",
+        regime
+    )
 
 
 
