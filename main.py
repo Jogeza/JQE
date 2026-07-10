@@ -1,58 +1,47 @@
 """
 JQE Main Engine
 
+Institutional Trading Architecture
+
 Pipeline:
 
-MT5
- ↓
-Market Data Engine
- ↓
-Data Validation
- ↓
-Indicator Engine
- ↓
-Market Regime Detection
- ↓
+Market Data
+    |
+Validation
+    |
+Indicators
+    |
+Market Regime
+    |
 Signal Intelligence
- ↓
+    |
 Risk Controller
- ↓
-Trade Decision
+    |
+Execution Simulator
 """
 
 
-from core.mt5_connection import (
-    connect,
-    disconnect
-)
+from core.mt5_connection import connect, disconnect
 
-from core.market_data import (
-    get_candles
-)
+from core.market_data import get_candles
 
-from core.data_validator import (
-    validate_market_data
-)
+from core.data_validator import validate_market_data
 
-from core.indicators import (
-    calculate_indicators
-)
+from core.indicators import calculate_indicators
 
-from core.regime import (
-    detect_regime
-)
+from core.regime import detect_regime
 
-from strategy.signal_engine import (
-    generate_signal
-)
+from strategy.signal_engine import generate_signal
 
-from risk.risk_controller import (
-    evaluate_trade
-)
+from risk.risk_controller import evaluate_trade
+
+from execution.simulator import ExecutionSimulator
+
 
 
 
 def main():
+
 
     print("\n==========================")
     print("JQE ENGINE ONLINE")
@@ -60,9 +49,9 @@ def main():
 
 
 
-    # =========================
-    # CONNECT MT5
-    # =========================
+    # ==========================
+    # MT5 CONNECTION
+    # ==========================
 
     if not connect():
 
@@ -74,9 +63,10 @@ def main():
 
 
 
-    # =========================
-    # GET MARKET DATA
-    # =========================
+    # ==========================
+    # MARKET DATA
+    # ==========================
+
 
     df = get_candles(
 
@@ -93,7 +83,7 @@ def main():
     if df is None:
 
         print(
-            "❌ No market data"
+            "❌ Market data unavailable"
         )
 
         disconnect()
@@ -102,14 +92,15 @@ def main():
 
 
 
-    # =========================
-    # VALIDATE DATA
-    # =========================
+    # ==========================
+    # DATA VALIDATION
+    # ==========================
+
 
     if not validate_market_data(df):
 
         print(
-            "❌ Data validation failed"
+            "❌ Invalid market data"
         )
 
         disconnect()
@@ -118,25 +109,28 @@ def main():
 
 
 
-    # =========================
+    # ==========================
     # INDICATORS
-    # =========================
+    # ==========================
+
 
     df = calculate_indicators(df)
 
 
 
-    # =========================
+    # ==========================
     # MARKET REGIME
-    # =========================
+    # ==========================
+
 
     regime = detect_regime(df)
 
 
 
-    # =========================
-    # SIGNAL GENERATION
-    # =========================
+    # ==========================
+    # SIGNAL ENGINE
+    # ==========================
+
 
     signal = generate_signal(
 
@@ -148,9 +142,10 @@ def main():
 
 
 
-    # =========================
-    # RISK CONTROL
-    # =========================
+    # ==========================
+    # RISK ENGINE
+    # ==========================
+
 
     trade_plan = evaluate_trade(
 
@@ -166,9 +161,48 @@ def main():
 
 
 
-    # =========================
-    # DISPLAY RESULTS
-    # =========================
+    # ==========================
+    # EXECUTION ENGINE
+    # ==========================
+
+
+    executor = ExecutionSimulator(
+
+        balance=50
+
+    )
+
+
+
+    order = None
+
+
+
+    if trade_plan["approved"]:
+
+
+        order = executor.create_order(
+
+            symbol="XAUUSD",
+
+            direction=trade_plan["signal"],
+
+            entry=trade_plan["entry"],
+
+            lot=trade_plan["lot"],
+
+            stop_loss=trade_plan["stop_loss"],
+
+            take_profit=trade_plan["take_profit"]
+
+        )
+
+
+
+    # ==========================
+    # OUTPUT
+    # ==========================
+
 
     print("\n==========================")
     print("JQE MARKET ANALYSIS")
@@ -208,6 +242,26 @@ def main():
 
     print(
         trade_plan
+    )
+
+
+
+    print(
+        "\nEXECUTION RESULT:"
+    )
+
+    print(
+        order
+    )
+
+
+
+    print(
+        "\nACCOUNT STATUS:"
+    )
+
+    print(
+        executor.account_status()
     )
 
 
