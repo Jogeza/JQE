@@ -1,11 +1,10 @@
-from core.mt5_connection import (
-    connect,
-    disconnect
-)
+from core.mt5_connection import connect, disconnect
 
-from core.market_data import (
-    get_candles
-)
+from core.market_data import get_candles
+
+from core.data_validator import validate_market_data
+
+from core.indicators import calculate_indicators
 
 
 
@@ -18,27 +17,34 @@ def main():
 
 
 
-    data = get_candles(
+    df = get_candles(
 
         symbol="XAUUSD",
 
         timeframe="M5",
 
-        count=100
+        count=500
 
     )
 
 
 
-    if data is not None:
+    if validate_market_data(df):
+
+
+        df = calculate_indicators(df)
+
+
+        print("\nLATEST MARKET ANALYSIS")
 
         print(
-            data.tail()
+            df.tail()
         )
 
 
 
     disconnect()
+
 
 
 
