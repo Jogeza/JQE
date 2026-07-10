@@ -5,13 +5,15 @@ Pipeline:
 
 MT5
  ↓
-Market Data
+Market Data Engine
  ↓
 Data Validation
  ↓
-Indicators
+Indicator Engine
  ↓
 Market Regime Detection
+ ↓
+Signal Intelligence
 """
 
 
@@ -36,12 +38,24 @@ from core.regime import (
     detect_regime
 )
 
+from strategy.signal_engine import (
+    generate_signal
+)
+
 
 
 def main():
 
 
-    # Connect MT5
+    print("\n==========================")
+    print("JQE ENGINE ONLINE")
+    print("==========================")
+
+
+
+    # =========================
+    # CONNECT TO MT5
+    # =========================
 
     if not connect():
 
@@ -53,7 +67,9 @@ def main():
 
 
 
-    # Get market data
+    # =========================
+    # LOAD MARKET DATA
+    # =========================
 
     df = get_candles(
 
@@ -69,8 +85,9 @@ def main():
 
     if df is None:
 
+
         print(
-            "❌ No market data"
+            "❌ No market data received"
         )
 
         disconnect()
@@ -79,12 +96,15 @@ def main():
 
 
 
-    # Validate data
+    # =========================
+    # VALIDATE DATA
+    # =========================
 
     if not validate_market_data(df):
 
+
         print(
-            "❌ Invalid market data"
+            "❌ Market data validation failed"
         )
 
         disconnect()
@@ -93,22 +113,43 @@ def main():
 
 
 
-    # Calculate indicators
+    # =========================
+    # ADD INDICATORS
+    # =========================
 
     df = calculate_indicators(df)
 
 
 
-    # Detect market condition
+    # =========================
+    # DETECT MARKET CONDITION
+    # =========================
 
     regime = detect_regime(df)
 
 
 
+    # =========================
+    # GENERATE SIGNAL
+    # =========================
+
+    signal = generate_signal(
+
+        df,
+
+        regime
+
+    )
+
+
+
+    # =========================
+    # DISPLAY ANALYSIS
+    # =========================
+
+
     print("\n==========================")
-
     print("JQE MARKET ANALYSIS")
-
     print("==========================")
 
 
@@ -120,8 +161,21 @@ def main():
 
 
     print(
-        "\nMARKET REGIME:",
+        "\nMARKET REGIME:"
+    )
+
+    print(
         regime
+    )
+
+
+
+    print(
+        "\nTRADE SIGNAL:"
+    )
+
+    print(
+        signal
     )
 
 
