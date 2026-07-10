@@ -3,22 +3,39 @@ from core.mt5_connection import (
     disconnect
 )
 
-from core.logger import logger
+from core.market_data import (
+    get_candles
+)
 
 
 
 def main():
 
-    logger.info(
-        "JQE Engine Started"
+
+    if not connect():
+
+        return
+
+
+
+    data = get_candles(
+
+        symbol="XAUUSD",
+
+        timeframe="M5",
+
+        count=100
+
     )
 
 
-    if connect():
+
+    if data is not None:
 
         print(
-            "JQE ENGINE ONLINE"
+            data.tail()
         )
+
 
 
     disconnect()
