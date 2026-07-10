@@ -1,0 +1,8 @@
+MetaTrader5
+pandas
+numpy
+python-dotenv
+matplotlib
+pytest
+black
+ruff
