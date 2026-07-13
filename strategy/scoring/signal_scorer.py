@@ -1,4 +1,13 @@
+"""
+JQE Signal Scorer
+Version: 0.2.0
+
+Calculates trade confidence.
+"""
+
+
 class SignalScorer:
+
 
 
     def evaluate(
@@ -7,43 +16,95 @@ class SignalScorer:
         signal
     ):
 
+
         score = 0
 
         reasons = []
+
+
+
+        trend = intelligence.get(
+            "trend",
+            "UNKNOWN"
+        )
+
+
+        momentum = intelligence.get(
+            "momentum",
+            "UNKNOWN"
+        )
+
+
+        volatility = intelligence.get(
+            "volatility",
+            "UNKNOWN"
+        )
+
+
+        regime = intelligence.get(
+            "regime",
+            "UNKNOWN"
+        )
+
+
+
 
 
         #
         # TREND SCORE
         #
 
-        if intelligence["trend"] in [
+        if trend in [
+
             "BULLISH",
             "BEARISH"
+
         ]:
+
 
             score += 30
 
+
             reasons.append(
+
                 "Trend alignment"
+
             )
+
+
+
 
 
         #
         # MOMENTUM SCORE
         #
 
-        if intelligence["momentum"] == "STRONG":
+        if momentum == "STRONG":
+
 
             score += 25
 
+
             reasons.append(
+
                 "Strong momentum confirmation"
+
             )
 
 
-        elif intelligence["momentum"] == "NEUTRAL":
+        elif momentum == "MODERATE":
 
-            score += 10
+
+            score += 15
+
+
+            reasons.append(
+
+                "Moderate momentum"
+
+            )
+
+
 
 
 
@@ -51,31 +112,71 @@ class SignalScorer:
         # VOLATILITY SCORE
         #
 
-        if intelligence["volatility"] == "NORMAL":
+        if volatility in [
+
+            "LOW",
+            "MEDIUM"
+
+        ]:
+
 
             score += 20
 
+
             reasons.append(
+
                 "Controlled volatility"
+
             )
+
+
+        elif volatility == "HIGH":
+
+
+            score += 5
+
+
+            reasons.append(
+
+                "High volatility risk"
+
+            )
+
+
+
+
 
 
         #
         # MARKET REGIME SCORE
         #
 
-        if intelligence["regime"] == "TRENDING":
+        if regime == "TRENDING":
+
 
             score += 25
 
+
             reasons.append(
+
                 "Trending market condition"
+
             )
 
 
-        elif intelligence["regime"] == "RANGING":
+        elif regime == "RANGING":
+
 
             score += 5
+
+
+            reasons.append(
+
+                "Range market"
+
+            )
+
+
 
 
 
@@ -104,15 +205,28 @@ class SignalScorer:
 
 
 
+
+
         return {
 
-            "action": signal["action"],
+
+            "action": signal.get(
+
+                "action",
+
+                "WAIT"
+
+            ),
+
 
             "score": score,
 
+
             "quality": quality,
 
+
             "confidence": score,
+
 
             "reasons": reasons
 
