@@ -1,298 +1,97 @@
-"""
-JQE Institutional Signal Engine
-Version 0.1.0
+class SignalEngine:
 
-Multi-factor scoring system
-"""
 
+    def generate(
+        self,
+        intelligence
+    ):
 
-def generate_signal(
+        signal = {
 
-        df,
+            "action": "HOLD",
 
-        regime
+            "reason": "",
 
-):
+            "confidence": 0
 
+        }
 
-    current = df.iloc[-1]
 
+        trend = intelligence["trend"]
 
-    score_buy = 0
+        momentum = intelligence["momentum"]
 
-    score_sell = 0
+        volatility = intelligence["volatility"]
 
+        regime = intelligence["regime"]
 
-    reasons_buy = []
+        confidence = intelligence["confidence"]
 
-    reasons_sell = []
 
 
+        # TRENDING MARKET
 
-    # =========================
-    # EMA TREND
-    # =========================
+        if regime == "TRENDING":
 
 
-    if current["EMA50"] > current["EMA200"]:
+            if (
+                trend == "BULLISH"
+                and
+                momentum == "STRONG"
+            ):
 
+                signal["action"] = "BUY"
 
-        score_buy += 25
+                signal["reason"] = (
+                    "Bullish trend + strong momentum"
+                )
 
-        reasons_buy.append(
 
-            "EMA bullish trend"
 
-        )
+            elif (
+                trend == "BEARISH"
+                and
+                momentum == "STRONG"
+            ):
 
+                signal["action"] = "SELL"
 
-    elif current["EMA50"] < current["EMA200"]:
+                signal["reason"] = (
+                    "Bearish trend + strong momentum"
+                )
 
 
-        score_sell += 25
 
-        reasons_sell.append(
+        # HIGH VOLATILITY
 
-            "EMA bearish trend"
+        elif regime == "HIGH_VOLATILITY":
 
-        )
 
+            signal["action"] = "HOLD"
 
-
-
-
-    # =========================
-    # RSI MOMENTUM
-    # =========================
-
-
-    rsi = current["RSI"]
-
-
-
-    if 45 < rsi < 65:
-
-
-        score_buy += 20
-
-        reasons_buy.append(
-
-            "RSI bullish momentum"
-
-        )
-
-
-
-    elif 35 < rsi < 55:
-
-
-        score_sell += 20
-
-        reasons_sell.append(
-
-            "RSI bearish momentum"
-
-        )
-
-
-
-
-
-    # =========================
-    # ATR VOLATILITY
-    # =========================
-
-
-    atr = current["ATR"]
-
-
-
-    if atr > df["ATR"].mean():
-
-
-        score_buy += 15
-
-        score_sell += 15
-
-
-
-
-
-    # =========================
-    # PRICE STRUCTURE
-    # =========================
-
-
-    previous = df.iloc[-2]
-
-
-
-    if current["close"] > previous["high"]:
-
-
-        score_buy += 25
-
-        reasons_buy.append(
-
-            "Breakout structure"
-
-        )
-
-
-
-    elif current["close"] < previous["low"]:
-
-
-        score_sell += 25
-
-        reasons_sell.append(
-
-            "Breakdown structure"
-
-        )
-
-
-
-
-
-    # =========================
-    # CANDLE POWER
-    # =========================
-
-
-    candle_size = abs(
-
-        current["close"]
-
-        -
-
-        current["open"]
-
-    )
-
-
-
-    if candle_size > atr * 0.5:
-
-
-
-        if current["close"] > current["open"]:
-
-
-            score_buy += 15
-
-
-            reasons_buy.append(
-
-                "Strong bullish candle"
-
+            signal["reason"] = (
+                "High volatility protection"
             )
 
 
 
-        else:
+        # RANGE MARKET
+
+        elif regime in [
+            "RANGING",
+            "SIDEWAYS"
+        ]:
 
 
-            score_sell += 15
+            signal["action"] = "HOLD"
 
-
-            reasons_sell.append(
-
-                "Strong bearish candle"
-
+            signal["reason"] = (
+                "No clear market direction"
             )
 
 
 
+        signal["confidence"] = confidence
 
 
-
-
-    # =========================
-    # REGIME FILTER
-    # =========================
-
-
-    if regime == "RANGE":
-
-
-        return {
-
-
-            "signal":"NO_TRADE",
-
-            "confidence":0,
-
-            "reason":[
-
-                "Range market"
-
-            ]
-
-        }
-
-
-
-
-
-    # =========================
-    # FINAL DECISION
-    # =========================
-
-
-
-    if score_buy >= 75:
-
-
-        return {
-
-
-            "signal":"BUY",
-
-            "confidence":score_buy,
-
-            "reason":reasons_buy
-
-        }
-
-
-
-
-    if score_sell >= 75:
-
-
-        return {
-
-
-            "signal":"SELL",
-
-            "confidence":score_sell,
-
-            "reason":reasons_sell
-
-        }
-
-
-
-
-
-    return {
-
-
-        "signal":"NO_TRADE",
-
-        "confidence":max(
-
-            score_buy,
-
-            score_sell
-
-        ),
-
-        "reason":[
-
-            "Insufficient confirmation"
-
-        ]
-
-    }
+        return signal
