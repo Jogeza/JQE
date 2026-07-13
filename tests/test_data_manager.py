@@ -5,21 +5,21 @@ manager = DataManager()
 
 
 manager.collect(
-    symbol="XAUUSD",
+    symbol="GOLD",
     timeframe="M15",
     candles=500
 )
 
 
 manager.collect(
-    symbol="DOW.N",
+    symbol="DOW30",
     timeframe="M15",
     candles=500
 )
 
 
 manager.collect(
-    symbol="BTCUSD",
+    symbol="BITCOIN",
     timeframe="H1",
     candles=500
 )
