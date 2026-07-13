@@ -1,20 +1,16 @@
 """
 JQE Autonomous Market Scanner
 Version: 0.1.3
-
-Integrated:
-- Live MT5 Market Data
-- Symbol Intelligence
-- Trend Analysis
-- Volatility Analysis
 """
 
 
 from core.market_data import MarketData
 from core.market_state import MarketState
 
+
 from analytics.trend_analysis import TrendAnalyzer
 from analytics.volatility import VolatilityAnalyzer
+from analytics.momentum import MomentumAnalyzer
 
 
 
@@ -37,6 +33,7 @@ class MarketScanner:
         ]
 
 
+
         self.data_engine = MarketData()
 
         self.state_engine = MarketState()
@@ -45,17 +42,17 @@ class MarketScanner:
 
         self.volatility_engine = VolatilityAnalyzer()
 
+        self.momentum_engine = MomentumAnalyzer()
+
+
 
 
 
 
     def scan(self):
 
-        """
-        Backward compatibility
-        """
-
         return self.autonomous_scan()
+
 
 
 
@@ -72,12 +69,10 @@ class MarketScanner:
 
 
 
-            #
-            # Live market data
-            #
-
             market_data = self.data_engine.get_market_data(
+
                 symbol
+
             )
 
 
@@ -95,6 +90,9 @@ class MarketScanner:
 
 
                     "volatility": "UNKNOWN",
+
+
+                    "momentum": "UNKNOWN",
 
 
                     "liquidity": "UNKNOWN",
@@ -115,10 +113,6 @@ class MarketScanner:
 
 
 
-            #
-            # Candle data
-            #
-
             candles = self.data_engine.get_candles(
 
                 symbol,
@@ -131,10 +125,6 @@ class MarketScanner:
 
 
 
-            #
-            # Trend analysis
-            #
-
             trend_result = self.trend_engine.analyze(
 
                 candles
@@ -143,11 +133,6 @@ class MarketScanner:
 
 
 
-
-
-            #
-            # Volatility analysis
-            #
 
             volatility_result = self.volatility_engine.analyze(
 
@@ -158,10 +143,15 @@ class MarketScanner:
 
 
 
+            momentum_result = self.momentum_engine.analyze(
 
-            #
-            # Attach intelligence
-            #
+                candles
+
+            )
+
+
+
+
 
             market_data["trend_analysis"] = trend_result
 
@@ -169,12 +159,11 @@ class MarketScanner:
             market_data["volatility_analysis"] = volatility_result
 
 
+            market_data["momentum_analysis"] = momentum_result
 
 
 
-            #
-            # Final market state
-            #
+
 
             market_state = self.state_engine.analyze(
 

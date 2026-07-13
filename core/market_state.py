@@ -1,12 +1,11 @@
 """
 JQE Market State Intelligence
 Version: 0.1.3
-
-Combines:
-- Trend
-- Volatility
-- Liquidity
 """
+
+
+from analytics.market_score import MarketScore
+
 
 
 
@@ -15,7 +14,20 @@ class MarketState:
 
 
 
-    def analyze(self, market):
+    def __init__(self):
+
+
+        self.score_engine = MarketScore()
+
+
+
+
+
+
+    def analyze(
+        self,
+        market
+    ):
 
 
         if market is None:
@@ -25,15 +37,12 @@ class MarketState:
 
 
 
+
         symbol = market["symbol"]
 
 
 
 
-
-        #
-        # Trend intelligence
-        #
 
         trend_data = market.get(
 
@@ -56,11 +65,6 @@ class MarketState:
 
 
 
-
-        #
-        # Volatility intelligence
-        #
-
         volatility_data = market.get(
 
             "volatility_analysis",
@@ -82,9 +86,26 @@ class MarketState:
 
 
 
-        #
-        # Liquidity analysis
-        #
+        momentum_data = market.get(
+
+            "momentum_analysis",
+
+            {}
+
+        )
+
+
+        momentum = momentum_data.get(
+
+            "momentum",
+
+            "UNKNOWN"
+
+        )
+
+
+
+
 
         spread = market.get(
 
@@ -110,16 +131,18 @@ class MarketState:
 
 
 
-
-        score = self.calculate_score(
+        score = self.score_engine.calculate(
 
             trend,
 
             volatility,
 
-            liquidity
+            liquidity,
+
+            momentum
 
         )
+
 
 
 
@@ -137,6 +160,9 @@ class MarketState:
             "volatility": volatility,
 
 
+            "momentum": momentum,
+
+
             "liquidity": liquidity,
 
 
@@ -149,81 +175,9 @@ class MarketState:
             "price": market.get("price"),
 
 
-            "atr": volatility_data.get("atr")
+            "atr": volatility_data.get("atr"),
 
+
+            "rsi": momentum_data.get("rsi")
 
         }
-
-
-
-
-
-
-
-    def calculate_score(
-
-            self,
-
-            trend,
-
-            volatility,
-
-            liquidity):
-
-
-
-        score = 50
-
-
-
-
-
-        #
-        # Trend weight
-        #
-
-        if trend in [
-
-            "BULLISH",
-
-            "BEARISH"
-
-        ]:
-
-            score += 20
-
-
-
-
-
-        #
-        # Volatility weight
-        #
-
-        if volatility == "HIGH":
-
-            score += 15
-
-
-        elif volatility == "MEDIUM":
-
-            score += 10
-
-
-
-
-
-
-        #
-        # Liquidity weight
-        #
-
-        if liquidity == "GOOD":
-
-            score += 10
-
-
-
-
-
-        return score
