@@ -1,117 +1,37 @@
 """
 JQE Market Data Engine
-
-Responsible for downloading
-and validating market candles.
+Version: 0.1.1
 """
 
 
-import MetaTrader5 as mt5
-import pandas as pd
-
-
-from core.logger import logger
-
-from core.symbol_manager import (
-    validate_symbol
-)
+from datetime import datetime
 
 
 
-TIMEFRAME_MAP = {
+class MarketData:
 
-    "M1": mt5.TIMEFRAME_M1,
 
-    "M5": mt5.TIMEFRAME_M5,
+    def __init__(self):
 
-    "M15": mt5.TIMEFRAME_M15,
-
-    "H1": mt5.TIMEFRAME_H1,
-
-    "H4": mt5.TIMEFRAME_H4,
-
-    "D1": mt5.TIMEFRAME_D1
-
-}
+        self.timeframe = "H1"
 
 
 
-def get_candles(
-        symbol: str,
-        timeframe: str,
-        count: int = 1000
-):
-
-    """
-    Download historical candles.
-    """
+    def get_market_data(self, symbol):
 
 
-    if not validate_symbol(symbol):
-
-        return None
+        return {
 
 
+            "symbol": symbol,
 
-    tf = TIMEFRAME_MAP.get(
-        timeframe
-    )
+            "price": 0,
 
+            "spread": 0,
 
-    if tf is None:
+            "timeframe": self.timeframe,
 
-        raise ValueError(
-            "Invalid timeframe"
-        )
+            "timestamp": datetime.now()
 
 
-
-    rates = mt5.copy_rates_from_pos(
-
-        symbol,
-
-        tf,
-
-        0,
-
-        count
-
-    )
-
-
-
-    if rates is None:
-
-        logger.error(
-            "Failed downloading candles"
-        )
-
-        return None
-
-
-
-    df = pd.DataFrame(
-        rates
-    )
-
-
-
-    df["time"] = pd.to_datetime(
-
-        df["time"],
-
-        unit="s"
-
-    )
-
-
-
-    logger.info(
-
-        f"Downloaded {len(df)} candles for {symbol}"
-
-    )
-
-
-
-    return df
+        }
