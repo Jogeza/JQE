@@ -1,7 +1,11 @@
 """
 JQE Market State Intelligence
-Version: 0.1.1
+Version: 0.1.3
+
+Analyzes market condition.
 """
+
+
 
 
 class MarketState:
@@ -11,55 +15,92 @@ class MarketState:
     def analyze(self, market):
 
 
+        #
+        # Safety check
+        #
+
+        if market is None:
+
+            return None
+
+
+
+
         symbol = market["symbol"]
+
 
 
 
         if symbol == "GOLD":
 
+
             trend = "BULLISH"
+
             volatility = "HIGH"
+
             liquidity = "GOOD"
+
 
 
 
         elif symbol == "BTCUSD":
 
+
             trend = "SIDEWAYS"
+
             volatility = "MEDIUM"
+
             liquidity = "GOOD"
+
 
 
 
         elif symbol == "DOW30":
 
+
             trend = "BULLISH"
+
             volatility = "MEDIUM"
+
             liquidity = "GOOD"
+
 
 
 
         elif symbol == "EURUSD":
 
+
             trend = "BEARISH"
+
             volatility = "LOW"
+
             liquidity = "GOOD"
+
 
 
 
         else:
 
+
             trend = "UNKNOWN"
-            volatility = "LOW"
+
+            volatility = "UNKNOWN"
+
             liquidity = "UNKNOWN"
 
 
 
+
         score = self.calculate_score(
+
             trend,
+
             volatility,
+
             liquidity
+
         )
+
 
 
 
@@ -68,38 +109,55 @@ class MarketState:
 
             "symbol": symbol,
 
+
             "trend": trend,
+
 
             "volatility": volatility,
 
+
             "liquidity": liquidity,
+
 
             "market_score": score,
 
+
             "trade_ready": score >= 70
+
 
         }
 
 
 
+
+
     def calculate_score(
-        self,
-        trend,
-        volatility,
-        liquidity
-    ):
+
+            self,
+
+            trend,
+
+            volatility,
+
+            liquidity):
+
 
 
         score = 50
 
 
 
+
         if trend in [
+
             "BULLISH",
+
             "BEARISH"
+
         ]:
 
             score += 20
+
 
 
 
@@ -115,9 +173,11 @@ class MarketState:
 
 
 
+
         if liquidity == "GOOD":
 
             score += 10
+
 
 
 

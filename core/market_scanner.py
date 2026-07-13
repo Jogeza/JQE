@@ -1,12 +1,12 @@
 """
 JQE Autonomous Market Scanner
-Version: 0.1.1
+Version: 0.1.3
 
-Responsible for:
-- Scanning market universe
-- Collecting market data
-- Evaluating market conditions
-- Ranking opportunities
+Responsibilities:
+- Scan market universe
+- Collect market data
+- Pass data to intelligence engine
+- Handle missing market data safely
 """
 
 
@@ -15,14 +15,13 @@ from core.market_state import MarketState
 
 
 
+
 class MarketScanner:
+
 
 
     def __init__(self, symbols=None):
 
-        # Backward compatible with JQE v0.1.0
-        # Allows:
-        # MarketScanner(symbols)
 
         self.symbols = symbols or [
 
@@ -40,27 +39,31 @@ class MarketScanner:
 
 
 
+
     def scan(self):
 
         """
-        Legacy method
-        Used by JQE core engine
+        Legacy compatibility
+        Used by JQE engine
         """
 
         return self.autonomous_scan()
 
 
 
+
     def autonomous_scan(self):
 
         """
-        Autonomous market analysis
+        Autonomous market scanning
         """
 
         results = []
 
 
+
         for symbol in self.symbols:
+
 
 
             market_data = self.data_engine.get_market_data(
@@ -68,14 +71,58 @@ class MarketScanner:
             )
 
 
+
+            #
+            # Safety handling
+            #
+            # If MT5 has no data,
+            # keep the market in the report
+            #
+
+            if market_data is None:
+
+
+                results.append({
+
+
+                    "symbol": symbol,
+
+
+                    "trend": "UNKNOWN",
+
+
+                    "volatility": "UNKNOWN",
+
+
+                    "liquidity": "UNKNOWN",
+
+
+                    "market_score": 0,
+
+
+                    "trade_ready": False
+
+
+                })
+
+
+                continue
+
+
+
+
             market_state = self.state_engine.analyze(
                 market_data
             )
 
 
-            results.append(
-                market_state
-            )
+
+            if market_state is not None:
+
+                results.append(
+                    market_state
+                )
+
 
 
         return results
