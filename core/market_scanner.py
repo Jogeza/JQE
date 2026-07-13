@@ -2,10 +2,11 @@
 JQE Autonomous Market Scanner
 Version: 0.1.3
 
-Integrated with:
-- Live MT5 data
-- Symbol Manager
-- Trend Analysis Engine
+Integrated:
+- Live MT5 Market Data
+- Symbol Intelligence
+- Trend Analysis
+- Volatility Analysis
 """
 
 
@@ -13,6 +14,8 @@ from core.market_data import MarketData
 from core.market_state import MarketState
 
 from analytics.trend_analysis import TrendAnalyzer
+from analytics.volatility import VolatilityAnalyzer
+
 
 
 
@@ -40,6 +43,9 @@ class MarketScanner:
 
         self.trend_engine = TrendAnalyzer()
 
+        self.volatility_engine = VolatilityAnalyzer()
+
+
 
 
 
@@ -50,6 +56,7 @@ class MarketScanner:
         """
 
         return self.autonomous_scan()
+
 
 
 
@@ -66,7 +73,7 @@ class MarketScanner:
 
 
             #
-            # Get live market data
+            # Live market data
             #
 
             market_data = self.data_engine.get_market_data(
@@ -80,27 +87,36 @@ class MarketScanner:
 
                 results.append({
 
+
                     "symbol": symbol,
+
 
                     "trend": "UNKNOWN",
 
+
                     "volatility": "UNKNOWN",
+
 
                     "liquidity": "UNKNOWN",
 
+
                     "market_score": 0,
+
 
                     "trade_ready": False
 
+
                 })
+
 
                 continue
 
 
 
 
+
             #
-            # Get candle history
+            # Candle data
             #
 
             candles = self.data_engine.get_candles(
@@ -114,8 +130,9 @@ class MarketScanner:
 
 
 
+
             #
-            # Analyze trend
+            # Trend analysis
             #
 
             trend_result = self.trend_engine.analyze(
@@ -127,21 +144,43 @@ class MarketScanner:
 
 
 
+
             #
-            # Pass intelligence
+            # Volatility analysis
+            #
+
+            volatility_result = self.volatility_engine.analyze(
+
+                candles
+
+            )
+
+
+
+
+
+            #
+            # Attach intelligence
             #
 
             market_data["trend_analysis"] = trend_result
 
 
+            market_data["volatility_analysis"] = volatility_result
 
+
+
+
+
+            #
+            # Final market state
+            #
 
             market_state = self.state_engine.analyze(
 
                 market_data
 
             )
-
 
 
 

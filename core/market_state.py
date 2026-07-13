@@ -1,7 +1,14 @@
 """
 JQE Market State Intelligence
 Version: 0.1.3
+
+Combines:
+- Trend
+- Volatility
+- Liquidity
 """
+
+
 
 
 class MarketState:
@@ -17,19 +24,24 @@ class MarketState:
 
 
 
+
         symbol = market["symbol"]
 
 
 
+
+
         #
-        # Get trend from analytics
+        # Trend intelligence
         #
 
         trend_data = market.get(
-            "trend_analysis",
-            {}
-        )
 
+            "trend_analysis",
+
+            {}
+
+        )
 
 
         trend = trend_data.get(
@@ -42,25 +54,59 @@ class MarketState:
 
 
 
-        #
-        # Temporary volatility
-        #
-
-        volatility = "MEDIUM"
 
 
 
         #
-        # Liquidity from spread
+        # Volatility intelligence
         #
 
-        if market.get("spread", 999) < 5:
+        volatility_data = market.get(
+
+            "volatility_analysis",
+
+            {}
+
+        )
+
+
+        volatility = volatility_data.get(
+
+            "volatility",
+
+            "UNKNOWN"
+
+        )
+
+
+
+
+
+        #
+        # Liquidity analysis
+        #
+
+        spread = market.get(
+
+            "spread",
+
+            999
+
+        )
+
+
+
+        if spread < 5:
 
             liquidity = "GOOD"
+
 
         else:
 
             liquidity = "LOW"
+
+
+
 
 
 
@@ -74,6 +120,8 @@ class MarketState:
             liquidity
 
         )
+
+
 
 
 
@@ -98,7 +146,10 @@ class MarketState:
             "trade_ready": score >= 70,
 
 
-            "price": market.get("price")
+            "price": market.get("price"),
+
+
+            "atr": volatility_data.get("atr")
 
 
         }
@@ -107,22 +158,29 @@ class MarketState:
 
 
 
+
+
     def calculate_score(
 
-        self,
+            self,
 
-        trend,
+            trend,
 
-        volatility,
+            volatility,
 
-        liquidity
+            liquidity):
 
-    ):
 
 
         score = 50
 
 
+
+
+
+        #
+        # Trend weight
+        #
 
         if trend in [
 
@@ -136,6 +194,12 @@ class MarketState:
 
 
 
+
+
+        #
+        # Volatility weight
+        #
+
         if volatility == "HIGH":
 
             score += 15
@@ -143,13 +207,22 @@ class MarketState:
 
         elif volatility == "MEDIUM":
 
-            score += 5
+            score += 10
 
 
+
+
+
+
+        #
+        # Liquidity weight
+        #
 
         if liquidity == "GOOD":
 
             score += 10
+
+
 
 
 
