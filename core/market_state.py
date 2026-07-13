@@ -1,11 +1,7 @@
 """
 JQE Market State Intelligence
 Version: 0.1.3
-
-Analyzes market condition.
 """
-
-
 
 
 class MarketState:
@@ -15,14 +11,9 @@ class MarketState:
     def analyze(self, market):
 
 
-        #
-        # Safety check
-        #
-
         if market is None:
 
             return None
-
 
 
 
@@ -30,63 +21,46 @@ class MarketState:
 
 
 
+        #
+        # Get trend from analytics
+        #
 
-        if symbol == "GOLD":
-
-
-            trend = "BULLISH"
-
-            volatility = "HIGH"
-
-            liquidity = "GOOD"
-
+        trend_data = market.get(
+            "trend_analysis",
+            {}
+        )
 
 
 
-        elif symbol == "BTCUSD":
+        trend = trend_data.get(
 
+            "trend",
 
-            trend = "SIDEWAYS"
+            "UNKNOWN"
 
-            volatility = "MEDIUM"
-
-            liquidity = "GOOD"
-
-
-
-
-        elif symbol == "DOW30":
-
-
-            trend = "BULLISH"
-
-            volatility = "MEDIUM"
-
-            liquidity = "GOOD"
+        )
 
 
 
+        #
+        # Temporary volatility
+        #
 
-        elif symbol == "EURUSD":
+        volatility = "MEDIUM"
 
 
-            trend = "BEARISH"
 
-            volatility = "LOW"
+        #
+        # Liquidity from spread
+        #
+
+        if market.get("spread", 999) < 5:
 
             liquidity = "GOOD"
-
-
-
 
         else:
 
-
-            trend = "UNKNOWN"
-
-            volatility = "UNKNOWN"
-
-            liquidity = "UNKNOWN"
+            liquidity = "LOW"
 
 
 
@@ -100,7 +74,6 @@ class MarketState:
             liquidity
 
         )
-
 
 
 
@@ -122,7 +95,10 @@ class MarketState:
             "market_score": score,
 
 
-            "trade_ready": score >= 70
+            "trade_ready": score >= 70,
+
+
+            "price": market.get("price")
 
 
         }
@@ -133,18 +109,18 @@ class MarketState:
 
     def calculate_score(
 
-            self,
+        self,
 
-            trend,
+        trend,
 
-            volatility,
+        volatility,
 
-            liquidity):
+        liquidity
 
+    ):
 
 
         score = 50
-
 
 
 
@@ -160,11 +136,9 @@ class MarketState:
 
 
 
-
         if volatility == "HIGH":
 
             score += 15
-
 
 
         elif volatility == "MEDIUM":
@@ -173,11 +147,9 @@ class MarketState:
 
 
 
-
         if liquidity == "GOOD":
 
             score += 10
-
 
 
 
