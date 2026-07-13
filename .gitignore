@@ -15,4 +15,35 @@ reports/
 data/
 
 # Environment variables
+.env# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
 .env
+
+# VS Code settings
+.vscode/
+
+# Pytest
+.pytest_cache/
+
+# Logs
+logs/
+*.log
+
+# Coverage
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
