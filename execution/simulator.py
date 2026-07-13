@@ -1,258 +1,171 @@
 """
-JQE Execution Simulator
+JQE Institutional Execution Simulator
+Version 0.1.1
 
-Simulates broker execution.
-
-Features:
-- Order creation
-- Spread simulation
-- Slippage simulation
-- Position tracking
-- Balance updates
-- Trade history
+Forward-only trade simulation.
+No look-ahead bias.
 """
 
 
-from datetime import datetime
-from core.logger import logger
+def simulate_trade(
 
+        signal,
 
+        current_index,
 
-class ExecutionSimulator:
+        dataframe
 
+):
 
-    def __init__(
-            self,
-            balance=50
-    ):
 
-        self.balance = balance
+    direction = signal.get(
+        "signal"
+    )
 
-        self.equity = balance
 
-        self.positions = []
+    if direction not in [
 
-        self.history = []
+        "BUY",
 
-        self.ticket = 0
+        "SELL"
 
-
-
-    def create_order(
-            self,
-            symbol,
-            direction,
-            entry,
-            lot,
-            stop_loss,
-            take_profit
-    ):
-
-
-        self.ticket += 1
-
-
-        order_id = (
-            f"JQE-{self.ticket:06d}"
-        )
-
-
-        # simulate execution delay/slippage
-
-        slippage = 0.05
-
-
-        if direction == "BUY":
-
-            executed_price = (
-                entry +
-                slippage
-            )
-
-
-        else:
-
-            executed_price = (
-                entry -
-                slippage
-            )
-
-
-
-        trade = {
-
-
-            "ticket": order_id,
-
-
-            "symbol": symbol,
-
-
-            "direction": direction,
-
-
-            "entry": round(
-                executed_price,
-                2
-            ),
-
-
-            "lot": lot,
-
-
-            "stop_loss": stop_loss,
-
-
-            "take_profit": take_profit,
-
-
-            "open_time":
-                datetime.now(),
-
-
-            "status":
-                "OPEN"
-
-        }
-
-
-
-        self.positions.append(
-            trade
-        )
-
-
-
-        logger.info(
-
-            f"ORDER OPENED {trade}"
-
-        )
-
-
-        return trade
-
-
-
-
-    def close_position(
-            self,
-            ticket,
-            exit_price
-    ):
-
-
-        for position in self.positions:
-
-
-            if position["ticket"] == ticket:
-
-
-
-                direction = position["direction"]
-
-
-                entry = position["entry"]
-
-
-                lot = position["lot"]
-
-
-
-                if direction == "BUY":
-
-
-                    points = (
-                        exit_price -
-                        entry
-                    )
-
-
-                else:
-
-
-                    points = (
-                        entry -
-                        exit_price
-                    )
-
-
-
-                profit = (
-
-                    points *
-                    lot
-
-                )
-
-
-
-                self.balance += profit
-
-
-                position["exit"] = exit_price
-
-                position["profit"] = round(
-                    profit,
-                    2
-                )
-
-                position["status"] = "CLOSED"
-
-                position["close_time"] = datetime.now()
-
-
-
-                self.history.append(
-                    position
-                )
-
-
-
-                self.positions.remove(
-                    position
-                )
-
-
-
-                logger.info(
-
-                    f"POSITION CLOSED {position}"
-
-                )
-
-
-                return position
-
-
+    ]:
 
         return None
 
 
 
-
-    def account_status(self):
-
-
-        return {
+    entry = dataframe.iloc[current_index]["close"]
 
 
-            "balance":
-                round(
-                    self.balance,
-                    2
-                ),
+    atr = dataframe.iloc[current_index]["ATR"]
 
 
-            "open_positions":
-                len(
-                    self.positions
-                ),
+
+    if atr <= 0:
+
+        return None
 
 
-            "closed_trades":
-                len(
-                    self.history
-                )
 
-        }
+    stop_distance = atr * 1.5
+
+    target_distance = atr * 3
+
+
+
+
+    if direction == "BUY":
+
+
+        stop = entry - stop_distance
+
+        target = entry + target_distance
+
+
+
+    else:
+
+
+        stop = entry + stop_distance
+
+        target = entry - target_distance
+
+
+
+
+
+    # ONLY future candles
+
+    future = dataframe.iloc[
+
+        current_index + 1 :
+
+        current_index + 20
+
+    ]
+
+
+
+    for _, candle in future.iterrows():
+
+
+
+        if direction == "BUY":
+
+
+
+            if candle["low"] <= stop:
+
+
+                return {
+
+
+                    "profit": -1,
+
+                    "result":"LOSS"
+
+                }
+
+
+
+            if candle["high"] >= target:
+
+
+                return {
+
+
+                    "profit": 3,
+
+                    "result":"WIN"
+
+                }
+
+
+
+
+
+
+
+        if direction == "SELL":
+
+
+
+            if candle["high"] >= stop:
+
+
+                return {
+
+
+                    "profit": -1,
+
+                    "result":"LOSS"
+
+                }
+
+
+
+            if candle["low"] <= target:
+
+
+                return {
+
+
+                    "profit":3,
+
+                    "result":"WIN"
+
+                }
+
+
+
+
+
+    return {
+
+
+        "profit":0,
+
+        "result":"TIMEOUT"
+
+    }

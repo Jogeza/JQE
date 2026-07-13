@@ -1,191 +1,346 @@
 """
-JQE Risk Controller
-
-Controls whether a trade is allowed.
+JQE Institutional Risk Controller
+Version 0.1.0
 
 Responsibilities:
-- Validate signal quality
-- Calculate risk
+
+- Protect account capital
+- Filter weak signals
+- Control risk exposure
 - Calculate position size
-- Generate SL / TP
+- Prevent overtrading
 """
 
 
-from risk.risk_manager import (
-    calculate_position_size,
-    calculate_stop_loss,
-    calculate_take_profit
-)
-
-from core.logger import logger
+# ==========================
+# INSTITUTIONAL PARAMETERS
+# ==========================
 
 
+MIN_CONFIDENCE = 75
+
+MAX_RISK_PERCENT = 0.5
+
+MIN_ATR = 1.0
+
+MAX_SPREAD = 30
 
 
-def evaluate_trade(
-        signal_data,
-        df,
-        balance,
-        risk_percent=1
+
+
+
+# ==========================
+# MAIN RISK ENGINE
+# ==========================
+
+
+def approve_trade(
+
+        signal,
+
+        market_data
+
 ):
 
-    """
-    Final trade permission system.
-    """
 
+    decision = {
 
 
-    signal = signal_data["signal"]
+        "approved": False,
 
-    confidence = signal_data["confidence"]
+        "reason": "",
 
+        "risk_percent": 0,
 
-
-    latest = df.iloc[-1]
-
-
-    entry_price = latest["close"]
-
-    atr = latest["ATR"]
-
-
-
-    # ======================
-    # BLOCK NO TRADE SIGNALS
-    # ======================
-
-
-    if signal == "NO_TRADE":
-
-
-        return {
-
-            "approved": False,
-
-            "reason": "No trade signal"
-
-        }
-
-
-
-    # ======================
-    # CONFIDENCE FILTER
-    # ======================
-
-
-    minimum_confidence = 70
-
-
-
-    if confidence < minimum_confidence:
-
-
-        return {
-
-            "approved": False,
-
-            "reason":
-            "Confidence below minimum"
-
-        }
-
-
-
-    # ======================
-    # STOP LOSS DISTANCE
-    # ======================
-
-
-    stop_distance = atr * 2
-
-
-
-    # ======================
-    # POSITION SIZE
-    # ======================
-
-
-    lot = calculate_position_size(
-
-        balance,
-
-        stop_distance,
-
-        risk_percent
-
-    )
-
-
-
-    # ======================
-    # SL / TP
-    # ======================
-
-
-    stop_loss = calculate_stop_loss(
-
-        entry_price,
-
-        atr,
-
-        signal
-
-    )
-
-
-
-    take_profit = calculate_take_profit(
-
-        entry_price,
-
-        atr,
-
-        signal
-
-    )
-
-
-
-    trade_plan = {
-
-
-        "approved": True,
-
-
-        "signal": signal,
-
-
-        "confidence": confidence,
-
-
-        "entry": round(
-            entry_price,
-            2
-        ),
-
-
-        "lot": lot,
-
-
-        "stop_loss": stop_loss,
-
-
-        "take_profit": take_profit,
-
-
-        "risk_percent": risk_percent
-
+        "lot_size": 0
 
     }
 
 
 
-    logger.info(
 
-        f"Trade approved: {trade_plan}"
+    # --------------------------
+    # Check signal existence
+    # --------------------------
+
+
+    if signal is None:
+
+
+        decision["reason"] = (
+
+            "Missing signal"
+
+        )
+
+
+        return decision
+
+
+
+
+
+    direction = signal.get(
+
+        "signal"
 
     )
 
 
 
-    return trade_plan
+    if direction not in [
+
+        "BUY",
+
+        "SELL"
+
+    ]:
+
+
+        decision["reason"] = (
+
+            "No trade signal"
+
+        )
+
+
+        return decision
+
+
+
+
+
+    # --------------------------
+    # Confidence filter
+    # --------------------------
+
+
+    confidence = signal.get(
+
+        "confidence",
+
+        0
+
+    )
+
+
+
+    if confidence < MIN_CONFIDENCE:
+
+
+        decision["reason"] = (
+
+            "Confidence too low"
+
+        )
+
+
+        return decision
+
+
+
+
+
+    # --------------------------
+    # Market validation
+    # --------------------------
+
+
+    try:
+
+
+        candle = market_data.iloc[-1]
+
+
+    except:
+
+
+        decision["reason"] = (
+
+            "Invalid market data"
+
+        )
+
+
+        return decision
+
+
+
+
+
+
+    # ATR filter
+
+
+    atr = candle.get(
+
+        "ATR",
+
+        0
+
+    )
+
+
+
+    if atr < MIN_ATR:
+
+
+        decision["reason"] = (
+
+            "Low volatility"
+
+        )
+
+
+        return decision
+
+
+
+
+
+    # Spread protection
+
+
+    spread = candle.get(
+
+        "spread",
+
+        0
+
+    )
+
+
+
+    if spread > MAX_SPREAD:
+
+
+        decision["reason"] = (
+
+            "Spread too high"
+
+        )
+
+
+        return decision
+
+
+
+
+
+    # --------------------------
+    # APPROVE TRADE
+    # --------------------------
+
+
+    decision["approved"] = True
+
+
+    decision["reason"] = (
+
+        "Institutional risk passed"
+
+    )
+
+
+
+    decision["risk_percent"] = (
+
+        MAX_RISK_PERCENT
+
+    )
+
+
+
+    decision["lot_size"] = calculate_position_size(
+
+        balance=50,
+
+        risk_percent=MAX_RISK_PERCENT,
+
+        stop_loss=atr
+
+    )
+
+
+
+    return decision
+
+
+
+
+
+
+
+# ==========================
+# POSITION SIZE ENGINE
+# ==========================
+
+
+def calculate_position_size(
+
+        balance,
+
+        risk_percent,
+
+        stop_loss
+
+):
+
+
+    if stop_loss <= 0:
+
+
+        return 0.01
+
+
+
+
+
+    risk_amount = (
+
+        balance *
+
+        risk_percent /
+
+        100
+
+    )
+
+
+
+
+    lot = (
+
+        risk_amount /
+
+        (
+
+            stop_loss *
+
+            10
+
+        )
+
+    )
+
+
+
+
+    # MT5 minimum lot protection
+
+
+    if lot < 0.01:
+
+
+        lot = 0.01
+
+
+
+
+    return round(
+
+        lot,
+
+        2
+
+    )

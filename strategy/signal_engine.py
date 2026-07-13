@@ -1,193 +1,298 @@
 """
-JQE Signal Intelligence Engine
+JQE Institutional Signal Engine
+Version 0.1.0
 
-Creates trade decisions using:
-- Market regime
-- Trend
-- Momentum
-- Volatility
+Multi-factor scoring system
 """
 
 
-from core.logger import logger
+def generate_signal(
+
+        df,
+
+        regime
+
+):
+
+
+    current = df.iloc[-1]
+
+
+    score_buy = 0
+
+    score_sell = 0
+
+
+    reasons_buy = []
+
+    reasons_sell = []
 
 
 
-def generate_signal(df, regime):
-
-    """
-    Generate a professional trade signal.
-    """
-
-    latest = df.iloc[-1]
+    # =========================
+    # EMA TREND
+    # =========================
 
 
-    close = latest["close"]
-
-    ema50 = latest["EMA50"]
-
-    ema200 = latest["EMA200"]
-
-    rsi = latest["RSI"]
-
-    atr = latest["ATR"]
+    if current["EMA50"] > current["EMA200"]:
 
 
+        score_buy += 25
 
-    score = 0
+        reasons_buy.append(
 
-    reasons = []
+            "EMA bullish trend"
 
-
-
-    signal = "NO_TRADE"
-
+        )
 
 
-    # =====================
-    # MARKET REGIME FILTER
-    # =====================
+    elif current["EMA50"] < current["EMA200"]:
 
 
-    if regime == "TREND_UP":
+        score_sell += 25
 
-        score += 30
+        reasons_sell.append(
 
-        reasons.append(
-            "Bullish market regime"
+            "EMA bearish trend"
+
         )
 
 
 
-    elif regime == "TREND_DOWN":
 
-        score += 30
 
-        reasons.append(
-            "Bearish market regime"
+    # =========================
+    # RSI MOMENTUM
+    # =========================
+
+
+    rsi = current["RSI"]
+
+
+
+    if 45 < rsi < 65:
+
+
+        score_buy += 20
+
+        reasons_buy.append(
+
+            "RSI bullish momentum"
+
         )
 
 
 
-    else:
+    elif 35 < rsi < 55:
 
-        logger.info(
-            "Market not suitable for trading"
+
+        score_sell += 20
+
+        reasons_sell.append(
+
+            "RSI bearish momentum"
+
         )
+
+
+
+
+
+    # =========================
+    # ATR VOLATILITY
+    # =========================
+
+
+    atr = current["ATR"]
+
+
+
+    if atr > df["ATR"].mean():
+
+
+        score_buy += 15
+
+        score_sell += 15
+
+
+
+
+
+    # =========================
+    # PRICE STRUCTURE
+    # =========================
+
+
+    previous = df.iloc[-2]
+
+
+
+    if current["close"] > previous["high"]:
+
+
+        score_buy += 25
+
+        reasons_buy.append(
+
+            "Breakout structure"
+
+        )
+
+
+
+    elif current["close"] < previous["low"]:
+
+
+        score_sell += 25
+
+        reasons_sell.append(
+
+            "Breakdown structure"
+
+        )
+
+
+
+
+
+    # =========================
+    # CANDLE POWER
+    # =========================
+
+
+    candle_size = abs(
+
+        current["close"]
+
+        -
+
+        current["open"]
+
+    )
+
+
+
+    if candle_size > atr * 0.5:
+
+
+
+        if current["close"] > current["open"]:
+
+
+            score_buy += 15
+
+
+            reasons_buy.append(
+
+                "Strong bullish candle"
+
+            )
+
+
+
+        else:
+
+
+            score_sell += 15
+
+
+            reasons_sell.append(
+
+                "Strong bearish candle"
+
+            )
+
+
+
+
+
+
+
+    # =========================
+    # REGIME FILTER
+    # =========================
+
+
+    if regime == "RANGE":
+
 
         return {
 
-            "signal": "NO_TRADE",
 
-            "confidence": 0,
+            "signal":"NO_TRADE",
 
-            "reason": [
-                "No clear trend"
+            "confidence":0,
+
+            "reason":[
+
+                "Range market"
+
             ]
 
         }
 
 
 
-    # =====================
-    # TREND CONFIRMATION
-    # =====================
 
 
-    if close > ema50 > ema200:
-
-        score += 25
-
-        reasons.append(
-            "EMA bullish alignment"
-        )
-
-
-
-    elif close < ema50 < ema200:
-
-        score += 25
-
-        reasons.append(
-            "EMA bearish alignment"
-        )
-
-
-
-    # =====================
-    # MOMENTUM
-    # =====================
-
-
-    if 50 < rsi < 70:
-
-        score += 20
-
-        reasons.append(
-            "Healthy bullish momentum"
-        )
-
-
-
-    elif 30 < rsi < 50:
-
-        score += 20
-
-        reasons.append(
-            "Healthy bearish momentum"
-        )
-
-
-
-    # =====================
-    # VOLATILITY CHECK
-    # =====================
-
-
-    if atr > 1:
-
-        score += 15
-
-        reasons.append(
-            "Sufficient volatility"
-        )
-
-
-
-    # =====================
+    # =========================
     # FINAL DECISION
-    # =====================
-
-
-    if score >= 70:
-
-
-        if regime == "TREND_UP":
-
-            signal = "BUY"
+    # =========================
 
 
 
-        elif regime == "TREND_DOWN":
-
-            signal = "SELL"
+    if score_buy >= 75:
 
 
+        return {
 
-    logger.info(
 
-        f"Signal: {signal} Confidence: {score}"
+            "signal":"BUY",
 
-    )
+            "confidence":score_buy,
+
+            "reason":reasons_buy
+
+        }
+
+
+
+
+    if score_sell >= 75:
+
+
+        return {
+
+
+            "signal":"SELL",
+
+            "confidence":score_sell,
+
+            "reason":reasons_sell
+
+        }
+
+
 
 
 
     return {
 
-        "signal": signal,
 
-        "confidence": score,
+        "signal":"NO_TRADE",
 
-        "reason": reasons
+        "confidence":max(
+
+            score_buy,
+
+            score_sell
+
+        ),
+
+        "reason":[
+
+            "Insufficient confirmation"
+
+        ]
 
     }
