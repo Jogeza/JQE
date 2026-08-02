@@ -1,0 +1,87 @@
+From 7835a21860bff3f66da3b03d21b586d99a8ee219 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 05:23:07 +0000
+Subject: [PATCH 04/23] test: add tests for the exception hierarchy
+
+Verifies every subclass inherits from JQEError, JQEError inherits from
+Exception, exceptions can be raised/caught polymorphically, and
+context kwargs are rendered into the message correctly.
+---
+ tests/test_exceptions.py | 65 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 65 insertions(+)
+ create mode 100644 tests/test_exceptions.py
+
+diff --git a/tests/test_exceptions.py b/tests/test_exceptions.py
+new file mode 100644
+index 0000000..73e0782
+--- /dev/null
++++ b/tests/test_exceptions.py
+@@ -0,0 +1,65 @@
++"""Tests for core.exceptions — the platform's centralized exception hierarchy."""
++
++from __future__ import annotations
++
++import pytest
++
++from core.exceptions import (
++    BrokerConnectionError,
++    ConfigurationError,
++    ExecutionError,
++    JQEError,
++    MarketDataError,
++    RiskViolationError,
++    StrategyError,
++)
++
++ALL_SUBCLASSES = [
++    ConfigurationError,
++    BrokerConnectionError,
++    MarketDataError,
++    RiskViolationError,
++    StrategyError,
++    ExecutionError,
++]
++
++
++class TestExceptionHierarchy:
++    """Every platform exception must be a JQEError, and JQEError a real Exception."""
++
++    @pytest.mark.parametrize("exc_type", ALL_SUBCLASSES)
++    def test_subclasses_inherit_from_jqe_error(self, exc_type: type[JQEError]) -> None:
++        assert issubclass(exc_type, JQEError)
++
++    def test_jqe_error_inherits_from_exception(self) -> None:
++        assert issubclass(JQEError, Exception)
++
++    @pytest.mark.parametrize("exc_type", ALL_SUBCLASSES)
++    def test_can_be_raised_and_caught_as_jqe_error(self, exc_type: type[JQEError]) -> None:
++        with pytest.raises(JQEError):
++            raise exc_type("something went wrong")
++
++    def test_specific_subclass_not_caught_by_sibling_type(self) -> None:
++        with pytest.raises(MarketDataError):
++            try:
++                raise MarketDataError("bad data")
++            except RiskViolationError:  # pragma: no cover - must not match
++                pytest.fail("MarketDataError should not be caught as RiskViolationError")
++
++
++class TestJQEErrorContext:
++    """Structured context passed to JQEError should be rendered into the message."""
++
++    def test_message_only(self) -> None:
++        err = JQEError("plain message")
++        assert str(err) == "plain message"
++        assert err.message == "plain message"
++        assert err.context == {}
++
++    def test_message_with_context(self) -> None:
++        err = MarketDataError("bad data", symbol="XAUUSD", count=0)
++        rendered = str(err)
++        assert "bad data" in rendered
++        assert "symbol='XAUUSD'" in rendered
++        assert "count=0" in rendered
++        assert err.context == {"symbol": "XAUUSD", "count": 0}
+-- 
+2.43.0
+

@@ -1,0 +1,414 @@
+From d6eed620ce0863faa605118b5ffd518e1587fd97 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 05:23:31 +0000
+Subject: [PATCH 10/23] refactor: rewire backtesting/backtest.py, remove
+ import-time side effects
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Wraps the former top-level script in run_backtest(), guarded by
+if __name__ == '__main__' — the module previously connected to MT5
+and ran a full backtest as a side effect of being imported, which is
+incompatible with it (or main.py, which now imports it transitively
+via shared conventions) ever being unit tested.
+
+Replaces print() with structured logging.
+
+Fixes the same class of dead imports as main.py: 'get_market_data' and
+'add_indicators' don't exist (real names: MarketData class,
+calculate_indicators). Also documents that BacktestEngine.execute_trade
+itself calls approve_trade() and simulate_trade() with the wrong
+number of arguments for their current signatures — independent of
+this file, and out of scope for this milestone (Milestone 2b).
+
+run_backtest() now stops after loading data and computing indicators,
+returning the DataFrame, rather than running a trade-simulation loop
+that would immediately raise TypeError.
+
+Adds tests/test_backtest_runner.py covering the error paths and the
+import-time-side-effect regression.
+---
+ backtesting/backtest.py       | 302 ++++++++++------------------------
+ tests/test_backtest_runner.py |  53 ++++++
+ 2 files changed, 143 insertions(+), 212 deletions(-)
+ create mode 100644 tests/test_backtest_runner.py
+
+diff --git a/backtesting/backtest.py b/backtesting/backtest.py
+index c5c62ba..68e0f1b 100644
+--- a/backtesting/backtest.py
++++ b/backtesting/backtest.py
+@@ -1,220 +1,98 @@
+-"""
+-JQE Institutional Backtest Runner
+-Version 0.1.0
+-"""
+-
+-
+-import MetaTrader5 as mt5
+-import pandas as pd
+-
+-
+-from core.market_data import get_market_data
+-from core.indicators import add_indicators
+-from core.regime import detect_regime
+-
+-from strategy.signal_engine import generate_signal
+-
+-from backtesting.engine import BacktestEngine
+-
+-from analytics.performance import calculate_performance
+-
+-
+-
+-
+-
+-SYMBOL = "XAUUSD"
+-
+-TIMEFRAME = mt5.TIMEFRAME_M5
+-
+-CANDLES = 5000
+-
+-
+-
+-
+-print()
+-print("==========================")
+-print("JQE v0.1.0 BACKTEST")
+-print("==========================")
+-
+-
+-
+-
+-if not mt5.initialize():
+-
+-    print(
+-        "❌ MT5 Connection Failed"
+-    )
+-
+-    quit()
+-
+-
+-
+-print(
+-    "✅ MT5 Connected"
+-)
+-
+-
+-
+-# ==========================
+-# LOAD DATA
+-# ==========================
+-
+-
+-df = get_market_data(
+-
+-    SYMBOL,
+-
+-    TIMEFRAME,
+-
+-    CANDLES
+-
+-)
+-
+-
+-
+-if df is None:
+-
+-    print(
+-        "No market data"
+-    )
+-
+-    quit()
+-
+-
+-
+-# indicators
+-
+-df = add_indicators(df)
+-
+-
+-
+-# ==========================
+-# ENGINE
+-# ==========================
+-
+-
+-engine = BacktestEngine(
+-
+-    starting_balance=50
+-
+-)
+-
+-
+-
+-
+-for i in range(200,len(df)):
+-
++"""JQE institutional backtest runner.
+ 
+-    history = df.iloc[:i]
++Loads historical candle data and computes indicators, as a foundation
++for backtesting.
+ 
++Run as a script:
+ 
+-    candle = df.iloc[i]
++    $ python -m backtesting.backtest
+ 
++Or call :func:`run_backtest` directly for programmatic use.
+ 
++.. important::
++    The trade-simulation loop is **not yet wired in**. It previously
++    called ``generate_signal(history, regime)``, a function that does
++    not exist anywhere in the codebase — the real signal generator is
++    ``strategy.signal_engine.SignalEngine.generate(intelligence)``,
++    which takes a different kind of input entirely. Additionally,
++    ``BacktestEngine.execute_trade`` itself calls
++    ``risk.risk_controller.approve_trade`` and
++    ``execution.simulator.simulate_trade`` with the wrong number of
++    arguments for their current signatures. None of this is
++    Foundation-milestone work; see "Pipeline Integration" in
++    docs/roadmap.md.
++"""
+ 
+-    regime = detect_regime(
+-
+-        history
+-
+-    )
+-
+-
+-
+-    signal = generate_signal(
+-
+-        history,
+-
+-        regime
+-
+-    )
+-
+-
+-
+-    engine.execute_trade(
+-
+-        signal,
+-
+-        candle
+-
+-    )
+-
+-
+-
+-
+-
+-# ==========================
+-# BASIC RESULTS
+-# ==========================
+-
+-
+-print()
+-
+-print("==========================")
+-
+-print(
+-    "JQE BACKTEST RESULTS"
+-)
+-
+-print("==========================")
+-
+-
+-basic = engine.statistics()
+-
+-
+-for key,value in basic.items():
+-
+-    print(
+-
+-        key,
+-
+-        ":",
+-
+-        value
+-
+-    )
+-
+-
+-
+-
+-
+-# ==========================
+-# INSTITUTIONAL METRICS
+-# ==========================
+-
+-
+-print()
+-
+-print("==========================")
+-
+-print(
+-    "INSTITUTIONAL METRICS"
+-)
+-
+-print("==========================")
+-
+-
+-metrics = calculate_performance(
+-
+-    engine.trades,
+-
+-    engine.equity_curve
+-
+-)
+-
+-
+-
+-for key,value in metrics.items():
+-
+-    print(
+-
+-        key,
+-
+-        ":",
+-
+-        value
+-
+-    )
+-
++from __future__ import annotations
+ 
++import MetaTrader5 as mt5
++import pandas as pd
+ 
+-mt5.shutdown()
+\ No newline at end of file
++from core.exceptions import BrokerConnectionError, MarketDataError
++from core.indicators import calculate_indicators
++from core.logger import logger
++from core.market_data import MarketData
++
++DEFAULT_SYMBOL = "XAUUSD"
++DEFAULT_TIMEFRAME = mt5.TIMEFRAME_M5
++DEFAULT_CANDLES = 5000
++
++
++def run_backtest(
++    symbol: str = DEFAULT_SYMBOL,
++    timeframe: int = DEFAULT_TIMEFRAME,
++    candles: int = DEFAULT_CANDLES,
++    starting_balance: float = 50.0,
++) -> pd.DataFrame:
++    """Loads historical data and computes indicators for backtesting.
++
++    Args:
++        symbol: Instrument symbol to backtest.
++        timeframe: MT5 timeframe constant (e.g. ``mt5.TIMEFRAME_M5``).
++            Accepted for API stability; not yet honored — see the
++            module docstring.
++        candles: Number of historical candles to load.
++        starting_balance: Simulated starting account balance. Accepted
++            for API stability; not yet used until the trade-simulation
++            loop is wired in.
++
++    Returns:
++        The historical candle data with indicators applied.
++
++    Raises:
++        BrokerConnectionError: If the MT5 terminal connection cannot be
++            established.
++        MarketDataError: If historical market data cannot be retrieved.
++    """
++    del starting_balance  # Reserved for the trade-simulation loop (not yet wired in).
++
++    logger.info("JQE backtest data load starting for {} ({} candles)", symbol, candles)
++
++    if not mt5.initialize():
++        raise BrokerConnectionError("MT5 connection failed")
++
++    try:
++        # NOTE: MarketData currently fetches on a fixed H1 timeframe
++        # internally and does not yet accept a `timeframe` argument.
++        # Tracked for Milestone 2 (Broker Abstraction).
++        market_data_provider = MarketData()
++        raw_candles = market_data_provider.get_candles(symbol, count=candles)
++        if not raw_candles:
++            raise MarketDataError("No market data returned", symbol=symbol)
++
++        df = pd.DataFrame(raw_candles)
++        df = calculate_indicators(df)
++
++        logger.info("Loaded {} candles with indicators for {}", len(df), symbol)
++        logger.warning(
++            "Trade-simulation loop is not yet wired to the current "
++            "strategy/risk/execution APIs — see 'Pipeline Integration' "
++            "in docs/roadmap.md. Returning indicator data only."
++        )
++        return df
++    finally:
++        mt5.shutdown()
++
++
++if __name__ == "__main__":
++    run_backtest()
+diff --git a/tests/test_backtest_runner.py b/tests/test_backtest_runner.py
+new file mode 100644
+index 0000000..3aa9097
+--- /dev/null
++++ b/tests/test_backtest_runner.py
+@@ -0,0 +1,53 @@
++"""Tests for backtesting.backtest.run_backtest.
++
++Verifies JQE's own orchestration (error mapping, guaranteed
++``mt5.shutdown()``, no import-time side effects) rather than the
++statistics/engine logic itself, which is covered separately.
++"""
++
++from __future__ import annotations
++
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++from backtesting import backtest
++from core.exceptions import BrokerConnectionError, MarketDataError
++
++
++class TestModuleImport:
++    def test_importing_module_has_no_side_effects(self) -> None:
++        # Regression guard: backtesting/backtest.py used to be a top-level
++        # script that connected to MT5 and ran a full backtest at import
++        # time. Importing it now must be inert.
++        assert callable(backtest.run_backtest)
++
++
++class TestRunBacktest:
++    @patch("backtesting.backtest.mt5")
++    def test_raises_broker_connection_error_when_mt5_init_fails(self, mock_mt5: MagicMock) -> None:
++        mock_mt5.initialize.return_value = False
++        with pytest.raises(BrokerConnectionError):
++            backtest.run_backtest()
++
++    @patch("backtesting.backtest.MarketData")
++    @patch("backtesting.backtest.mt5")
++    def test_raises_market_data_error_when_no_data(
++        self, mock_mt5: MagicMock, mock_market_data_cls: MagicMock
++    ) -> None:
++        mock_mt5.initialize.return_value = True
++        mock_market_data_cls.return_value.get_candles.return_value = []
++        with pytest.raises(MarketDataError):
++            backtest.run_backtest()
++        mock_mt5.shutdown.assert_called_once()
++
++    @patch("backtesting.backtest.MarketData")
++    @patch("backtesting.backtest.mt5")
++    def test_mt5_shutdown_is_always_called(
++        self, mock_mt5: MagicMock, mock_market_data_cls: MagicMock
++    ) -> None:
++        mock_mt5.initialize.return_value = True
++        mock_market_data_cls.return_value.get_candles.return_value = []
++        with pytest.raises(MarketDataError):
++            backtest.run_backtest()
++        mock_mt5.shutdown.assert_called_once()
+-- 
+2.43.0
+
