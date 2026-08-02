@@ -43,6 +43,15 @@ class BrokerConnectionError(JQEError):
     established, is lost, or is used while not connected."""
 
 
+class BrokerAuthenticationError(BrokerConnectionError):
+    """Raised when a broker connection succeeds but authentication fails
+    (e.g. an invalid or expired API token/credentials). A subclass of
+    :class:`BrokerConnectionError` so existing broad ``except
+    BrokerConnectionError`` handling still catches it; catch this
+    narrowly when the distinction matters (e.g. to prompt for new
+    credentials rather than simply retrying the connection)."""
+
+
 class MarketDataError(JQEError):
     """Raised when market data cannot be retrieved, is empty, or fails
     validation before being used downstream."""
