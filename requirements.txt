@@ -11,6 +11,9 @@
 # the test suite stubs this package on non-Windows platforms.
 MetaTrader5; sys_platform == "win32"
 
+# --- Broker connectivity -----------------------------------------
+websockets      # broker/deriv_gateway.py — Deriv's WebSocket API client
+
 # --- Data & numerical computing ----------------------------
 pandas
 numpy
@@ -38,6 +41,7 @@ alembic
 
 # --- Testing & tooling --------------------------------------------
 pytest
+pytest-asyncio   # broker/ tests use async def test_... directly
 pytest-cov
 black
 ruff

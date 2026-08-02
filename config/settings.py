@@ -38,12 +38,23 @@ class Settings(BaseSettings):
         environment: Deployment environment. Affects logging verbosity
             and future environment-gated behavior (e.g. disabling live
             order routing outside of "production").
+        broker: Which :class:`~broker.base.BrokerGateway` implementation
+            :func:`broker.factory.get_gateway` constructs. Defaults to
+            ``"simulation"`` so the platform runs out of the box with
+            no credentials or live broker connection required.
         mt5_login: MetaTrader 5 account number used to authenticate with
             the terminal. ``None`` when using an already-logged-in
             terminal instance.
         mt5_password: MetaTrader 5 account password. Never logged.
         mt5_server: MetaTrader 5 broker server name (e.g.
             ``"ICMarketsSC-Demo"``).
+        deriv_api_token: Deriv API token, required when ``broker`` is
+            ``"deriv"``. Never logged; obtain from
+            https://app.deriv.com/account/api-token.
+        deriv_app_id: Deriv application ID. Defaults to Deriv's public
+            demo app ID (``"1089"``, used throughout their own docs) —
+            register your own for anything beyond development.
+        deriv_endpoint: Deriv WebSocket endpoint URL.
         default_symbol: Instrument symbol used when none is explicitly
             supplied to the trading pipeline.
         default_timeframe: MT5 timeframe name (e.g. ``"M5"``, ``"H1"``)
@@ -80,9 +91,15 @@ class Settings(BaseSettings):
 
     environment: Environment = "development"
 
+    broker: Literal["simulation", "mt5", "deriv"] = "simulation"
+
     mt5_login: int | None = None
     mt5_password: str | None = None
     mt5_server: str | None = None
+
+    deriv_api_token: str | None = None
+    deriv_app_id: str = "1089"
+    deriv_endpoint: str = "wss://ws.derivws.com/websockets/v3"
 
     default_symbol: str = "XAUUSD"
     default_timeframe: str = "M5"
