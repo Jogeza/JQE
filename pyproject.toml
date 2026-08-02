@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# broker/ tests use `async def test_...` directly (no per-test
+# @pytest.mark.asyncio needed) now that the broker layer's async
+# BrokerGateway interface requires async test functions.
+asyncio_mode = "auto"
