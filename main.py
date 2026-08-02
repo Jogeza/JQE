@@ -1,9 +1,15 @@
 """JQE Trading Engine — main entry point.
 
-Runs one market-analysis cycle:
+Runs one market-analysis cycle against the configured broker:
 
-    MT5 connection -> market data -> validation -> indicators ->
+    BrokerGateway connect -> candles -> validation -> indicators ->
     regime detection
+
+The broker is fully interchangeable — this module depends only on
+:class:`broker.base.BrokerGateway`, selected at runtime by
+``config.settings.broker`` (``simulation`` by default, so this runs
+out of the box with no credentials). See docs/architecture.md, "Broker
+layer".
 
 Run directly to execute a single cycle:
 
@@ -11,65 +17,59 @@ Run directly to execute a single cycle:
 
 .. important::
     Signal generation, risk evaluation, and execution are **not yet
-    wired in** here. The functions this module historically called
-    (``generate_signal``, ``evaluate_trade``, ``ExecutionSimulator``)
-    do not exist anywhere in the current codebase — the real
-    equivalents (``strategy.signal_engine.SignalEngine.generate``,
-    ``risk.risk_controller.approve_trade``,
-    ``execution.simulator.simulate_trade``) take different arguments
-    entirely (an "intelligence" dict, not a DataFrame + regime
-    string). Wiring these together correctly is a trading-logic
-    integration decision, not a Foundation-milestone concern — see
-    "Pipeline Integration" in docs/roadmap.md.
+    wired in** — see "Pipeline Integration" in docs/roadmap.md.
 """
 
 from __future__ import annotations
 
+import asyncio
+
 import pandas as pd
 
+from broker.factory import get_gateway
+from broker.types import Timeframe
 from config import settings
 from core.data_validator import validate_market_data
-from core.exceptions import BrokerConnectionError, JQEError, MarketDataError
+from core.exceptions import JQEError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
-from core.market_data import MarketData
-from core.mt5_connection import connect, disconnect
 from core.regime import detect_regime
 
+_TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 
-def run() -> None:
+
+async def run() -> None:
     """Runs a single JQE market-analysis cycle.
 
-    Connects to the MT5 terminal, retrieves and validates recent
+    Connects to the configured broker, retrieves and validates recent
     candles, computes indicators, and detects the current market
-    regime. The MT5 connection is always closed on the way out,
-    whether the cycle succeeds or fails.
+    regime. The broker connection is always closed on the way out
+    (via the gateway's async context manager), whether the cycle
+    succeeds or fails.
 
     Raises:
-        BrokerConnectionError: If the MT5 terminal connection cannot be
-            established.
-        MarketDataError: If market data cannot be retrieved or fails
-            validation.
+        core.exceptions.BrokerConnectionError: If the broker connection
+            cannot be established.
+        core.exceptions.MarketDataError: If market data cannot be
+            retrieved or fails validation.
     """
-    logger.info("JQE engine online (environment={})", settings.environment)
+    logger.info(
+        "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
+    )
 
-    if not connect():
-        raise BrokerConnectionError("Failed to connect to MT5 terminal")
+    timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
-    try:
-        # NOTE: MarketData currently fetches on a fixed H1 timeframe
-        # internally and does not yet accept settings.default_timeframe.
-        # Making the timeframe configurable is tracked for Milestone 2
-        # (Broker Abstraction) — see docs/roadmap.md.
-        market_data_provider = MarketData()
-        candles = market_data_provider.get_candles(
+    gateway = get_gateway(settings)
+    async with gateway:
+        candles = await gateway.get_candles(
             symbol=settings.default_symbol,
+            timeframe=timeframe,
             count=settings.default_candle_count,
         )
         if not candles:
             raise MarketDataError("Market data unavailable", symbol=settings.default_symbol)
 
-        df = pd.DataFrame(candles)
+        df = pd.DataFrame([candle.model_dump() for candle in candles])
 
         if not validate_market_data(df):
             raise MarketDataError("Market data failed validation", symbol=settings.default_symbol)
@@ -84,8 +84,6 @@ def run() -> None:
             "wired to the current module APIs — see 'Pipeline Integration' "
             "in docs/roadmap.md. Cycle stops after market analysis."
         )
-    finally:
-        disconnect()
 
 
 def main() -> None:
@@ -98,7 +96,7 @@ def main() -> None:
     propagate.
     """
     try:
-        run()
+        asyncio.run(run())
     except JQEError as exc:
         logger.error("JQE cycle aborted: {}", exc)
 
