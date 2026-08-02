@@ -1,12 +1,36 @@
-import MetaTrader5 as mt5
+from __future__ import annotations
 
-from core.mt5_connection import connect
+import asyncio
+
+from broker.factory import get_gateway
+from broker.types import OrderRequest, OrderSide
 
 
 class OrderManager:
+    """
+    Broker-independent order execution manager.
+
+    Execution flow:
+
+        Strategy Signal
+              |
+              v
+        OrderManager
+              |
+              v
+        BrokerGateway
+              |
+              v
+        MT5 / Deriv / Simulation
+    """
 
     def __init__(self):
-        connect()
+        self.gateway = get_gateway()
+
+        # Connect broker gateway
+        asyncio.run(
+            self.gateway.connect()
+        )
 
 
     def create_order(
@@ -31,17 +55,24 @@ class OrderManager:
         order = {
 
             "symbol": symbol,
+
             "type": signal,
+
             "lot": lot,
+
             "entry": entry,
+
             "stop_loss": stop_loss,
+
             "take_profit": take_profit,
+
             "status": "CREATED"
 
         }
 
 
         if execute:
+
             return self.send_order(order)
 
 
@@ -51,106 +82,91 @@ class OrderManager:
 
     def send_order(self, order):
 
-        symbol = order["symbol"]
+        side = (
+
+            OrderSide.BUY
+
+            if order["type"] == "BUY"
+
+            else OrderSide.SELL
+
+        )
 
 
-        tick = mt5.symbol_info_tick(symbol)
+        broker_order = OrderRequest(
+
+            symbol=order["symbol"],
+
+            side=side,
+
+            volume=float(order["lot"]),
+
+            stop_loss=float(order["stop_loss"])
+            if order["stop_loss"]
+            else None,
+
+            take_profit=float(order["take_profit"])
+            if order["take_profit"]
+            else None
+
+        )
 
 
-        if tick is None:
+        try:
 
-            return {
-
-                "status": "FAILED",
-                "reason": "No market tick"
-
-            }
+            result = self._submit(
+                broker_order
+            )
 
 
+            if result.status.value == "FILLED":
 
-        if order["type"] == "BUY":
+                return {
 
-            order_type = mt5.ORDER_TYPE_BUY
-            price = tick.ask
+                    "status": "EXECUTED",
 
+                    "order": result.order_id,
 
-        else:
+                    "price": result.filled_price,
 
-            order_type = mt5.ORDER_TYPE_SELL
-            price = tick.bid
+                    "symbol": result.symbol,
 
+                    "volume": result.volume
 
+                }
 
-        request = {
-
-            "action": mt5.TRADE_ACTION_DEAL,
-
-            "symbol": symbol,
-
-            "volume": order["lot"],
-
-            "type": order_type,
-
-            "price": price,
-
-            "sl": order["stop_loss"],
-
-            "tp": order["take_profit"],
-
-            "deviation": 20,
-
-            "magic": 20260802,
-
-            "comment": "JQE Demo Execution",
-
-            "type_time": mt5.ORDER_TIME_GTC,
-
-            "type_filling": mt5.ORDER_FILLING_IOC
-
-        }
-
-
-
-        result = mt5.order_send(request)
-
-
-
-        if result is None:
 
             return {
 
                 "status": "FAILED",
 
-                "reason": str(mt5.last_error()),
-
-                "request": request
+                "reason": result.raw
 
             }
 
 
 
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
+        except Exception as e:
 
             return {
 
                 "status": "FAILED",
 
-                "reason": result.comment,
-
-                "retcode": result.retcode
+                "reason": str(e)
 
             }
 
 
 
-        return {
+    def _submit(self, order):
 
-            "status": "EXECUTED",
+        """
+        Bridge synchronous OrderManager
+        into async BrokerGateway.
+        """
 
-            "order": result.order,
+        return asyncio.run(
 
-            "deal": result.deal,
+            self.gateway.submit_order(order)
 
-            "price": result.price
-
-        }
+        )
