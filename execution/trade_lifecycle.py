@@ -42,7 +42,7 @@ class TradeLifecycle:
 
             symbol,
 
-            lot=0.1,
+            lot=0.01,
 
             entry=price,
 
