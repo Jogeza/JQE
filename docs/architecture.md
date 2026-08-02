@@ -302,3 +302,136 @@ replacing them, and the `JQEEngine` pathway above still depends on them
 directly. They'll be candidates for deprecation once every caller has
 migrated to `BrokerGateway`.
 
+## Pipeline Integration (Milestone 2b)
+
+### The decision: `main.py`'s flat pipeline, not `JQEEngine`
+
+Milestone 2b's job was to decide whether `main.py`'s flat pipeline or
+`core.engine.JQEEngine`'s scanner/decision-pipeline model is canonical,
+then wire signal -> risk -> execution for real. **`main.py`'s flat
+pipeline wins**, because `JQEEngine.evaluate_trade(signal, score,
+risk)` turned out to be broken by design, not just unused:
+
+```python
+def decide(self, *args):
+    symbol = "UNKNOWN"
+    data = None
+    for item in args:
+        if isinstance(item, str):
+            symbol = item
+        else:
+            data = item
+    ...
+```
+
+Called as `evaluate_trade(signal, score, risk)` — three dict
+arguments, none of them strings — this loop simply overwrites `data`
+with each one in turn and keeps only the *last* (`risk`), silently
+discarding `signal` and `score` entirely. It doesn't crash; it just
+produces a meaningless result. Building live trading on top of this
+would mean either fixing `decide()`'s call contract (a real API change
+to a class nothing currently calls successfully) or working around it
+— neither is "wiring," so `JQEEngine`'s scanner pathway remains
+untouched, per Milestone 1's original finding.
+
+### `strategy/pipeline.py`: three more integration gaps, found and bridged
+
+Tracing the actual call chain (`FeatureEngine` -> `SignalEngine` ->
+`SignalScorer`, and separately `risk_controller.approve_trade` /
+`execution.simulator.simulate_trade`) surfaced three more mismatches,
+all pre-existing:
+
+1. **Column naming.** `calculate_indicators()` (used by `main.py`/
+   `backtesting/backtest.py`) produces `EMA50`, `EMA200`, `RSI`, `ATR`.
+   `FeatureEngine.analyze()` needs `EMA_50`, `EMA_200`, `RSI_14`,
+   `ATR_14`. Bridged with a column-rename dict.
+2. **Missing regime.** `FeatureEngine.analyze()` never sets a
+   `"regime"` key on the intelligence dict it builds.
+   `SignalEngine.generate()` branches almost entirely on that key —
+   without it, every signal falls through to `"WAIT"`, regardless of
+   trend or momentum. In other words: **as originally wired, this
+   pipeline could never produce a BUY or SELL signal.** Bridged by
+   computing regime with the already-tested `core.regime.detect_regime`
+   (the same function `main.py` already called for logging) and
+   mapping its vocabulary (`TREND_UP`/`TREND_DOWN`/`RANGE`/`NO_TRADE`)
+   onto `SignalEngine`'s (`TRENDING`/`RANGING`/`UNKNOWN`) — reusing
+   existing, tested classification logic rather than inventing new
+   regime rules.
+3. **Key naming.** `SignalEngine` returns `{"action": "BUY"/"SELL"/
+   "WAIT", ...}`. `risk_controller.approve_trade` and
+   `execution.simulator.simulate_trade` both expect `{"signal": "BUY"/
+   "SELL"/"NO_TRADE", ...}`. Bridged with a value-mapping dict.
+
+`strategy/pipeline.py`'s `generate_trading_signal()` calls
+`FeatureEngine`, `SignalEngine`, and `SignalScorer` directly rather
+than through `DecisionPipeline.analyze()` — that class's own
+"scanner intelligence" (dict) branch expects yet another, different
+confidence key (`"market_score"`) than `FeatureEngine` produces
+(`"confidence"`), which would silently zero out confidence if routed
+through it. `DecisionPipeline` itself remains unused by the live path
+as a result; it's still exercised by (broken) test files tracked under
+"Known test debt" in `docs/roadmap.md`.
+
+### `risk/risk_controller.py`: real balance instead of a hardcoded `50`
+
+`approve_trade()` computed position size via `calculate_position_size(
+balance=50, ...)` — a hardcoded literal, completely ignoring the
+account's actual balance. Fixed by adding a `balance` parameter
+(default `50`, preserving prior behavior for any caller that doesn't
+pass one) that callers now populate from
+`BrokerGateway.get_account_info()`. The sizing *formula* itself is
+untouched — this is a wiring fix (let the real value flow through),
+not a new risk model.
+
+### `execution/simulator.py`: stop/target extracted, reused for live orders
+
+`simulate_trade()`'s stop-loss/take-profit calculation (entry ± ATR
+multiples) was embedded inline and only reachable from within its
+forward-looking, backtest-only search loop. Extracted verbatim into
+`calculate_stop_target(entry, atr, direction)` so `main.py` can compute
+the same levels for a live `OrderRequest` before submission —
+`simulate_trade()` itself is still backtest-only (it needs the future
+price path to determine WIN/LOSS/TIMEOUT, which live trading doesn't
+have).
+
+### `backtesting/engine.py`: fixed argument-count bugs
+
+`BacktestEngine.execute_trade(signal, candle)` called
+`approve_trade(signal)` (missing the required `market_data` argument)
+and `simulate_trade(signal, candle)` (missing `current_index` —
+`simulate_trade` needs a full DataFrame plus a position within it to
+search forward from, not one candle). Both would have raised
+`TypeError` on first use; neither had ever actually been exercised.
+Fixed to `execute_trade(signal, current_index, dataframe)`, passing
+`dataframe.iloc[:current_index + 1]` to the risk engine (so it only
+ever sees history, not the future) and the full `dataframe` plus index
+to `simulate_trade` (which enforces its own no-look-ahead guarantee
+internally).
+
+### Result: `main.py` and `backtesting/backtest.py` now run a real cycle
+
+`main.py`'s `run()` now goes all the way from broker connection through
+signal generation, risk evaluation, and — if approved — order
+submission via `BrokerGateway.submit_order()`. `backtesting/
+backtest.py` replays the same `generate_trading_signal` +
+`approve_trade` + `BacktestEngine`/`simulate_trade` path candle by
+candle, so a backtest and a live run share the exact same decision
+logic. Verified end-to-end against `SimulationGateway` with both
+forced-approval (confirms order construction and submission) and
+realistic (confirms the risk engine's filters genuinely reject most
+signals from synthetic random-walk data, as expected) scenarios.
+
+### Remaining gaps in this pipeline (not addressed here)
+
+* `SignalEngine`'s branching logic is fairly coarse (bullish/bearish +
+  strong momentum only, in a trending regime) — tuning or replacing it
+  is a strategy decision belonging to Milestone 5 (Strategy Engine),
+  not integration work.
+* `risk_controller`'s `MIN_ATR = 1.0` and `MAX_SPREAD = 30` thresholds
+  are unvalidated against real instrument characteristics (they
+  reasonably reject most `SimulationGateway` synthetic data, which has
+  a much smaller price scale) — recalibrating them belongs to Milestone
+  4 (Risk Engine).
+* `DecisionPipeline`/`SignalScorer` remain unused by the live path (see
+  above) — worth either deleting or formally deprecating once Milestone
+  4's test-suite cleanup touches the files that still reference them.

@@ -68,24 +68,42 @@ implement it; the Quant Core never imports a broker SDK directly. See
   caller today (see Milestone 1's findings), so migrating it now would
   be speculative. Revisit as part of Milestone 2b.
 
-## 🔜 Milestone 2b — Pipeline Integration
+## ✅ Milestone 2b — Pipeline Integration
 
-* Design and implement the actual signal → risk → execution wiring
-  against the *current* module APIs:
-  * `strategy.signal_engine.SignalEngine.generate(intelligence)` needs
-    a defined "intelligence" payload — likely sourced from
-    `core.market_scanner`/`core.market_state`, not raw OHLC + a regime
-    string.
-  * `risk.risk_controller.approve_trade(signal, market_data)` and
-    `execution.simulator.simulate_trade(signal, current_index,
-    dataframe)` need correct call sites — including inside
-    `backtesting/engine.py`'s own `BacktestEngine.execute_trade`, which
-    currently calls both with the wrong number of arguments.
-* Decide whether the `main.py` flat pipeline or
-  `core.engine.JQEEngine`'s scanner/decision-pipeline model is the
-  canonical live-trading path going forward — and migrate whichever
-  one survives onto `BrokerGateway` (see "What's deliberately not
-  touched" in `docs/architecture.md`).
+* Decided `main.py`'s flat pipeline is canonical, not
+  `core.engine.JQEEngine`'s scanner/decision-pipeline model —
+  `JQEEngine.evaluate_trade`'s underlying `decide(*args)` silently
+  drops two of its three arguments by design (see docs/architecture.md,
+  "The decision"), so it was never viable to build on.
+* `strategy/pipeline.py` (new): bridges `FeatureEngine` ->
+  `SignalEngine` -> `SignalScorer` to `risk_controller`/`simulator`'s
+  expected shapes — fixing three independent pre-existing mismatches:
+  indicator column naming, a missing `"regime"` key that made the
+  pipeline incapable of ever producing BUY/SELL (always fell through to
+  WAIT), and a `"action"`/`"signal"` key mismatch. Full detail in
+  docs/architecture.md.
+* `risk/risk_controller.py`: `approve_trade` now accepts a real
+  `balance` parameter instead of a hardcoded `50`.
+* `execution/simulator.py`: stop/target calculation extracted into
+  `calculate_stop_target()`, reusable for live order construction
+  (not just backtest simulation).
+* `backtesting/engine.py`: fixed `BacktestEngine.execute_trade`'s
+  argument-count bugs (`approve_trade`/`simulate_trade` were being
+  called with too few arguments and would have raised `TypeError` on
+  first real use).
+* `main.py` and `backtesting/backtest.py` now run the complete cycle:
+  data -> indicators -> regime -> signal -> risk -> (live: order
+  submission via `BrokerGateway.submit_order`; backtest: `simulate_trade`
+  via `BacktestEngine`). Verified end-to-end against
+  `SimulationGateway`.
+* 42 new tests (`strategy/pipeline.py`, the `risk_controller.py`
+  balance parameter, `execution/simulator.py`'s extracted function and
+  no-look-ahead guarantee, `BacktestEngine`'s fixed call sites, and
+  `main.py`'s new signal/risk/order-submission sequence).
+* Remaining, out-of-scope-for-this-milestone gaps (risk threshold
+  calibration, `SignalEngine`'s coarse branching, `DecisionPipeline`
+  going unused) are listed in docs/architecture.md, "Remaining gaps in
+  this pipeline".
 
 ## ⏳ Phase 2 — Data Layer
 
@@ -159,9 +177,9 @@ Nine pre-existing test files fail independent of any milestone above
   statements, no `test_*` functions) rather than real pytest tests,
   and fail at runtime once collected (`TypeError` comparing a mocked
   MT5 tick value) because they require a real MT5 connection. Should
-  be rewritten as real, mocked pytest tests as part of whichever
-  milestone finally wires up `core.engine.JQEEngine` for real (see
-  Milestone 2b).
+  be rewritten as real, mocked pytest tests — or deleted, if
+  `JQEEngine`'s scanner pathway is formally deprecated instead of
+  fixed (see "Remaining technical debt" below).
 
 ## Remaining technical debt (Broker Foundation)
 
@@ -180,5 +198,20 @@ Nine pre-existing test files fail independent of any milestone above
   internally) or push-based ticks (polled instead) — both are
   limitations of the underlying `MetaTrader5` SDK/existing
   `MarketData` class, not of the gateway abstraction itself.
-* `core.engine.JQEEngine` pathway not yet migrated onto `BrokerGateway`
-  (see "What's deliberately not touched" in `docs/architecture.md`).
+* `core.engine.JQEEngine`'s `decide(*args)` silently drops arguments
+  instead of raising — a real bug, not just an unmigrated pathway (see
+  docs/architecture.md, "The decision"). Either fix its call contract
+  properly and migrate it onto `BrokerGateway`, or formally deprecate/
+  delete it along with `core.market_scanner`, `core.decision_pipeline`,
+  `strategy.scoring.signal_scorer`, and the two broken debug-script
+  tests that exercise it — `main.py`'s flat pipeline is canonical now
+  and doesn't depend on any of them.
+
+## Remaining technical debt (Pipeline Integration)
+
+* `risk_controller.py`'s `MIN_ATR`/`MAX_SPREAD` thresholds are
+  unvalidated against real instrument characteristics — recalibrate
+  as part of Milestone 4 (Risk Engine).
+* `SignalEngine`'s branching (bullish/bearish + strong momentum only,
+  trending regime only) is coarse — revisit as part of Milestone 5
+  (Strategy Engine), not as a wiring fix.
