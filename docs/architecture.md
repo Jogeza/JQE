@@ -157,3 +157,148 @@ MT5 terminal — eliminating the need for the conftest stub entirely.
 `MetaTrader5` is now marked `; sys_platform == "win32"` so
 `pip install -r requirements.txt` succeeds on non-Windows dev/CI
 machines instead of hard-failing on an uninstallable package.
+
+## Status update
+
+The rest of this document (below) reflects Milestone 1 — Foundation.
+This section covers **Phase 1 — Broker Foundation**, the first
+milestone under the revised Quant Platform mission (multi-broker,
+Deriv included).
+
+## Broker layer
+
+### Design
+
+```
+                    Quant Core
+       (market intelligence, strategy, risk,
+        execution, analytics — broker-agnostic)
+                        |
+                        | depends only on
+                        v
+              broker.BrokerGateway (ABC)
+                        ^
+        ┌───────────────┼───────────────┬──────────────────┐
+        |                |                |                  |
+ SimulationGateway   DerivGateway    MT5Gateway      (future: Binance,
+ (in-memory,         (websockets,    (wraps existing   Interactive
+  no network)         async)          core.mt5_*,       Brokers, ...)
+                                       sync SDK wrapped
+                                       via asyncio.to_thread)
+```
+
+`broker/base.py` defines the interface: `connect`/`disconnect`/
+`is_connected`, `get_account_info`, `get_candles`, `stream_ticks`,
+`submit_order`, `get_positions`, `get_trade_history` — plus
+`__aenter__`/`__aexit__` so `async with gateway:` always disconnects,
+even on error. `broker/types.py` defines the only shapes that cross the
+interface (`AccountInfo`, `Candle`, `Tick`, `OrderRequest`,
+`OrderResult`, `Position`, `TradeHistoryEntry`, plus the `Timeframe`,
+`OrderSide`, `OrderType`, `OrderStatus` enums) — Pydantic models, so
+they're validated and JSON-serializable for free. No gateway leaks a
+broker-native object (an MT5 struct, a Deriv `contract` dict) past its
+own boundary.
+
+**Per this milestone's explicit instruction, this is read/connect
+scope only** — `submit_order` exists because "order submission
+interface" was one of the eight required services, but no risk sizing,
+strategy validation, or trade-management policy lives here or anywhere
+in `broker/`. That's the Risk/Execution Engine milestones' job; this
+layer only ever executes the exact request it's handed.
+
+### Why the interface is async
+
+`BrokerGateway`'s methods are `async def`. This was a deliberate choice
+over keeping it synchronous (matching the rest of the pre-existing
+codebase):
+
+* Tick streaming is inherently a long-lived, I/O-bound concern —
+  natural for `async for tick in gateway.stream_ticks(...)`, awkward
+  to express as a blocking call.
+* Deriv's API is a WebSocket protocol; an async client
+  (`websockets`) is the natural fit and avoids inventing thread/queue
+  plumbing just to look synchronous.
+* The target stack already includes FastAPI (async-native) for a
+  future API layer — an async broker interface composes with that
+  directly instead of needing a sync-to-async bridge at that boundary
+  too.
+
+The cost: `MT5Gateway` wraps the `MetaTrader5` SDK's blocking calls in
+`asyncio.to_thread(...)` throughout, since that SDK has no async
+support. This is a standard, well-documented pattern for adapting a
+sync SDK into an async interface — not a hack, but worth naming as the
+one place this design choice adds friction.
+
+### `SimulationGateway` — built first, on purpose
+
+Per the milestone's own ordering, `SimulationGateway` exists before
+`DerivGateway`/`MT5Gateway` are relied on for anything: a deterministic
+(seeded), in-memory implementation with no network dependency at all.
+`config.settings.broker` defaults to `"simulation"`, so the platform
+runs out of the box — `python main.py` works immediately with zero
+credentials. Every future Quant Core module should be developed and
+tested against this gateway first.
+
+### `DerivGateway` — connection multiplexing
+
+Deriv's API is one persistent WebSocket carrying both request/response
+traffic (correlated by a `req_id` the client assigns) and subscription
+push messages (ticks). `DerivGateway` runs a single background reader
+task (`_read_loop`) that demultiplexes every incoming message to
+either a pending request's `asyncio.Future` (by `req_id`) or a live
+subscription's `asyncio.Queue` (by symbol). Without this, a
+request/response call and an active tick subscription would race to
+read from the same connection.
+
+**Not integration-tested against a live Deriv server** — this sandbox
+has no network access to `wss://ws.derivws.com`. Tests
+(`tests/test_deriv_gateway.py`) exercise `DerivGateway`'s own logic
+(request correlation, error mapping, DTO construction) against a
+scripted fake connection. See "Remaining technical debt" below for
+what a live/demo-account verification pass still needs to confirm —
+particularly `submit_order`'s mapping onto Deriv's Multipliers contract
+type, including the currently-fixed `multiplier` value.
+
+### `MT5Gateway` — composition, not reimplementation
+
+`MT5Gateway` reuses `core.mt5_connection.connect`/`disconnect` and
+`core.market_data.MarketData` (both already hardened with
+config/logging/exceptions in Milestone 1) rather than reimplementing
+MT5 session/candle handling — per "adapt the existing repository
+instead of destroying working components." It calls the raw
+`MetaTrader5` SDK directly only for capabilities with no existing
+wrapper: account info, order submission, position/history retrieval.
+
+### `main.py` and `backtesting/backtest.py` now depend only on `BrokerGateway`
+
+Both were rewired from directly calling `core.mt5_connection`/
+`core.market_data.MarketData` to `broker.factory.get_gateway(settings)`
+— the one place that turns `settings.broker` into a concrete instance.
+Neither file imports `MetaTrader5` or any broker-specific module
+anymore; both became `async def` to use the gateway's async interface,
+entered via `asyncio.run(...)` at the top level.
+
+One immediate, practical benefit: `backtesting/backtest.py` no longer
+requires MT5 at all by default (`settings.broker` defaults to
+`"simulation"`), so it's directly runnable without a Windows terminal
+or `tests/conftest.py`'s stub.
+
+### What's deliberately *not* touched in this milestone
+
+`core.engine.JQEEngine`, `core.market_scanner.MarketScanner`, and
+`core.decision_pipeline.DecisionPipeline` still call
+`core.market_data.MarketData` directly rather than going through
+`BrokerGateway`. Per Milestone 1's findings, this pathway has no live
+caller today (`main.py` never used it) — migrating it now would be
+speculative surgery on dead code rather than Broker Foundation work.
+It becomes real scope once Milestone 2b (Pipeline Integration) decides
+whether this scanner/decision-pipeline model or a rebuilt flat pipeline
+is the canonical path forward; at that point it should be migrated
+onto `BrokerGateway` as part of that same effort, not before.
+
+`core.mt5_connection.py` and `core.market_data.py` are unchanged and
+still directly importable — `MT5Gateway` composes them rather than
+replacing them, and the `JQEEngine` pathway above still depends on them
+directly. They'll be candidates for deprecation once every caller has
+migrated to `BrokerGateway`.
+

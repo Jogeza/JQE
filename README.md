@@ -1,24 +1,40 @@
 # JQE Trading Platform
 
-JQE is an institutional-grade algorithmic trading platform for
-MetaTrader 5, built in Python. It's being developed toward: live MT5
-execution, multiple trading strategies, portfolio and risk management,
-performance analytics, professional backtesting with walk-forward
-optimization, trade journaling, a REST API, and a dashboard.
+JQE is a modular quantitative trading platform for MetaTrader 5 and
+Deriv (with more brokers plannable), built in Python. Every broker is
+an interchangeable implementation behind a common `BrokerGateway`
+interface — the Quant Core (market intelligence, strategy, risk,
+execution, analytics) never imports a broker SDK directly. Target
+scope: live execution, multiple trading strategies, portfolio and risk
+management, performance analytics, professional backtesting with
+walk-forward optimization, trade journaling, a REST API, and a
+dashboard.
 
-**Status:** early-stage. Milestone 1 (Foundation — configuration,
-logging, exceptions, docs) is complete. See
-[`docs/roadmap.md`](docs/roadmap.md) for what's done and what's next,
-and [`docs/architecture.md`](docs/architecture.md) for design
-rationale, including an important discovery about the current state of
-`main.py`'s trading pipeline.
+**Status:** early-stage. Milestone 1 (Foundation) and Phase 1 (Broker
+Foundation) are complete. See [`docs/roadmap.md`](docs/roadmap.md) for
+what's done and what's next, and
+[`docs/architecture.md`](docs/architecture.md) for design rationale.
 
 ## Architecture
 
 ```
+                         Quant Core
+        (market intelligence, strategy, risk, execution,
+                analytics — broker-agnostic)
+                              |
+                              v
+                    broker.BrokerGateway (ABC)
+                              ^
+         ┌────────────────────┼────────────────────┐
+         |                    |                     |
+  SimulationGateway     DerivGateway            MT5Gateway
+  (in-memory, default)  (async WebSocket)   (wraps core.mt5_*, sync
+                                              SDK via asyncio.to_thread)
+
 config/          Validated runtime settings (Pydantic Settings, .env)
 core/            Shared kernel — logging, exceptions, MT5 connection,
                  market data, indicators, regime detection, engine
+broker/          Broker-agnostic gateway interface + implementations
 strategy/        Signal generation
 risk/            Position sizing and trade approval
 execution/       Order/trade simulation
@@ -26,8 +42,8 @@ analytics/       Performance measurement
 backtesting/     Historical replay
 ```
 
-Full details, including dependency direction and the rationale behind
-each Foundation-layer decision, are in
+Full details, including the async design rationale and each
+implementation's trade-offs, are in
 [`docs/architecture.md`](docs/architecture.md).
 
 ## Installation
@@ -64,7 +80,14 @@ from config import settings
 
 settings.default_symbol   # "XAUUSD"
 settings.risk_percent     # 1.0
+settings.broker           # "simulation" (default) | "mt5" | "deriv"
 ```
+
+Broker selection is one setting (`JQE_BROKER`). `simulation` requires
+nothing further; `mt5` needs a running MT5 terminal; `deriv` needs
+`JQE_DERIV_API_TOKEN` (get one at
+https://app.deriv.com/account/api-token — never commit a real token).
+See `broker/` and `docs/architecture.md`, "Broker layer".
 
 ## Running
 
@@ -73,9 +96,10 @@ python main.py                  # one market-analysis cycle
 python -m backtesting.backtest  # historical data load + indicators
 ```
 
-Both currently stop after market analysis / data preparation — see
-"A significant discovery" in `docs/architecture.md` for why the
-signal → risk → execution stage isn't wired in yet.
+Both use the `simulation` broker by default — no credentials or live
+connection required. Both currently stop after market analysis / data
+preparation — see "A significant discovery" in `docs/architecture.md`
+for why the signal → risk → execution stage isn't wired in yet.
 
 ## Development workflow
 
@@ -115,20 +139,23 @@ milestone (tracked as Milestone 4 in `docs/roadmap.md`):
 
 ```
 JQE/
-├── analytics/           Performance & scoring metrics
-├── backtesting/          Historical replay engine
-├── config/                Settings (Pydantic Settings + .env)
-├── core/                   Shared kernel (logging, exceptions, engine,
-│                           MT5 connection, market data, indicators,
-│                           regime detection, decision pipeline)
-├── docs/                    architecture.md, roadmap.md,
-│                           coding-standards.md
-├── execution/             Order/trade simulation
-├── risk/                   Position sizing & trade approval
-├── strategy/                Signal generation & scoring
-├── tests/                 Test suite (pytest)
+├── analytics/            Performance & scoring metrics
+├── backtesting/           Historical replay engine
+├── broker/                 Broker-agnostic gateway (BrokerGateway,
+│                          SimulationGateway, DerivGateway, MT5Gateway)
+├── config/                  Settings (Pydantic Settings + .env)
+├── core/                     Shared kernel (logging, exceptions, engine,
+│                            MT5 connection, market data, indicators,
+│                            regime detection, decision pipeline)
+├── docs/                      architecture.md, roadmap.md,
+│                            coding-standards.md
+├── execution/               Order/trade simulation
+├── risk/                     Position sizing & trade approval
+├── strategy/                  Signal generation & scoring
+├── tests/                   Test suite (pytest)
 ├── .env.example
-├── main.py                 Entry point
+├── main.py                   Entry point
+├── pyproject.toml             pytest-asyncio config
 └── requirements.txt
 ```
 
