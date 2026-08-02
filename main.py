@@ -1,9 +1,10 @@
 """JQE Trading Engine — main entry point.
 
-Runs one market-analysis cycle against the configured broker:
+Runs one full JQE cycle against the configured broker:
 
     BrokerGateway connect -> candles -> validation -> indicators ->
-    regime detection
+    regime detection -> signal generation -> risk evaluation ->
+    (if approved) order submission
 
 The broker is fully interchangeable — this module depends only on
 :class:`broker.base.BrokerGateway`, selected at runtime by
@@ -14,10 +15,6 @@ layer".
 Run directly to execute a single cycle:
 
     $ python main.py
-
-.. important::
-    Signal generation, risk evaluation, and execution are **not yet
-    wired in** — see "Pipeline Integration" in docs/roadmap.md.
 """
 
 from __future__ import annotations
@@ -27,25 +24,30 @@ import asyncio
 import pandas as pd
 
 from broker.factory import get_gateway
-from broker.types import Timeframe
+from broker.types import OrderRequest, OrderSide, Timeframe
 from config import settings
 from core.data_validator import validate_market_data
 from core.exceptions import JQEError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
+from execution.simulator import calculate_stop_target
+from risk.risk_controller import approve_trade
+from strategy.pipeline import generate_trading_signal
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
+_SIDE_BY_SIGNAL: dict[str, OrderSide] = {"BUY": OrderSide.BUY, "SELL": OrderSide.SELL}
 
 
 async def run() -> None:
-    """Runs a single JQE market-analysis cycle.
+    """Runs a single JQE analysis-and-trade cycle end to end.
 
     Connects to the configured broker, retrieves and validates recent
-    candles, computes indicators, and detects the current market
-    regime. The broker connection is always closed on the way out
-    (via the gateway's async context manager), whether the cycle
-    succeeds or fails.
+    candles, computes indicators and regime, generates a trading
+    signal, evaluates it through the risk engine, and — if approved —
+    submits an order through the broker gateway. The broker connection
+    is always closed on the way out (via the gateway's async context
+    manager), whether the cycle succeeds or fails.
 
     Raises:
         core.exceptions.BrokerConnectionError: If the broker connection
@@ -76,14 +78,34 @@ async def run() -> None:
 
         df = calculate_indicators(df)
         regime = detect_regime(df)
+        signal = generate_trading_signal(df, settings.default_symbol, regime=regime)
 
         logger.info("Market regime: {}", regime)
-        logger.info("Latest candle: {}", df.iloc[-1].to_dict())
-        logger.warning(
-            "Signal generation, risk evaluation, and execution are not yet "
-            "wired to the current module APIs — see 'Pipeline Integration' "
-            "in docs/roadmap.md. Cycle stops after market analysis."
+        logger.info("Trading signal: {}", signal)
+
+        account = await gateway.get_account_info()
+        risk_decision = approve_trade(
+            {"signal": signal["signal"], "confidence": signal["confidence"]},
+            df,
+            balance=account.balance,
         )
+        logger.info("Risk decision: {}", risk_decision)
+
+        if not risk_decision["approved"]:
+            logger.info("Cycle complete — no order submitted ({})", risk_decision["reason"])
+            return
+
+        latest = df.iloc[-1]
+        stop, target = calculate_stop_target(latest["close"], latest["ATR"], signal["signal"])
+        order = OrderRequest(
+            symbol=settings.default_symbol,
+            side=_SIDE_BY_SIGNAL[signal["signal"]],
+            volume=risk_decision["lot_size"],
+            stop_loss=stop,
+            take_profit=target,
+        )
+        result = await gateway.submit_order(order)
+        logger.info("Order result: {}", result)
 
 
 def main() -> None:
