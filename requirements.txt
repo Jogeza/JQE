@@ -1,8 +1,43 @@
-MetaTrader5
+# ==========================================================
+# JQE Trading Platform — Python dependencies
+# ==========================================================
+# Grouped by concern. Keep additions in the right group and
+# add a comment noting why a dependency was introduced.
+
+# --- Trading platform -------------------------------------
+# MetaTrader5 only ships a Windows build. The environment marker below
+# lets `pip install -r requirements.txt` succeed on Linux/macOS dev and
+# CI machines instead of hard-failing; see docs/architecture.md for how
+# the test suite stubs this package on non-Windows platforms.
+MetaTrader5; sys_platform == "win32"
+
+# --- Data & numerical computing ----------------------------
 pandas
 numpy
+scipy
+
+# --- Configuration & validation -----------------------------
+pydantic>=2.0
+pydantic-settings>=2.0
 python-dotenv
+
+# --- Logging --------------------------------------------------
+loguru
+
+# --- Analytics & visualization --------------------------------
 matplotlib
+plotly
+
+# --- API (Milestone: api/) -------------------------------------
+fastapi
+uvicorn[standard]
+
+# --- Persistence (Milestone: portfolio/, journal/) --------------
+SQLAlchemy>=2.0
+alembic
+
+# --- Testing & tooling --------------------------------------------
 pytest
+pytest-cov
 black
 ruff
