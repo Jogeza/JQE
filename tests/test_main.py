@@ -1,85 +1,75 @@
 """Tests for main.py's orchestration logic (run / main).
 
-MT5, market data, and validation calls are mocked at the ``main``
-module boundary — these tests verify JQE's own control flow (error
-mapping, guaranteed disconnect, top-level error handling), not the
-behavior of MT5 or the data/validation modules themselves.
+The BrokerGateway is mocked at the ``main`` module boundary — these
+tests verify JQE's own control flow (error mapping, guaranteed
+disconnect via the gateway's async context manager, top-level error
+handling), not the behavior of any specific broker.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
 import main
-from core.exceptions import BrokerConnectionError, MarketDataError
+from core.exceptions import MarketDataError
+
+
+def _fake_gateway(candles: list) -> MagicMock:
+    """A MagicMock configured to behave like an async-context-managed gateway."""
+    gateway = MagicMock()
+    gateway.__aenter__ = AsyncMock(return_value=gateway)
+    gateway.__aexit__ = AsyncMock(return_value=None)
+    gateway.get_candles = AsyncMock(return_value=candles)
+    return gateway
 
 
 class TestRun:
-    @patch("main.connect", return_value=False)
-    def test_raises_broker_connection_error_when_connect_fails(
-        self, mock_connect: MagicMock
+    @patch("main.get_gateway")
+    async def test_raises_market_data_error_when_no_candles(
+        self, mock_get_gateway: MagicMock
     ) -> None:
-        with pytest.raises(BrokerConnectionError):
-            main.run()
-        mock_connect.assert_called_once()
-
-    @patch("main.disconnect")
-    @patch("main.MarketData")
-    @patch("main.connect", return_value=True)
-    def test_raises_market_data_error_when_no_candles(
-        self,
-        mock_connect: MagicMock,
-        mock_market_data_cls: MagicMock,
-        mock_disconnect: MagicMock,
-    ) -> None:
-        mock_market_data_cls.return_value.get_candles.return_value = []
+        mock_get_gateway.return_value = _fake_gateway([])
         with pytest.raises(MarketDataError):
-            main.run()
-        mock_disconnect.assert_called_once()
+            await main.run()
 
-    @patch("main.disconnect")
     @patch("main.validate_market_data", return_value=False)
-    @patch("main.MarketData")
-    @patch("main.connect", return_value=True)
-    def test_raises_market_data_error_when_validation_fails(
-        self,
-        mock_connect: MagicMock,
-        mock_market_data_cls: MagicMock,
-        mock_validate: MagicMock,
-        mock_disconnect: MagicMock,
+    @patch("main.get_gateway")
+    async def test_raises_market_data_error_when_validation_fails(
+        self, mock_get_gateway: MagicMock, mock_validate: MagicMock
     ) -> None:
-        mock_market_data_cls.return_value.get_candles.return_value = [
-            {"time": 1, "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}
-        ]
+        candle = MagicMock()
+        candle.model_dump.return_value = {
+            "time": pd.Timestamp.now(),
+            "open": 1.0,
+            "high": 1.0,
+            "low": 1.0,
+            "close": 1.0,
+            "volume": 1.0,
+        }
+        mock_get_gateway.return_value = _fake_gateway([candle])
         with pytest.raises(MarketDataError):
-            main.run()
-        mock_disconnect.assert_called_once()
+            await main.run()
 
-    @patch("main.disconnect")
-    @patch("main.MarketData")
-    @patch("main.connect", return_value=True)
-    def test_disconnect_is_always_called_even_on_failure(
-        self,
-        mock_connect: MagicMock,
-        mock_market_data_cls: MagicMock,
-        mock_disconnect: MagicMock,
-    ) -> None:
-        mock_market_data_cls.return_value.get_candles.return_value = []
+    @patch("main.get_gateway")
+    async def test_gateway_context_manager_always_exits(self, mock_get_gateway: MagicMock) -> None:
+        gateway = _fake_gateway([])
+        mock_get_gateway.return_value = gateway
         with pytest.raises(MarketDataError):
-            main.run()
-        mock_disconnect.assert_called_once()
+            await main.run()
+        gateway.__aexit__.assert_called_once()
 
 
 class TestMain:
     """main() is the outermost boundary: JQEError must never escape it."""
 
-    @patch("main.run", side_effect=BrokerConnectionError("boom"))
+    @patch("main.asyncio.run", side_effect=MarketDataError("boom"))
     def test_catches_jqe_error_and_does_not_raise(self, mock_run: MagicMock) -> None:
         main.main()  # must not raise
 
-    @patch("main.run", side_effect=ValueError("unexpected, non-platform error"))
+    @patch("main.asyncio.run", side_effect=ValueError("unexpected, non-platform error"))
     def test_non_jqe_error_still_propagates(self, mock_run: MagicMock) -> None:
         with pytest.raises(ValueError):
             main.main()
