@@ -57,6 +57,13 @@ class MarketDataError(JQEError):
     validation before being used downstream."""
 
 
+class CacheError(JQEError):
+    """Raised when the local data cache (see ``data/storage.py``) is
+    corrupted, unreadable, or otherwise fails at the storage layer —
+    distinct from ``MarketDataError``, which covers failures talking to
+    a broker."""
+
+
 class RiskViolationError(JQEError):
     """Raised when a proposed trade is rejected by the risk management
     engine (e.g. confidence too low, spread too wide, daily loss limit

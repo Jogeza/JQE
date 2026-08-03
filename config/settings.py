@@ -79,6 +79,9 @@ class Settings(BaseSettings):
             (e.g. ``"14 days"``).
         log_to_console: Whether logs are also emitted to stderr, in
             addition to the rotating file sink.
+        cache_dir: Directory for the local historical-candle cache
+            (SQLite; see ``data/storage.py``). Runtime state, not
+            source — git-ignored.
     """
 
     model_config = SettingsConfigDict(
@@ -116,6 +119,8 @@ class Settings(BaseSettings):
     log_rotation: str = "10 MB"
     log_retention: str = "14 days"
     log_to_console: bool = True
+
+    cache_dir: Path = Path("cache")
 
     @field_validator("log_level", mode="before")
     @classmethod
