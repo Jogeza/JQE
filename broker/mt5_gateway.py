@@ -43,6 +43,24 @@ _TRADE_HISTORY_LOOKBACK_DAYS = 30
 _DEFAULT_TICK_POLL_INTERVAL_SECONDS = 1.0
 
 
+#: Maps the broker-agnostic Timeframe to MT5's native constants. Built
+#: lazily (not at module import time) since `mt5` is a MagicMock stub
+#: outside a real MT5 environment (see tests/conftest.py) — its
+#: TIMEFRAME_* attributes only exist meaningfully once the real SDK is
+#: importable.
+def _mt5_timeframe(timeframe: Timeframe) -> int:
+    mapping = {
+        Timeframe.M1: mt5.TIMEFRAME_M1,
+        Timeframe.M5: mt5.TIMEFRAME_M5,
+        Timeframe.M15: mt5.TIMEFRAME_M15,
+        Timeframe.M30: mt5.TIMEFRAME_M30,
+        Timeframe.H1: mt5.TIMEFRAME_H1,
+        Timeframe.H4: mt5.TIMEFRAME_H4,
+        Timeframe.D1: mt5.TIMEFRAME_D1,
+    }
+    return mapping[timeframe]
+
+
 class MT5Gateway(BrokerGateway):
     """MetaTrader 5 implementation of BrokerGateway."""
 
@@ -93,14 +111,41 @@ class MT5Gateway(BrokerGateway):
         )
 
     async def get_candles(
-        self,
-        symbol: str,
-        timeframe: Timeframe,
-        count: int,
+        self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None
     ) -> list[Candle]:
-
         self._require_connected()
 
+        if end is not None:
+            # Historical range query — no existing wrapper for this in
+            # core.market_data, so call the SDK directly (same pattern
+            # as submit_order/get_positions/get_trade_history below).
+            # NOT verified against a live terminal — see module
+            # docstring; mt5.copy_rates_from's exact date-anchoring
+            # semantics should be confirmed against a demo account
+            # before relying on this for precise gap-filling.
+            real_symbol = self._market_data.resolve_symbol(symbol)
+            if not real_symbol:
+                raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
+            raw_rates = await asyncio.to_thread(
+                mt5.copy_rates_from, real_symbol, _mt5_timeframe(timeframe), end, count
+            )
+            if raw_rates is None or len(raw_rates) == 0:
+                raise MarketDataError("No candle data returned from MT5", symbol=symbol)
+            return [
+                Candle(
+                    time=datetime.fromtimestamp(rate["time"], tz=timezone.utc),
+                    open=float(rate["open"]),
+                    high=float(rate["high"]),
+                    low=float(rate["low"]),
+                    close=float(rate["close"]),
+                    volume=float(rate["tick_volume"]),
+                )
+                for rate in raw_rates
+            ]
+
+        # NOTE: MarketData currently fetches on a fixed internal
+        # timeframe (H1) and does not yet accept `timeframe` — see
+        # docs/roadmap.md. Accepted here for interface conformance.
         del timeframe
 
         raw_candles = await asyncio.to_thread(

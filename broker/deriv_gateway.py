@@ -152,7 +152,9 @@ class DerivGateway(BrokerGateway):
             equity=float(balance.get("balance", 0.0)),
         )
 
-    async def get_candles(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle]:
+    async def get_candles(
+        self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None
+    ) -> list[Candle]:
         self._require_connected()
         response = await self._request(
             {
@@ -160,7 +162,7 @@ class DerivGateway(BrokerGateway):
                 "style": "candles",
                 "granularity": TIMEFRAME_SECONDS[timeframe],
                 "count": count,
-                "end": "latest",
+                "end": int(end.timestamp()) if end is not None else "latest",
             }
         )
         if response.get("error"):

@@ -8,6 +8,7 @@ MT5Gateway's own mapping/error-handling logic.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -106,6 +107,63 @@ class TestGetCandles:
         gateway._market_data.get_candles.return_value = []
         with pytest.raises(MarketDataError):
             await gateway.get_candles("XAUUSD", Timeframe.H1, 10)
+
+
+class TestGetCandlesWithEnd:
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_uses_copy_rates_from_for_historical_range(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        gateway._market_data = MagicMock()
+        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        mock_mt5.TIMEFRAME_M5 = 5
+        mock_mt5.copy_rates_from.return_value = [
+            {
+                "time": 1700000000,
+                "open": 1.0,
+                "high": 1.2,
+                "low": 0.9,
+                "close": 1.1,
+                "tick_volume": 5,
+            }
+        ]
+
+        end = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        candles = await gateway.get_candles("XAUUSD", Timeframe.M5, 1, end=end)
+
+        assert len(candles) == 1
+        assert candles[0].close == 1.1
+        mock_mt5.copy_rates_from.assert_called_once_with("XAUUSDm", 5, end, 1)
+        gateway._market_data.get_candles.assert_not_called()
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_raises_for_unknown_symbol(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        gateway._market_data = MagicMock()
+        gateway._market_data.resolve_symbol.return_value = None
+        with pytest.raises(MarketDataError):
+            await gateway.get_candles(
+                "NOPE", Timeframe.M5, 1, end=datetime(2024, 1, 1, tzinfo=timezone.utc)
+            )
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_raises_when_range_query_returns_nothing(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        gateway._market_data = MagicMock()
+        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        mock_mt5.copy_rates_from.return_value = None
+        with pytest.raises(MarketDataError):
+            await gateway.get_candles(
+                "XAUUSD", Timeframe.M5, 1, end=datetime(2024, 1, 1, tzinfo=timezone.utc)
+            )
 
 
 class TestSubmitOrder:

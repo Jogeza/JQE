@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from broker.simulation_gateway import SimulationGateway
@@ -77,6 +79,22 @@ class TestCandles:
         await gateway.connect()
         candles = await gateway.get_candles("R_100", Timeframe.H1, 20)
         assert all(c.open > 0 and c.close > 0 and c.high > 0 and c.low > 0 for c in candles)
+
+    async def test_end_parameter_anchors_the_last_candle(self, gateway: SimulationGateway) -> None:
+        await gateway.connect()
+        end = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        candles = await gateway.get_candles("R_100", Timeframe.M5, 10, end=end)
+        # The last candle is the most recently *closed* one step before
+        # the anchor, not the anchor itself — matches the original
+        # "now"-anchored formula, just generalized to an arbitrary end.
+        assert candles[-1].time == end - timedelta(minutes=5)
+
+    async def test_omitting_end_anchors_to_now(self, gateway: SimulationGateway) -> None:
+        await gateway.connect()
+        before = datetime.now(timezone.utc)
+        candles = await gateway.get_candles("R_100", Timeframe.M5, 10)
+        after = datetime.now(timezone.utc)
+        assert before - timedelta(minutes=5) <= candles[-1].time <= after
 
 
 class TestTickStream:

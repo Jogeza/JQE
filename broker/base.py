@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from datetime import datetime
 from types import TracebackType
 from typing import Self
 
@@ -70,15 +71,23 @@ class BrokerGateway(ABC):
         """
 
     @abstractmethod
-    async def get_candles(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle]:
-        """Retrieves the most recent historical candles for a symbol.
+    async def get_candles(
+        self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None
+    ) -> list[Candle]:
+        """Retrieves historical candles for a symbol.
 
         Args:
             symbol: Instrument symbol, in the broker-agnostic form this
                 gateway expects (each implementation documents its own
                 symbol conventions).
             timeframe: Candle timeframe.
-            count: Number of candles to retrieve, most recent last.
+            count: Number of candles to retrieve.
+            end: If given, retrieves the ``count`` candles ending at or
+                before this timestamp — a historical range query, used
+                by ``data.historical.HistoricalDataService`` for gap
+                filling. If ``None`` (default), retrieves the most
+                recent ``count`` candles ending now — unchanged from
+                this method's original behavior.
 
         Returns:
             Candles ordered oldest to newest. May be shorter than

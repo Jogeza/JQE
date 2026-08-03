@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -153,6 +154,23 @@ class TestGetCandles:
         await _connect_with_fake(gateway, fake_connection)
         with pytest.raises(MarketDataError):
             await gateway.get_candles("NOT_A_SYMBOL", Timeframe.M5, 10)
+        await gateway.disconnect()
+
+    async def test_omitting_end_requests_latest(self) -> None:
+        gateway, fake_connection = _connected_gateway({"ticks_history": {"candles": []}})
+        await _connect_with_fake(gateway, fake_connection)
+        await gateway.get_candles("R_100", Timeframe.M5, 10)
+        request = next(m for m in fake_connection.sent if "ticks_history" in m)
+        assert request["end"] == "latest"
+        await gateway.disconnect()
+
+    async def test_given_end_is_sent_as_epoch_seconds(self) -> None:
+        gateway, fake_connection = _connected_gateway({"ticks_history": {"candles": []}})
+        await _connect_with_fake(gateway, fake_connection)
+        end = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        await gateway.get_candles("R_100", Timeframe.M5, 10, end=end)
+        request = next(m for m in fake_connection.sent if "ticks_history" in m)
+        assert request["end"] == int(end.timestamp())
         await gateway.disconnect()
 
 

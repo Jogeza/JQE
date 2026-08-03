@@ -93,11 +93,20 @@ class SimulationGateway(BrokerGateway):
             equity=self._balance,
         )
 
-    async def get_candles(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle]:
+    async def get_candles(
+        self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None
+    ) -> list[Candle]:
         self._require_connected()
+        # NOTE: `end` only affects the timestamps assigned to generated
+        # candles, not the synthetic price path itself, which continues
+        # from this gateway's in-memory random walk regardless of the
+        # requested time window. This is consistent with this gateway
+        # never claiming realistic market simulation (see module
+        # docstring) — real historical range semantics require a real
+        # broker (DerivGateway/MT5Gateway).
         step_seconds = TIMEFRAME_SECONDS[timeframe]
+        anchor = end if end is not None else datetime.now(timezone.utc)
         price = self._price_for(symbol)
-        now = datetime.now(timezone.utc)
         candles: list[Candle] = []
         for i in range(count):
             open_price = price
@@ -106,7 +115,7 @@ class SimulationGateway(BrokerGateway):
             low = max(0.01, min(open_price, close_price) - abs(self._rng.uniform(0, 0.2)))
             candles.append(
                 Candle(
-                    time=now - timedelta(seconds=step_seconds * (count - i)),
+                    time=anchor - timedelta(seconds=step_seconds * (count - i)),
                     open=open_price,
                     high=high,
                     low=low,
