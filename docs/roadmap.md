@@ -105,14 +105,34 @@ implement it; the Quant Core never imports a broker SDK directly. See
   going unused) are listed in docs/architecture.md, "Remaining gaps in
   this pipeline".
 
-## ⏳ Phase 2 — Data Layer
+## ✅ Phase 2 — Data Layer
 
-* `data/storage.py`, `data/historical.py`.
-* Fix `.gitignore`'s blanket `data/` exclusion first — it would
-  silently swallow this package as currently written.
-* This also resolves 6 of the pre-existing broken test files (see
-  "Known test debt" below), which import a `data` package that has
-  never existed.
+* Fixed `.gitignore`'s blanket `data/` exclusion — separated the
+  `data/` *source package* (now tracked) from the cache's *runtime
+  output* (`cache/`, git-ignored), mirroring the existing `logs/`
+  convention rather than carving exceptions into one directory's
+  rules.
+* `data/storage.py` (new): `CandleStore`, a SQLite-backed local candle
+  cache (stdlib `sqlite3`, no new dependency) — save/load, latest-N
+  loading, coverage queries, cache validation (ordering, OHLC sanity,
+  gap detection), and clearing.
+* `data/historical.py` (new): `HistoricalDataService` — automatic
+  loading (cache-or-download transparently), incremental updates
+  (downloads only the gap since the cache's last candle, not a full
+  re-fetch), gap detection + filling, and a `sync()` report for
+  scheduled jobs.
+* `broker.base.BrokerGateway.get_candles` gained an optional `end`
+  parameter (historical range queries, needed for gap filling) —
+  backward compatible, implemented across all three gateways.
+* Built against `BrokerGateway`, not MT5 directly — see
+  docs/architecture.md, "Package naming vs. the brief", for why this
+  generalizes the brief's "MT5 history download" framing.
+* 42 new tests (`CandleStore`, `find_gaps`, `HistoricalDataService`,
+  plus `end`-parameter coverage on all three gateways).
+* Recommends deleting (not rewriting) 6 of the pre-existing broken
+  test files in Milestone 4 — they reference a third, different,
+  never-built data-layer design that predates this one. See
+  docs/architecture.md.
 
 ## ⏳ Phase 3 — Intelligence & Confidence Model
 
@@ -171,7 +191,11 @@ Nine pre-existing test files fail independent of any milestone above
   `tests/test_signal_engine.py`, `tests/test_signal_scorer.py` all
   import a `data` package (`data.data_manager`, `data.historical_data`,
   `data.market_loader`) that does not exist anywhere in the
-  repository. Resolved by Phase 2.
+  repository — and still doesn't after Phase 2, which built
+  `data.storage`/`data.historical` per the approved migration roadmap,
+  a different (and now real) design. Recommend deleting these 6 files
+  rather than rewriting them to match — see docs/architecture.md,
+  "Legacy broken data-layer tests".
 * `tests/test_core_engine.py` and `tests/test_autonomous_scanner.py`
   are manual debug scripts (module-level code with `print()`
   statements, no `test_*` functions) rather than real pytest tests,

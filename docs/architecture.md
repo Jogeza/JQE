@@ -435,3 +435,102 @@ signals from synthetic random-walk data, as expected) scenarios.
 * `DecisionPipeline`/`SignalScorer` remain unused by the live path (see
   above) — worth either deleting or formally deprecating once Milestone
   4's test-suite cleanup touches the files that still reference them.
+
+## Data layer (Phase 2)
+
+### Package naming vs. the brief
+
+This milestone's brief described `data/historical.py` as an "MT5
+history download" module. Built against `broker.base.BrokerGateway`
+instead — the Quant Core (which this module is part of) must never
+import a broker SDK directly, per the Broker Foundation milestone's
+own architecture. A caller who specifically wants MT5 history gets it
+by constructing an `MT5Gateway` and passing it in; nothing in `data/`
+hardcodes a broker choice. `.env.example`/README wording follows suit.
+
+### Why SQLite, not Parquet/CSV
+
+The candle cache (`data/storage.py::CandleStore`) uses Python's stdlib
+`sqlite3` rather than a file-per-series format. Reasons: no new
+dependency (Parquet needs `pyarrow`); a `PRIMARY KEY (symbol,
+timeframe, time)` makes overlapping incremental saves idempotent for
+free via `INSERT OR REPLACE` (no separate "have I already got this
+candle" check needed at the call site); and range queries (`get_
+coverage`, gap-scoped `load_candles`) are simple, indexed SQL rather
+than hand-rolled file/offset bookkeeping.
+
+### `.gitignore`: separating the `data/` *package* from cache *output*
+
+The original `.gitignore` had a blanket `data/` rule, which would have
+silently excluded this entire package's source files from version
+control the moment they were added — exactly the bug flagged in
+Milestone 1. Fixed by never routing cache output through `data/` at
+all: `CandleStore`'s database lives under `config.settings.cache_dir`
+(default `cache/`, a sibling of `data/`, not inside it), and it's
+`cache/` that's git-ignored. This mirrors the existing `logs/`
+convention (a runtime-output directory separate from the `core/`
+source that writes to it) rather than trying to carve holes in a
+single directory's ignore rules.
+
+### `BrokerGateway.get_candles` gained an `end` parameter
+
+Gap *filling* (not just detection) requires asking a broker for a
+specific historical window, not only "the latest N candles" — the
+original Broker Foundation interface only supported the latter. Added
+`end: datetime | None = None` (default preserves every existing
+caller's behavior exactly):
+
+* **DerivGateway**: trivial — `ticks_history` already accepts `end` as
+  an epoch (or `"latest"`) directly.
+* **MT5Gateway**: no existing wrapper supports a range query, so this
+  calls `mt5.copy_rates_from` directly (same "raw SDK for capabilities
+  `MarketData` doesn't have" pattern as `submit_order`/`get_positions`)
+  — like the rest of `MT5Gateway`, unverified against a live terminal.
+* **SimulationGateway**: `end` only anchors the *timestamps* assigned
+  to generated candles — the synthetic price path still just continues
+  the gateway's in-memory random walk regardless of the requested
+  window. Consistent with this gateway never claiming realistic
+  simulation; documented in its docstring.
+
+### `HistoricalDataService`: automatic loading, incremental sync, gap fill
+
+`data/historical.py::HistoricalDataService` is the single entry point
+("automatic loading" from the brief): `get_candles(symbol, timeframe,
+count)` transparently checks the cache, downloads only what's missing,
+optionally fills gaps, and returns — callers never manage cache vs.
+download themselves.
+
+* **Incremental, not full, updates**: `_sync_recent` compares the
+  cache's latest candle to now and downloads only enough candles to
+  bridge that gap (`int(staleness / step) + 1`), not a full
+  re-fetch of `count`. Falls back to a full download only when nothing
+  is cached yet.
+* **Gap detection**: `data.storage.find_gaps` (shared by
+  `CandleStore.validate` and `HistoricalDataService.fill_gaps`, so
+  detection has exactly one implementation) flags any interval between
+  consecutive cached candles more than 1.5x the timeframe's expected
+  step — a small tolerance for broker jitter without missing real
+  gaps.
+* **Gap filling**: for each detected gap, requests just enough
+  candles (`span / step + 2`, a small buffer) ending at the gap's far
+  edge via the new `end` parameter, filters to only what actually
+  falls inside the gap window, and saves it. `CandleStore.save_candles`
+  being an upsert means overlapping edges never create duplicates.
+* **`sync()`** combines incremental download + gap fill + validation
+  into one call with a structured `SyncReport` — the shape a scheduled
+  background job would call.
+
+### Legacy broken data-layer tests: recommend deletion, not repair
+
+`tests/test_data_manager.py`, `tests/test_market_loader.py`, and four
+others (see docs/roadmap.md, "Known test debt") import `data.
+data_manager.DataManager`, `data.market_loader.MarketLoader`, `data.
+validator.DataValidator`, and `data.historical_data.HistoricalData` —
+a third, different, never-built data-layer design, predating even the
+Quant Platform pivot. None of these names were ever implemented, and
+they don't match `data/storage.py`/`data/historical.py` as specified
+in the approved migration roadmap. Renaming the new modules to match
+old speculative test scripts (themselves manual debug scripts with no
+real assertions, same pattern as `test_core_engine.py`) would mean
+designing around dead code instead of the current spec. Recommend
+deleting these six files in Milestone 4 rather than rewriting them.
