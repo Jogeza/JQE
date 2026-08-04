@@ -1,83 +1,15 @@
+"""Backward-compatible re-export of the market regime detector.
+
+The real implementation moved to :mod:`intelligence.market_regime` as
+part of consolidating JQE's market-intelligence modules into the
+``intelligence`` package. Kept here because ``main.py``,
+``backtesting/backtest.py``, and ``strategy/pipeline.py`` already
+import ``from core.regime import detect_regime`` — same
+backward-compatibility approach as ``core/logger.py`` (Milestone 1):
+one implementation, re-exported at the old path so existing call sites
+don't need to change.
 """
-JQE Market Regime Engine
 
-Identifies current market condition.
-"""
+from intelligence.market_regime import detect_regime
 
-
-from core.logger import logger
-
-
-
-def detect_regime(df):
-
-    """
-    Detect market state from indicators.
-    """
-
-    latest = df.iloc[-1]
-
-
-    close = latest["close"]
-
-    ema50 = latest["EMA50"]
-
-    ema200 = latest["EMA200"]
-
-    rsi = latest["RSI"]
-
-    atr = latest["ATR"]
-
-
-
-    regime = "NO_TRADE"
-
-
-
-    # Bullish trend
-
-    if (
-        close > ema50
-        and ema50 > ema200
-        and rsi > 50
-    ):
-
-        regime = "TREND_UP"
-
-
-
-    # Bearish trend
-
-    elif (
-
-        close < ema50
-        and ema50 < ema200
-        and rsi < 50
-
-    ):
-
-        regime = "TREND_DOWN"
-
-
-
-    # Range condition
-
-    elif (
-
-        abs(ema50 - ema200)
-        < atr * 0.5
-
-    ):
-
-        regime = "RANGE"
-
-
-
-    logger.info(
-
-        f"Market regime detected: {regime}"
-
-    )
-
-
-    return regime
+__all__ = ["detect_regime"]

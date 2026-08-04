@@ -134,15 +134,51 @@ implement it; the Quant Core never imports a broker SDK directly. See
   never-built data-layer design that predates this one. See
   docs/architecture.md.
 
-## ⏳ Phase 3 — Intelligence & Confidence Model
+## ✅ Phase 3 — Intelligence & Confidence Model
 
-* Consolidate `core/market_state.py`, `core/regime.py`,
-  `analytics/trend_analysis.py`, `analytics/volatility.py`,
-  `analytics/momentum.py` into `intelligence/`.
-* Build `intelligence/liquidity_engine.py` and
-  `intelligence/confidence_model.py` (the weighted scoring system —
-  trend/structure/liquidity/momentum/volatility/risk → a single
-  confidence percentage), both currently nonexistent.
+* Consolidated `core/market_state.py`, `core/regime.py`,
+  `analytics/{trend_analysis,volatility,momentum}.py`, and
+  `analytics/market_score.py` into `intelligence/`, renaming to match
+  the target architecture (`TrendEngine`, `VolatilityEngine`,
+  `MomentumEngine`). `core/regime.py` kept as a backward-compatible
+  shim (3 live importers); the rest updated directly (single-digit
+  importers each).
+* `intelligence/liquidity_engine.py` (new): promotes `MarketState`'s
+  old binary spread threshold into a real GOOD/MEDIUM/LOW classifier —
+  incidentally makes `MarketScore`'s previously-unreachable `MEDIUM`
+  liquidity branch reachable. Disclosed behavior change, low risk
+  (`MarketState`/`MarketScanner` have no live caller).
+* `intelligence/confidence_model.py` (new): the weighted 6-factor
+  scorer from the platform's Quant Intelligence Engine design (Trend
+  25 / Structure 20 / Liquidity 20 / Momentum 15 / Volatility 10 /
+  Risk 10 = 100). Structure and risk have no dedicated analyzer yet
+  (`pattern_engine.py` was explicitly deferred — see below); scored via
+  simple, transparent, isolated proxy functions
+  (`classify_structure`/`classify_risk_conditions`) that a real
+  pattern engine can later replace without touching the scoring logic
+  itself.
+* `config.settings.min_confidence_threshold` (default 70) added —
+  not yet consumed; wiring `ConfidenceModel` into the live pipeline is
+  Phase 5.
+* 92 new/updated tests (liquidity engine, market state — including a
+  regression test for the now-reachable MEDIUM branch, regime
+  detection, and thorough confidence-model coverage including every
+  partial-credit branch).
+* `intelligence/pattern_engine.py` (structure/chart-pattern detection)
+  explicitly **not** built this phase — out of the approved scope: see
+  "Phase 3b" below.
+
+## ⏳ Phase 3b — Pattern Engine (newly identified)
+
+* `intelligence/pattern_engine.py`: real market-structure analysis
+  (support/resistance, swing highs/lows, breakout confirmation) to
+  replace `confidence_model.classify_structure`'s current simple
+  range-position proxy.
+* Once built, reconcile `MarketState`/`MarketScore` (4-factor, no
+  structure/risk) with `ConfidenceModel` (6-factor) — most likely
+  retiring the former, alongside `JQEEngine`'s broken pathway (see
+  Milestone 2b/Broker Foundation debt) if that pathway is formally
+  deprecated rather than fixed.
 
 ## ⏳ Phase 4 — Risk Engine
 

@@ -69,6 +69,11 @@ class Settings(BaseSettings):
             percentage of account balance, before trading halts.
         max_trades_daily: Maximum number of trades permitted in a single
             trading day.
+        min_confidence_threshold: Minimum
+            ``intelligence.confidence_model.ConfidenceBreakdown.total``
+            (0-100) required before a signal is considered trade-ready.
+            Not yet consumed by the live pipeline — see
+            docs/roadmap.md, Phase 5.
         log_level: Minimum severity emitted to all configured log sinks.
         log_dir: Directory where rotating log files are written.
         log_file: File name of the primary application log within
@@ -112,6 +117,7 @@ class Settings(BaseSettings):
     risk_percent: float = Field(default=1.0, gt=0, le=100)
     max_daily_loss: float = Field(default=3.0, gt=0, le=100)
     max_trades_daily: int = Field(default=5, gt=0)
+    min_confidence_threshold: int = Field(default=70, ge=0, le=100)
 
     log_level: LogLevel = "INFO"
     log_dir: Path = Path("logs")

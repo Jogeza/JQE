@@ -534,3 +534,109 @@ old speculative test scripts (themselves manual debug scripts with no
 real assertions, same pattern as `test_core_engine.py`) would mean
 designing around dead code instead of the current spec. Recommend
 deleting these six files in Milestone 4 rather than rewriting them.
+
+## Intelligence layer (Phase 3)
+
+### Consolidation: what moved, what didn't, and why
+
+Per the approved migration roadmap, `core/market_state.py`,
+`core/regime.py`, `analytics/trend_analysis.py`,
+`analytics/volatility.py`, and `analytics/momentum.py` moved into
+`intelligence/`, plus `analytics/market_score.py` (a direct dependency
+of `market_state.py`, not explicitly named in the roadmap but moved
+alongside it rather than left orphaned in `analytics/`).
+
+Renamed to match the target architecture's naming convention:
+`TrendAnalyzer` → `TrendEngine`, `VolatilityAnalyzer` →
+`VolatilityEngine`, `MomentumAnalyzer` → `MomentumEngine` (files:
+`trend_engine.py`, `volatility_engine.py`, `momentum_engine.py`).
+`MarketState` and `MarketScore` kept their names — only their location
+changed.
+
+**Only `core/regime.py` kept a backward-compatible shim** (the same
+pattern as `core/logger.py` from Milestone 1) — it has three live
+importers (`main.py`, `backtesting/backtest.py`,
+`strategy/pipeline.py`). The other four modules' only importers were
+`core/market_scanner.py` (updated directly) and one test file each
+(also updated directly, and three renamed to match: `test_trend_
+analysis.py` → `test_trend_engine.py`, etc.) — few enough call sites
+that a shim would have been pure overhead.
+
+### A disclosed behavior change while consolidating: liquidity tiers
+
+`MarketState` previously classified liquidity inline: `spread < 5 →
+"GOOD"`, else `"LOW"` — a binary split. This left
+`MarketScore.calculate`'s `"MEDIUM"` liquidity branch (10 points)
+**permanently unreachable dead code**, since nothing could ever
+produce a `"MEDIUM"` liquidity classification to trigger it.
+
+Promoting this into `intelligence/liquidity_engine.py::LiquidityEngine`
+was an opportunity to add a real middle tier (`GOOD`/`MEDIUM`/`LOW`),
+making that branch reachable and correct. This changes `MarketState`'s
+output for spreads in the new `MEDIUM` band (previously `"GOOD"`,
+now `"MEDIUM"`) — a real, disclosed behavior change, not a pure
+relocation. Low-risk in practice: `MarketState`/`MarketScanner` have
+had no live caller since Milestone 1's findings (see "What's
+deliberately not touched" above) — nothing depends on their exact
+prior output. `tests/test_market_state.py` includes a regression test
+specifically asserting the `MEDIUM` branch now fires correctly.
+
+### `ConfidenceModel`: the weighted 6-factor scorer
+
+`intelligence/confidence_model.py` implements the platform's
+documented Quant Intelligence Engine design exactly: Trend 25 /
+Structure 20 / Liquidity 20 / Momentum 15 / Volatility 10 / Risk 10 =
+100. This is new analytical capability, not integration/wiring — the
+first Phase where that distinction matters, since every prior
+milestone was foundation, broker plumbing, or bridging already-written
+pieces.
+
+Two of the six factors have no dedicated analyzer anywhere in the
+codebase: **structure** and **risk** (as a confidence input, distinct
+from `risk.risk_controller`'s position-sizing job). The target
+architecture's `intelligence/pattern_engine.py` (real chart-pattern/
+support-resistance detection) is the eventual home for a proper
+structure signal, but building it was explicitly out of this
+milestone's approved scope. In its place,
+`classify_structure()`/`classify_risk_conditions()` are simple,
+transparent, rule-based proxies:
+
+* **Structure**: whether the latest close breaks decisively outside
+  the high/low range of the preceding N candles (`"CONFIRMED"`), sits
+  near an edge of that range (`"WEAK"`), or sits mid-range
+  (`"NONE"`) — deliberately independent of the trend/momentum factors
+  (it looks at price-vs-range, not EMAs or RSI), so it isn't just
+  restating another factor under a new name.
+* **Risk** (confidence input): spread as a fraction of ATR — a tight
+  spread relative to current volatility is more favorable than the
+  same absolute spread against a quiet market. Not the risk *engine*;
+  a narrow signal about whether conditions favor entry timing at all.
+
+Both are isolated in their own functions specifically so a real
+`pattern_engine.py` (or better risk-conditions analysis) can replace
+just the classification step later without touching `ConfidenceModel`
+itself — the weighting/combination logic doesn't care how `structure`/
+`risk` were classified, only what value they hold.
+
+`config.settings.min_confidence_threshold` (default 70) is the
+"execute only above this score" cutoff from the platform's vision —
+added to configuration, but **not yet consumed anywhere**. Wiring
+`ConfidenceModel` into the live signal-generation path (replacing
+`strategy.pipeline.generate_trading_signal`'s current
+`FeatureEngine`-based ad hoc confidence, which is a much cruder
+heuristic than this) is Phase 5 (Strategy Engine) work — this
+milestone builds and thoroughly tests the model in isolation, per the
+approved roadmap's scope boundary.
+
+### `MarketScore` vs. `ConfidenceModel`: two scorers, on purpose, for now
+
+`intelligence/market_state.py::MarketState` still uses the older
+4-factor `MarketScore`, not the new `ConfidenceModel` — reconciling
+them (most likely: retiring `MarketState`/`MarketScore` once
+`MarketScanner`'s pathway either gets properly migrated onto
+`BrokerGateway` and `ConfidenceModel`, or is formally deprecated
+alongside `JQEEngine`) is Phase 5 territory, per the same reasoning as
+Milestone 2b's decision not to build on `JQEEngine`'s broken pathway:
+`MarketScanner`/`MarketState` still have no live caller today, so
+redesigning their internals now would be speculative rather than
+integration work grounded in an actual call site.
