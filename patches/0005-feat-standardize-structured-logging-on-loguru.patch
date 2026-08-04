@@ -1,0 +1,159 @@
+From a178db3837968fd511efe32644a3f1dc92ed1324 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 05:23:13 +0000
+Subject: [PATCH 05/37] feat: standardize structured logging on loguru
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+core/logging_config.py is the single source of truth for how JQE
+logs: console + rotating file sinks, format, level, rotation and
+retention policy — all driven by config.settings so they're
+configurable via environment variables without touching code.
+configure_logging() is idempotent, so importing it from multiple
+modules never duplicates sinks or log lines.
+
+core/logger.py becomes a thin backward-compatible shim re-exporting
+the same logger object, since five existing modules already import
+'from core.logger import logger'. This keeps the change to a single
+internal implementation swap rather than five call-site edits.
+---
+ core/logger.py         | 27 +++++++------
+ core/logging_config.py | 87 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 100 insertions(+), 14 deletions(-)
+ create mode 100644 core/logging_config.py
+
+diff --git a/core/logger.py b/core/logger.py
+index e03e658..caa16a6 100644
+--- a/core/logger.py
++++ b/core/logger.py
+@@ -1,19 +1,18 @@
+-import logging
+-from pathlib import Path
++"""Backward-compatible logger accessor.
+ 
++Existing modules across the codebase import the shared logger as
++``from core.logger import logger``. The actual sink configuration lives
++in :mod:`core.logging_config` (single source of truth for logging
++setup) — this module simply re-exports the already-configured logger so
++none of those call sites need to change.
+ 
+-Path("logs").mkdir(exist_ok=True)
++New code should generally import from :mod:`core.logger` too, for
++consistency with the rest of the codebase; :mod:`core.logging_config` is
++the place to change *how* logging behaves.
++"""
+ 
++from core.logging_config import configure_logging, logger
+ 
+-logging.basicConfig(
++configure_logging()
+ 
+-    filename="logs/jqe.log",
+-
+-    level=logging.INFO,
+-
+-    format="%(asctime)s | %(levelname)s | %(message)s"
+-
+-)
+-
+-
+-logger = logging.getLogger("JQE")
+\ No newline at end of file
++__all__ = ["logger"]
+diff --git a/core/logging_config.py b/core/logging_config.py
+new file mode 100644
+index 0000000..49e811c
+--- /dev/null
++++ b/core/logging_config.py
+@@ -0,0 +1,87 @@
++"""Loguru-based structured logging configuration for the JQE platform.
++
++This module is the single source of truth for *how* JQE logs: which
++sinks are active, their format, and their rotation/retention policy. It
++is deliberately separate from :mod:`core.logger` (a thin, backward
++compatible re-export used by existing call sites) so that configuration
++concerns live in exactly one place, per the single-responsibility
++principle.
++
++Configuration is driven by :data:`config.settings`, so log level, output
++directory, and rotation policy are all controllable via environment
++variables or ``.env`` without touching code.
++"""
++
++from __future__ import annotations
++
++import sys
++from typing import Final
++
++from loguru import logger
++
++from config import settings
++
++_CONSOLE_FORMAT: Final[str] = (
++    "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
++    "<level>{level: <8}</level> | "
++    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
++    "<level>{message}</level>"
++)
++
++_FILE_FORMAT: Final[str] = (
++    "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
++)
++
++_configured: bool = False
++
++
++def configure_logging() -> None:
++    """Configures loguru's sinks for the running process.
++
++    Removes loguru's default sink and installs:
++
++    * A colorized console sink (stderr), if ``settings.log_to_console``
++      is enabled.
++    * A rotating file sink under ``settings.log_dir``, governed by
++      ``settings.log_rotation`` / ``settings.log_retention``.
++
++    This function is idempotent: calling it more than once (e.g. because
++    several modules import :mod:`core.logger`) is a no-op after the
++    first call, so sinks are never duplicated and log lines are never
++    emitted twice.
++    """
++    global _configured
++    if _configured:
++        return
++
++    settings.log_dir.mkdir(parents=True, exist_ok=True)
++
++    logger.remove()
++
++    if settings.log_to_console:
++        logger.add(
++            sys.stderr,
++            level=settings.log_level,
++            format=_CONSOLE_FORMAT,
++            colorize=True,
++            backtrace=False,
++            diagnose=False,
++        )
++
++    logger.add(
++        settings.log_dir / settings.log_file,
++        level=settings.log_level,
++        format=_FILE_FORMAT,
++        rotation=settings.log_rotation,
++        retention=settings.log_retention,
++        encoding="utf-8",
++        backtrace=False,
++        diagnose=False,
++    )
++
++    _configured = True
++
++
++configure_logging()
++
++__all__ = ["configure_logging", "logger"]
+-- 
+2.43.0
+

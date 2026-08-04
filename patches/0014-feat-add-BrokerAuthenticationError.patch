@@ -1,0 +1,40 @@
+From f3f3804ca0c831bb7b4195891ad10ac76463cbc3 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 17:09:03 +0000
+Subject: [PATCH 14/37] feat: add BrokerAuthenticationError
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A narrower subclass of BrokerConnectionError for auth-specific
+failures (invalid/expired token or credentials) — existing broad
+'except BrokerConnectionError' handling still catches it; callers that
+need to distinguish (e.g. prompt for new credentials vs. simply retry)
+can catch it narrowly.
+---
+ core/exceptions.py | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/core/exceptions.py b/core/exceptions.py
+index 97c56ee..af58e7f 100644
+--- a/core/exceptions.py
++++ b/core/exceptions.py
+@@ -43,6 +43,15 @@ class BrokerConnectionError(JQEError):
+     established, is lost, or is used while not connected."""
+ 
+ 
++class BrokerAuthenticationError(BrokerConnectionError):
++    """Raised when a broker connection succeeds but authentication fails
++    (e.g. an invalid or expired API token/credentials). A subclass of
++    :class:`BrokerConnectionError` so existing broad ``except
++    BrokerConnectionError`` handling still catches it; catch this
++    narrowly when the distinction matters (e.g. to prompt for new
++    credentials rather than simply retrying the connection)."""
++
++
+ class MarketDataError(JQEError):
+     """Raised when market data cannot be retrieved, is empty, or fails
+     validation before being used downstream."""
+-- 
+2.43.0
+

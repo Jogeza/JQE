@@ -1,0 +1,77 @@
+From 43b6b9e03908bde3119d6a8ca867435e6a3ce0c3 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Mon, 3 Aug 2026 19:42:05 +0000
+Subject: [PATCH 32/37] feat: add cache_dir setting and CacheError exception
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+settings.cache_dir (default 'cache/') is where data.storage.CandleStore
+puts its SQLite database — configurable via JQE_CACHE_DIR/.env like
+every other path setting.
+
+CacheError(JQEError) is a new exception distinct from
+BrokerConnectionError/MarketDataError: it covers local storage-layer
+failures (corrupted/unwritable cache) rather than broker communication
+failures.
+---
+ .env.example       | 3 +++
+ config/settings.py | 5 +++++
+ core/exceptions.py | 7 +++++++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/.env.example b/.env.example
+index 031a7e9..690bf70 100644
+--- a/.env.example
++++ b/.env.example
+@@ -45,3 +45,6 @@ JQE_LOG_FILE=jqe.log
+ JQE_LOG_ROTATION=10 MB
+ JQE_LOG_RETENTION=14 days
+ JQE_LOG_TO_CONSOLE=true
++
++# --- Data cache ----------------------------------------------------
++JQE_CACHE_DIR=cache                  # SQLite historical-candle cache; see data/storage.py
+diff --git a/config/settings.py b/config/settings.py
+index 5109387..158eb8d 100644
+--- a/config/settings.py
++++ b/config/settings.py
+@@ -79,6 +79,9 @@ class Settings(BaseSettings):
+             (e.g. ``"14 days"``).
+         log_to_console: Whether logs are also emitted to stderr, in
+             addition to the rotating file sink.
++        cache_dir: Directory for the local historical-candle cache
++            (SQLite; see ``data/storage.py``). Runtime state, not
++            source — git-ignored.
+     """
+ 
+     model_config = SettingsConfigDict(
+@@ -117,6 +120,8 @@ class Settings(BaseSettings):
+     log_retention: str = "14 days"
+     log_to_console: bool = True
+ 
++    cache_dir: Path = Path("cache")
++
+     @field_validator("log_level", mode="before")
+     @classmethod
+     def _normalize_log_level(cls, value: object) -> object:
+diff --git a/core/exceptions.py b/core/exceptions.py
+index af58e7f..cd1c38a 100644
+--- a/core/exceptions.py
++++ b/core/exceptions.py
+@@ -57,6 +57,13 @@ class MarketDataError(JQEError):
+     validation before being used downstream."""
+ 
+ 
++class CacheError(JQEError):
++    """Raised when the local data cache (see ``data/storage.py``) is
++    corrupted, unreadable, or otherwise fails at the storage layer —
++    distinct from ``MarketDataError``, which covers failures talking to
++    a broker."""
++
++
+ class RiskViolationError(JQEError):
+     """Raised when a proposed trade is rejected by the risk management
+     engine (e.g. confidence too low, spread too wide, daily loss limit
+-- 
+2.43.0
+

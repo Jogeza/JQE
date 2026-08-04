@@ -1,0 +1,197 @@
+From 4c1dc3b1ed9c84e829fabefe944405233b20dfee Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Mon, 3 Aug 2026 19:42:44 +0000
+Subject: [PATCH 37/37] docs: document the Data layer (Phase 2)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+docs/architecture.md adds a full section: why data/historical.py is
+built against BrokerGateway rather than MT5 directly (generalizing the
+brief's framing, consistent with the Broker Foundation architecture),
+why SQLite over Parquet/CSV, how the .gitignore fix separates the
+data/ source package from cache/ runtime output, the new `end`
+parameter on BrokerGateway.get_candles and each gateway's
+implementation trade-offs, HistoricalDataService's automatic-loading/
+incremental-update/gap-fill design, and why the 6 legacy broken
+data-layer tests should be deleted rather than rewritten (they
+reference a third, different, never-built design predating this one).
+
+docs/roadmap.md marks Phase 2 complete and updates "Known test debt"
+to stop implying Phase 2 would resolve those 6 files — it built a
+different, real design per the approved roadmap instead.
+---
+ docs/architecture.md | 99 ++++++++++++++++++++++++++++++++++++++++++++
+ docs/roadmap.md      | 42 +++++++++++++++----
+ 2 files changed, 132 insertions(+), 9 deletions(-)
+
+diff --git a/docs/architecture.md b/docs/architecture.md
+index dc8df72..5522e39 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -435,3 +435,102 @@ signals from synthetic random-walk data, as expected) scenarios.
+ * `DecisionPipeline`/`SignalScorer` remain unused by the live path (see
+   above) — worth either deleting or formally deprecating once Milestone
+   4's test-suite cleanup touches the files that still reference them.
++
++## Data layer (Phase 2)
++
++### Package naming vs. the brief
++
++This milestone's brief described `data/historical.py` as an "MT5
++history download" module. Built against `broker.base.BrokerGateway`
++instead — the Quant Core (which this module is part of) must never
++import a broker SDK directly, per the Broker Foundation milestone's
++own architecture. A caller who specifically wants MT5 history gets it
++by constructing an `MT5Gateway` and passing it in; nothing in `data/`
++hardcodes a broker choice. `.env.example`/README wording follows suit.
++
++### Why SQLite, not Parquet/CSV
++
++The candle cache (`data/storage.py::CandleStore`) uses Python's stdlib
++`sqlite3` rather than a file-per-series format. Reasons: no new
++dependency (Parquet needs `pyarrow`); a `PRIMARY KEY (symbol,
++timeframe, time)` makes overlapping incremental saves idempotent for
++free via `INSERT OR REPLACE` (no separate "have I already got this
++candle" check needed at the call site); and range queries (`get_
++coverage`, gap-scoped `load_candles`) are simple, indexed SQL rather
++than hand-rolled file/offset bookkeeping.
++
++### `.gitignore`: separating the `data/` *package* from cache *output*
++
++The original `.gitignore` had a blanket `data/` rule, which would have
++silently excluded this entire package's source files from version
++control the moment they were added — exactly the bug flagged in
++Milestone 1. Fixed by never routing cache output through `data/` at
++all: `CandleStore`'s database lives under `config.settings.cache_dir`
++(default `cache/`, a sibling of `data/`, not inside it), and it's
++`cache/` that's git-ignored. This mirrors the existing `logs/`
++convention (a runtime-output directory separate from the `core/`
++source that writes to it) rather than trying to carve holes in a
++single directory's ignore rules.
++
++### `BrokerGateway.get_candles` gained an `end` parameter
++
++Gap *filling* (not just detection) requires asking a broker for a
++specific historical window, not only "the latest N candles" — the
++original Broker Foundation interface only supported the latter. Added
++`end: datetime | None = None` (default preserves every existing
++caller's behavior exactly):
++
++* **DerivGateway**: trivial — `ticks_history` already accepts `end` as
++  an epoch (or `"latest"`) directly.
++* **MT5Gateway**: no existing wrapper supports a range query, so this
++  calls `mt5.copy_rates_from` directly (same "raw SDK for capabilities
++  `MarketData` doesn't have" pattern as `submit_order`/`get_positions`)
++  — like the rest of `MT5Gateway`, unverified against a live terminal.
++* **SimulationGateway**: `end` only anchors the *timestamps* assigned
++  to generated candles — the synthetic price path still just continues
++  the gateway's in-memory random walk regardless of the requested
++  window. Consistent with this gateway never claiming realistic
++  simulation; documented in its docstring.
++
++### `HistoricalDataService`: automatic loading, incremental sync, gap fill
++
++`data/historical.py::HistoricalDataService` is the single entry point
++("automatic loading" from the brief): `get_candles(symbol, timeframe,
++count)` transparently checks the cache, downloads only what's missing,
++optionally fills gaps, and returns — callers never manage cache vs.
++download themselves.
++
++* **Incremental, not full, updates**: `_sync_recent` compares the
++  cache's latest candle to now and downloads only enough candles to
++  bridge that gap (`int(staleness / step) + 1`), not a full
++  re-fetch of `count`. Falls back to a full download only when nothing
++  is cached yet.
++* **Gap detection**: `data.storage.find_gaps` (shared by
++  `CandleStore.validate` and `HistoricalDataService.fill_gaps`, so
++  detection has exactly one implementation) flags any interval between
++  consecutive cached candles more than 1.5x the timeframe's expected
++  step — a small tolerance for broker jitter without missing real
++  gaps.
++* **Gap filling**: for each detected gap, requests just enough
++  candles (`span / step + 2`, a small buffer) ending at the gap's far
++  edge via the new `end` parameter, filters to only what actually
++  falls inside the gap window, and saves it. `CandleStore.save_candles`
++  being an upsert means overlapping edges never create duplicates.
++* **`sync()`** combines incremental download + gap fill + validation
++  into one call with a structured `SyncReport` — the shape a scheduled
++  background job would call.
++
++### Legacy broken data-layer tests: recommend deletion, not repair
++
++`tests/test_data_manager.py`, `tests/test_market_loader.py`, and four
++others (see docs/roadmap.md, "Known test debt") import `data.
++data_manager.DataManager`, `data.market_loader.MarketLoader`, `data.
++validator.DataValidator`, and `data.historical_data.HistoricalData` —
++a third, different, never-built data-layer design, predating even the
++Quant Platform pivot. None of these names were ever implemented, and
++they don't match `data/storage.py`/`data/historical.py` as specified
++in the approved migration roadmap. Renaming the new modules to match
++old speculative test scripts (themselves manual debug scripts with no
++real assertions, same pattern as `test_core_engine.py`) would mean
++designing around dead code instead of the current spec. Recommend
++deleting these six files in Milestone 4 rather than rewriting them.
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 373af8f..2e2e324 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -105,14 +105,34 @@ implement it; the Quant Core never imports a broker SDK directly. See
+   going unused) are listed in docs/architecture.md, "Remaining gaps in
+   this pipeline".
+ 
+-## ⏳ Phase 2 — Data Layer
+-
+-* `data/storage.py`, `data/historical.py`.
+-* Fix `.gitignore`'s blanket `data/` exclusion first — it would
+-  silently swallow this package as currently written.
+-* This also resolves 6 of the pre-existing broken test files (see
+-  "Known test debt" below), which import a `data` package that has
+-  never existed.
++## ✅ Phase 2 — Data Layer
++
++* Fixed `.gitignore`'s blanket `data/` exclusion — separated the
++  `data/` *source package* (now tracked) from the cache's *runtime
++  output* (`cache/`, git-ignored), mirroring the existing `logs/`
++  convention rather than carving exceptions into one directory's
++  rules.
++* `data/storage.py` (new): `CandleStore`, a SQLite-backed local candle
++  cache (stdlib `sqlite3`, no new dependency) — save/load, latest-N
++  loading, coverage queries, cache validation (ordering, OHLC sanity,
++  gap detection), and clearing.
++* `data/historical.py` (new): `HistoricalDataService` — automatic
++  loading (cache-or-download transparently), incremental updates
++  (downloads only the gap since the cache's last candle, not a full
++  re-fetch), gap detection + filling, and a `sync()` report for
++  scheduled jobs.
++* `broker.base.BrokerGateway.get_candles` gained an optional `end`
++  parameter (historical range queries, needed for gap filling) —
++  backward compatible, implemented across all three gateways.
++* Built against `BrokerGateway`, not MT5 directly — see
++  docs/architecture.md, "Package naming vs. the brief", for why this
++  generalizes the brief's "MT5 history download" framing.
++* 42 new tests (`CandleStore`, `find_gaps`, `HistoricalDataService`,
++  plus `end`-parameter coverage on all three gateways).
++* Recommends deleting (not rewriting) 6 of the pre-existing broken
++  test files in Milestone 4 — they reference a third, different,
++  never-built data-layer design that predates this one. See
++  docs/architecture.md.
+ 
+ ## ⏳ Phase 3 — Intelligence & Confidence Model
+ 
+@@ -171,7 +191,11 @@ Nine pre-existing test files fail independent of any milestone above
+   `tests/test_signal_engine.py`, `tests/test_signal_scorer.py` all
+   import a `data` package (`data.data_manager`, `data.historical_data`,
+   `data.market_loader`) that does not exist anywhere in the
+-  repository. Resolved by Phase 2.
++  repository — and still doesn't after Phase 2, which built
++  `data.storage`/`data.historical` per the approved migration roadmap,
++  a different (and now real) design. Recommend deleting these 6 files
++  rather than rewriting them to match — see docs/architecture.md,
++  "Legacy broken data-layer tests".
+ * `tests/test_core_engine.py` and `tests/test_autonomous_scanner.py`
+   are manual debug scripts (module-level code with `print()`
+   statements, no `test_*` functions) rather than real pytest tests,
+-- 
+2.43.0
+

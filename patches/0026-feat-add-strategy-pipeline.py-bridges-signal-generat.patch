@@ -1,0 +1,311 @@
+From d4fcccf01827b4015f8fed0ccebd5ccc488b0a5c Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 22:28:31 +0000
+Subject: [PATCH 26/37] =?UTF-8?q?feat:=20add=20strategy/pipeline.py=20?=
+ =?UTF-8?q?=E2=80=94=20bridges=20signal=20generation=20to=20risk/execution?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Three independent, pre-existing mismatches made the signal generation
+pipeline unusable as originally wired:
+
+1. calculate_indicators() (used by main.py/backtesting/backtest.py)
+   produces EMA50/EMA200/RSI/ATR; FeatureEngine.analyze() needs
+   EMA_50/EMA_200/RSI_14/ATR_14.
+2. FeatureEngine.analyze() never sets a 'regime' key on the
+   intelligence dict it builds. SignalEngine.generate() branches
+   almost entirely on that key — without it, every signal fell
+   through to WAIT regardless of trend/momentum. This pipeline could
+   never have produced a BUY or SELL signal as originally wired.
+3. SignalEngine returns {'action': ...}; risk_controller.approve_trade
+   and execution.simulator.simulate_trade both expect
+   {'signal': ...}.
+
+generate_trading_signal() bridges all three: column aliasing, regime
+injection via the already-tested core.regime.detect_regime (reusing
+existing classification logic rather than inventing new regime rules),
+and an action->signal value mapping. Calls FeatureEngine/SignalEngine/
+SignalScorer directly rather than through
+core.decision_pipeline.DecisionPipeline, whose own 'scanner
+intelligence' branch expects yet another different confidence key
+(market_score) that would silently zero out confidence — see
+docs/architecture.md for the full trace.
+
+8 tests covering each regime/trend/momentum branch, the ATR-column
+precondition, explicit regime override, and the signal-value contract
+guarantee.
+---
+ strategy/pipeline.py            | 141 ++++++++++++++++++++++++++++++++
+ tests/test_strategy_pipeline.py | 111 +++++++++++++++++++++++++
+ 2 files changed, 252 insertions(+)
+ create mode 100644 strategy/pipeline.py
+ create mode 100644 tests/test_strategy_pipeline.py
+
+diff --git a/strategy/pipeline.py b/strategy/pipeline.py
+new file mode 100644
+index 0000000..2e8421e
+--- /dev/null
++++ b/strategy/pipeline.py
+@@ -0,0 +1,141 @@
++"""Bridges JQE's market-intelligence/decision layer to its risk and
++execution layers.
++
++This module exists because several pieces of pre-existing code were
++written independently and never integrated — each expects a slightly
++different shape:
++
++* :class:`strategy.features.feature_engine.FeatureEngine` needs OHLC
++  data with columns named ``EMA_50``, ``EMA_200``, ``RSI_14``,
++  ``ATR_14``.
++* :func:`core.indicators.calculate_indicators` (the indicator
++  calculator actually used by ``main.py``/``backtesting/backtest.py``)
++  produces columns named ``EMA50``, ``EMA200``, ``RSI``, ``ATR`` — no
++  underscore, no period suffix.
++* ``FeatureEngine.analyze()`` never sets a ``"regime"`` key on the
++  intelligence dict it builds. :class:`strategy.signal_engine.
++  SignalEngine` branches almost entirely on that key — without it,
++  every signal falls through to its ``else`` branch and
++  ``SignalEngine`` can only ever return ``"WAIT"``, regardless of
++  trend/momentum. This module fills it in using the already-tested
++  :func:`core.regime.detect_regime` (the same function ``main.py``
++  already calls), mapped onto the vocabulary ``SignalEngine`` expects
++  (``"TRENDING"``/``"RANGING"``/``"UNKNOWN"``) — reusing existing,
++  tested regime-detection logic rather than inventing new
++  classification rules.
++* :class:`strategy.signal_engine.SignalEngine` returns a signal dict
++  keyed ``"action"`` (``"BUY"``/``"SELL"``/``"WAIT"``);
++  :func:`risk.risk_controller.approve_trade` and
++  :func:`execution.simulator.simulate_trade` both expect a signal dict
++  keyed ``"signal"`` (``"BUY"``/``"SELL"``/``"NO_TRADE"``).
++
++Given all of the above, :func:`generate_trading_signal` calls
++``FeatureEngine``, ``SignalEngine``, and ``SignalScorer`` directly
++rather than through :class:`core.decision_pipeline.DecisionPipeline` —
++``DecisionPipeline``'s own "scanner intelligence" (dict) branch expects
++yet another, different confidence key (``"market_score"``) than
++``FeatureEngine`` produces (``"confidence"``), which would silently
++zero out confidence if routed through it. This is a known, documented
++inconsistency — see "Deliberately not touched" in docs/architecture.md
++for the status of ``DecisionPipeline`` itself.
++"""
++
++from __future__ import annotations
++
++import pandas as pd
++
++from core.regime import detect_regime
++from strategy.features.feature_engine import FeatureEngine
++from strategy.scoring.signal_scorer import SignalScorer
++from strategy.signal_engine import SignalEngine
++
++#: Maps calculate_indicators()'s column names to the names
++#: FeatureEngine.analyze() expects.
++_INDICATOR_COLUMN_ALIASES: dict[str, str] = {
++    "EMA50": "EMA_50",
++    "EMA200": "EMA_200",
++    "RSI": "RSI_14",
++    "ATR": "ATR_14",
++}
++
++#: Maps core.regime.detect_regime()'s output to the regime vocabulary
++#: SignalEngine.generate() branches on.
++_REGIME_MAP: dict[str, str] = {
++    "TREND_UP": "TRENDING",
++    "TREND_DOWN": "TRENDING",
++    "RANGE": "RANGING",
++    "NO_TRADE": "UNKNOWN",
++}
++
++#: Maps SignalEngine's "action" values to the "signal" values
++#: risk_controller/simulator expect. WAIT has no direct equivalent in
++#: their vocabulary; NO_TRADE is the sentinel both already treat as
++#: "do nothing" (risk_controller via its BUY/SELL membership check,
++#: simulator identically, and BacktestEngine via an explicit early
++#: return on this exact value).
++_ACTION_TO_SIGNAL: dict[str, str] = {
++    "BUY": "BUY",
++    "SELL": "SELL",
++    "WAIT": "NO_TRADE",
++}
++
++
++def generate_trading_signal(
++    df: pd.DataFrame, symbol: str = "UNKNOWN", regime: str | None = None
++) -> dict:
++    """Generates a risk/execution-ready trading signal from indicator data.
++
++    Runs the existing market-intelligence pipeline (``FeatureEngine``
++    -> ``SignalEngine`` -> ``SignalScorer``) and translates its output
++    into the shape :func:`risk.risk_controller.approve_trade` and
++    :func:`execution.simulator.simulate_trade` already expect. See the
++    module docstring for why each translation is needed.
++
++    Args:
++        df: OHLC data with indicator columns as produced by
++            :func:`core.indicators.calculate_indicators` (``EMA50``,
++            ``EMA200``, ``RSI``, ``ATR``).
++        symbol: Instrument symbol, for logging/context only.
++        regime: Pre-computed regime from :func:`core.regime.
++            detect_regime`, if the caller already has one (e.g. for
++            logging) — avoids detecting it twice. Computed internally
++            if not given.
++
++    Returns:
++        A dict with:
++
++        * ``signal``: ``"BUY"``, ``"SELL"``, or ``"NO_TRADE"`` — ready
++          for ``approve_trade``/``simulate_trade``.
++        * ``confidence``: 0-100, from ``FeatureEngine``.
++        * ``quality``: ``SignalScorer``'s quality label
++          (``"HIGH"``/``"GOOD"``/``"WEAK"``/``"POOR"``).
++        * ``score``: ``SignalScorer``'s numeric score.
++        * ``reasons``: ``SignalScorer``'s list of contributing reasons.
++        * ``intelligence``: the trend/momentum/volatility/regime/
++          confidence dict fed to ``SignalEngine``, for logging.
++
++    Raises:
++        KeyError: If ``df`` is missing the ``ATR`` column (i.e. wasn't
++            produced by ``calculate_indicators``).
++    """
++    if "ATR" not in df.columns:
++        raise KeyError("calculate_indicators() output is required (missing ATR column)")
++
++    aliased = df.rename(columns=_INDICATOR_COLUMN_ALIASES)
++    intelligence = FeatureEngine().analyze(aliased)
++
++    raw_regime = regime if regime is not None else detect_regime(df)
++    intelligence["regime"] = _REGIME_MAP.get(raw_regime, "UNKNOWN")
++
++    signal = SignalEngine().generate(intelligence)
++    decision = SignalScorer().evaluate(intelligence, signal)
++
++    action = signal.get("action", "WAIT")
++    return {
++        "signal": _ACTION_TO_SIGNAL.get(action, "NO_TRADE"),
++        "confidence": signal.get("confidence", 0),
++        "quality": decision.get("quality", "POOR"),
++        "score": decision.get("score", 0),
++        "reasons": decision.get("reasons", []),
++        "intelligence": intelligence,
++    }
+diff --git a/tests/test_strategy_pipeline.py b/tests/test_strategy_pipeline.py
+new file mode 100644
+index 0000000..504e882
+--- /dev/null
++++ b/tests/test_strategy_pipeline.py
+@@ -0,0 +1,111 @@
++"""Tests for strategy.pipeline.generate_trading_signal.
++
++Verifies the adapter logic (column aliasing, regime mapping, action->
++signal translation) using small, hand-built DataFrames — not real
++market data — so behavior is deterministic and each branch is
++independently verifiable.
++"""
++
++from __future__ import annotations
++
++import numpy as np
++import pandas as pd
++import pytest
++
++from strategy.pipeline import generate_trading_signal
++
++
++def _make_indicator_df(
++    n: int = 30,
++    close: float = 100.0,
++    ema50: float = 100.0,
++    ema200: float = 90.0,
++    rsi: float = 65.0,
++    atr: float = 2.0,
++) -> pd.DataFrame:
++    """Builds a minimal calculate_indicators()-shaped DataFrame.
++
++    All rows carry the same indicator values (only the latest row
++    matters to FeatureEngine/detect_regime), which is enough to drive
++    generate_trading_signal deterministically without needing real
++    price history.
++    """
++    return pd.DataFrame(
++        {
++            "close": np.full(n, close),
++            "high": np.full(n, close + 1.0),
++            "low": np.full(n, close - 1.0),
++            "EMA50": np.full(n, ema50),
++            "EMA200": np.full(n, ema200),
++            "RSI": np.full(n, rsi),
++            "ATR": np.full(n, atr),
++        }
++    )
++
++
++class TestGenerateTradingSignal:
++    def test_raises_key_error_without_atr_column(self) -> None:
++        df = pd.DataFrame({"close": [1.0, 2.0]})
++        with pytest.raises(KeyError):
++            generate_trading_signal(df)
++
++    def test_bullish_trend_strong_momentum_produces_buy(self) -> None:
++        # close > EMA50 > EMA200 and RSI > 50 -> TREND_UP -> TRENDING;
++        # EMA50 > EMA200 -> BULLISH; RSI > 60 -> STRONG momentum.
++        df = _make_indicator_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0)
++        signal = generate_trading_signal(df, "TEST")
++        assert signal["signal"] == "BUY"
++        assert signal["intelligence"]["regime"] == "TRENDING"
++        assert signal["intelligence"]["trend"] == "BULLISH"
++
++    def test_bearish_trend_strong_momentum_produces_sell(self) -> None:
++        # close < EMA50 < EMA200 and RSI < 50 -> TREND_DOWN -> TRENDING;
++        # EMA50 < EMA200 -> BEARISH.
++        df = _make_indicator_df(close=75.0, ema50=80.0, ema200=90.0, rsi=30.0)
++        signal = generate_trading_signal(df, "TEST")
++        assert signal["intelligence"]["trend"] == "BEARISH"
++        assert signal["intelligence"]["regime"] == "TRENDING"
++
++    def test_neutral_momentum_produces_no_trade(self) -> None:
++        # RSI in [40, 60] -> NEUTRAL momentum -> SignalEngine's
++        # trend-confirmed branches require STRONG, so this falls
++        # through to WAIT/NO_TRADE regardless of trend direction.
++        df = _make_indicator_df(ema50=100.0, ema200=90.0, rsi=50.0)
++        signal = generate_trading_signal(df, "TEST")
++        assert signal["signal"] == "NO_TRADE"
++
++    def test_ranging_market_produces_no_trade(self) -> None:
++        # abs(EMA50 - EMA200) < ATR * 0.5 -> RANGE -> RANGING -> WAIT.
++        df = _make_indicator_df(ema50=100.0, ema200=100.5, rsi=65.0, atr=5.0)
++        signal = generate_trading_signal(df, "TEST")
++        assert signal["signal"] == "NO_TRADE"
++        assert signal["intelligence"]["regime"] == "RANGING"
++
++    def test_explicit_regime_overrides_detection(self) -> None:
++        df = _make_indicator_df(ema50=100.0, ema200=90.0, rsi=65.0)
++        # Force RANGING despite indicator values that would normally
++        # detect TREND_UP, to verify the pre-computed `regime` param
++        # is actually used instead of recomputing.
++        signal = generate_trading_signal(df, "TEST", regime="RANGE")
++        assert signal["intelligence"]["regime"] == "RANGING"
++        assert signal["signal"] == "NO_TRADE"
++
++    def test_result_contains_all_expected_keys(self) -> None:
++        df = _make_indicator_df()
++        signal = generate_trading_signal(df, "TEST")
++        assert set(signal.keys()) == {
++            "signal",
++            "confidence",
++            "quality",
++            "score",
++            "reasons",
++            "intelligence",
++        }
++
++    def test_signal_is_always_risk_engine_compatible(self) -> None:
++        # signal must always be one of the three values approve_trade/
++        # simulate_trade recognize, never SignalEngine's raw "WAIT".
++        for ema50, ema200, rsi in [(100, 90, 65), (80, 90, 30), (100, 100.5, 65)]:
++            df = _make_indicator_df(ema50=ema50, ema200=ema200, rsi=rsi)
++            signal = generate_trading_signal(df, "TEST")
++            assert signal["signal"] in ("BUY", "SELL", "NO_TRADE")
+-- 
+2.43.0
+

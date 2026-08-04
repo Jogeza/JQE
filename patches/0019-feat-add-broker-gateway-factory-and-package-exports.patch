@@ -1,0 +1,210 @@
+From a49176434fc1c7c92c12b1102324673a05c9f682 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 17:09:33 +0000
+Subject: [PATCH 19/37] feat: add broker gateway factory and package exports
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+broker.factory.get_gateway(settings) is the single place that turns
+settings.broker into a concrete gateway instance — callers should
+depend on this, never on a concrete gateway class directly, so broker
+selection stays a configuration concern rather than a code-path one.
+Raises ConfigurationError for an unrecognized broker or missing
+required config (e.g. a Deriv token).
+
+broker/__init__.py re-exports BrokerGateway, get_gateway, and every
+DTO/enum as the package's public surface, with a docstring warning
+against importing a concrete gateway class or broker SDK from outside
+the package.
+
+6 tests covering each broker selection path and configuration-error
+cases.
+---
+ broker/__init__.py           | 50 ++++++++++++++++++++++++++++++++
+ broker/factory.py            | 56 ++++++++++++++++++++++++++++++++++++
+ tests/test_broker_factory.py | 52 +++++++++++++++++++++++++++++++++
+ 3 files changed, 158 insertions(+)
+ create mode 100644 broker/__init__.py
+ create mode 100644 broker/factory.py
+ create mode 100644 tests/test_broker_factory.py
+
+diff --git a/broker/__init__.py b/broker/__init__.py
+new file mode 100644
+index 0000000..9588d35
+--- /dev/null
++++ b/broker/__init__.py
+@@ -0,0 +1,50 @@
++"""The broker layer: a broker-agnostic gateway interface plus one
++implementation per supported broker.
++
++The Quant Core should only ever import from here:
++
++    >>> from broker import BrokerGateway, get_gateway
++    >>> gateway = get_gateway()  # implementation chosen by config.settings.broker
++
++Never import a concrete gateway class (``DerivGateway``, ``MT5Gateway``,
++``SimulationGateway``) or a broker SDK (``MetaTrader5``, ``websockets``)
++outside of this package — see docs/architecture.md, "Broker layer".
++"""
++
++from broker.base import BrokerGateway
++from broker.deriv_gateway import DerivGateway
++from broker.factory import get_gateway
++from broker.mt5_gateway import MT5Gateway
++from broker.simulation_gateway import SimulationGateway
++from broker.types import (
++    AccountInfo,
++    Candle,
++    OrderRequest,
++    OrderResult,
++    OrderSide,
++    OrderStatus,
++    OrderType,
++    Position,
++    Tick,
++    Timeframe,
++    TradeHistoryEntry,
++)
++
++__all__ = [
++    "AccountInfo",
++    "BrokerGateway",
++    "Candle",
++    "DerivGateway",
++    "MT5Gateway",
++    "OrderRequest",
++    "OrderResult",
++    "OrderSide",
++    "OrderStatus",
++    "OrderType",
++    "Position",
++    "SimulationGateway",
++    "Tick",
++    "Timeframe",
++    "TradeHistoryEntry",
++    "get_gateway",
++]
+diff --git a/broker/factory.py b/broker/factory.py
+new file mode 100644
+index 0000000..9965ae7
+--- /dev/null
++++ b/broker/factory.py
+@@ -0,0 +1,56 @@
++"""Selects and constructs the configured :class:`~broker.base.BrokerGateway`.
++
++This is the single place that knows how to turn ``settings.broker``
++into a concrete gateway instance. Callers (``main.py``, future API
++endpoints, tests) depend on :func:`get_gateway`, never on a concrete
++gateway class directly — that keeps broker selection a configuration
++concern, not a code-path concern.
++"""
++
++from __future__ import annotations
++
++from broker.base import BrokerGateway
++from broker.deriv_gateway import DerivGateway
++from broker.mt5_gateway import MT5Gateway
++from broker.simulation_gateway import SimulationGateway
++from config import Settings
++from config import settings as default_settings
++from core.exceptions import ConfigurationError
++
++
++def get_gateway(settings: Settings | None = None) -> BrokerGateway:
++    """Constructs the ``BrokerGateway`` implementation selected by configuration.
++
++    Args:
++        settings: Settings to read ``broker`` (and, for Deriv, the
++            ``deriv_*`` fields) from. Defaults to the shared
++            :data:`config.settings` instance.
++
++    Returns:
++        A gateway instance. Not yet connected — callers are
++        responsible for ``await gateway.connect()`` (or using it as an
++        ``async with`` context manager).
++
++    Raises:
++        core.exceptions.ConfigurationError: If ``settings.broker`` is
++            unrecognized, or required broker-specific configuration
++            (e.g. a Deriv API token) is missing.
++    """
++    settings = settings or default_settings
++
++    if settings.broker == "simulation":
++        return SimulationGateway(starting_balance=settings.account_balance)
++
++    if settings.broker == "deriv":
++        if not settings.deriv_api_token:
++            raise ConfigurationError("JQE_DERIV_API_TOKEN is required when JQE_BROKER=deriv")
++        return DerivGateway(
++            api_token=settings.deriv_api_token,
++            app_id=settings.deriv_app_id,
++            endpoint=settings.deriv_endpoint,
++        )
++
++    if settings.broker == "mt5":
++        return MT5Gateway()
++
++    raise ConfigurationError(f"Unknown broker: {settings.broker!r}")
+diff --git a/tests/test_broker_factory.py b/tests/test_broker_factory.py
+new file mode 100644
+index 0000000..cca873d
+--- /dev/null
++++ b/tests/test_broker_factory.py
+@@ -0,0 +1,52 @@
++"""Tests for broker.factory.get_gateway — broker selection by configuration."""
++
++from __future__ import annotations
++
++import pytest
++
++from broker.deriv_gateway import DerivGateway
++from broker.factory import get_gateway
++from broker.mt5_gateway import MT5Gateway
++from broker.simulation_gateway import SimulationGateway
++from config.settings import Settings
++from core.exceptions import ConfigurationError
++
++
++def _settings(**overrides: object) -> Settings:
++    return Settings(_env_file=None, **overrides)
++
++
++class TestGetGateway:
++    def test_defaults_to_simulation(self) -> None:
++        gateway = get_gateway(_settings())
++        assert isinstance(gateway, SimulationGateway)
++
++    def test_simulation_uses_configured_account_balance(self) -> None:
++        gateway = get_gateway(_settings(account_balance=2500.0))
++        assert isinstance(gateway, SimulationGateway)
++        assert gateway.starting_balance == 2500.0
++
++    def test_mt5_broker_returns_mt5_gateway(self) -> None:
++        gateway = get_gateway(_settings(broker="mt5"))
++        assert isinstance(gateway, MT5Gateway)
++
++    def test_deriv_broker_returns_deriv_gateway(self) -> None:
++        gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token"))
++        assert isinstance(gateway, DerivGateway)
++
++    def test_deriv_broker_without_token_raises(self) -> None:
++        with pytest.raises(ConfigurationError):
++            get_gateway(_settings(broker="deriv", deriv_api_token=None))
++
++    def test_deriv_gateway_uses_configured_app_id_and_endpoint(self) -> None:
++        gateway = get_gateway(
++            _settings(
++                broker="deriv",
++                deriv_api_token="test-token",
++                deriv_app_id="9999",
++                deriv_endpoint="wss://example.test/v3",
++            )
++        )
++        assert isinstance(gateway, DerivGateway)
++        assert gateway.app_id == "9999"
++        assert gateway.endpoint == "wss://example.test/v3"
+-- 
+2.43.0
+

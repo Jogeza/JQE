@@ -1,0 +1,510 @@
+From 063928dc9b024f451857c517477b4a09d3ba0119 Mon Sep 17 00:00:00 2001
+From: "JQE Chief Engineer (Claude)" <jqe-bot@example.com>
+Date: Sun, 2 Aug 2026 17:09:03 +0000
+Subject: [PATCH 13/37] feat: add BrokerGateway abstract interface and shared
+ DTOs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+broker/types.py defines the only shapes any gateway implementation may
+cross with: AccountInfo, Candle, Tick, OrderRequest, OrderResult,
+Position, TradeHistoryEntry (Pydantic models, validated + JSON-
+serializable for free), plus Timeframe/OrderSide/OrderType/OrderStatus
+enums. No implementation may leak a broker-native object (an MT5
+struct, a Deriv contract dict) past its own boundary.
+
+broker/base.py defines BrokerGateway: connect/disconnect/is_connected,
+get_account_info, get_candles, stream_ticks, submit_order,
+get_positions, get_trade_history, plus __aenter__/__aexit__ so
+'async with gateway:' always disconnects, even on error.
+
+The interface is async — tick streaming is inherently long-lived/I/O
+bound, Deriv's API is a WebSocket protocol, and the target stack
+already includes FastAPI (async-native). See docs/architecture.md,
+'Why the interface is async', for the full rationale including the
+one place this adds friction (MT5Gateway wrapping a sync SDK).
+
+Scope is deliberately read/connect services only, per the milestone
+instruction: submit_order performs no risk sizing or strategy
+validation — it exists because 'order submission interface' was a
+required capability, and executes exactly the request it's handed.
+
+Adds pyproject.toml (asyncio_mode = auto) so async test functions
+across the broker test suite run without per-test
+@pytest.mark.asyncio.
+---
+ broker/base.py             | 164 ++++++++++++++++++++++++++++++
+ broker/types.py            | 202 +++++++++++++++++++++++++++++++++++++
+ pyproject.toml             |   5 +
+ tests/test_broker_types.py |  66 ++++++++++++
+ 4 files changed, 437 insertions(+)
+ create mode 100644 broker/base.py
+ create mode 100644 broker/types.py
+ create mode 100644 pyproject.toml
+ create mode 100644 tests/test_broker_types.py
+
+diff --git a/broker/base.py b/broker/base.py
+new file mode 100644
+index 0000000..88b0538
+--- /dev/null
++++ b/broker/base.py
+@@ -0,0 +1,164 @@
++"""The broker-agnostic gateway interface the Quant Core depends on.
++
++Every concrete broker integration (:class:`~broker.deriv_gateway.DerivGateway`,
++:class:`~broker.mt5_gateway.MT5Gateway`,
++:class:`~broker.simulation_gateway.SimulationGateway`, and any future
++one — Binance, Interactive Brokers, ...) implements
++:class:`BrokerGateway`. Code outside the ``broker`` package should
++depend on this interface only, never on a concrete implementation or
++on a broker's native SDK/protocol — that's what keeps the Quant Core
++(market intelligence, strategy, risk, execution, analytics) free of
++broker-specific imports.
++
++Scope for this milestone ("Broker Foundation"): reliable read/connect
++services only — authentication, account info, market data (candles and
++ticks), a mechanical order-submission call, and position/history
++retrieval. Execution policy, strategy logic, and risk decisions are
++explicitly out of scope here; they consume this interface in later
++milestones.
++"""
++
++from __future__ import annotations
++
++from abc import ABC, abstractmethod
++from collections.abc import AsyncIterator
++from types import TracebackType
++from typing import Self
++
++from broker.types import (
++    AccountInfo,
++    Candle,
++    OrderRequest,
++    OrderResult,
++    Position,
++    Tick,
++    Timeframe,
++    TradeHistoryEntry,
++)
++
++
++class BrokerGateway(ABC):
++    """Abstract broker gateway. See module docstring for scope and intent."""
++
++    @abstractmethod
++    async def connect(self) -> None:
++        """Establishes and authenticates the connection to the broker.
++
++        Raises:
++            core.exceptions.BrokerConnectionError: If the connection
++                cannot be established.
++            core.exceptions.BrokerAuthenticationError: If the
++                connection succeeds but authentication fails.
++        """
++
++    @abstractmethod
++    async def disconnect(self) -> None:
++        """Closes the connection to the broker. Safe to call when not connected."""
++
++    @property
++    @abstractmethod
++    def is_connected(self) -> bool:
++        """Whether :meth:`connect` has succeeded and :meth:`disconnect` has not been called since."""
++
++    @abstractmethod
++    async def get_account_info(self) -> AccountInfo:
++        """Retrieves the current account balance and related account state.
++
++        Raises:
++            core.exceptions.BrokerConnectionError: If not connected, or
++                the broker call fails.
++        """
++
++    @abstractmethod
++    async def get_candles(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle]:
++        """Retrieves the most recent historical candles for a symbol.
++
++        Args:
++            symbol: Instrument symbol, in the broker-agnostic form this
++                gateway expects (each implementation documents its own
++                symbol conventions).
++            timeframe: Candle timeframe.
++            count: Number of candles to retrieve, most recent last.
++
++        Returns:
++            Candles ordered oldest to newest. May be shorter than
++            ``count`` if the broker has less history available.
++
++        Raises:
++            core.exceptions.MarketDataError: If candle data cannot be
++                retrieved.
++        """
++
++    @abstractmethod
++    def stream_ticks(self, symbol: str) -> AsyncIterator[Tick]:
++        """Streams live ticks for a symbol until the caller stops iterating.
++
++        Args:
++            symbol: Instrument symbol to subscribe to.
++
++        Returns:
++            An async iterator yielding :class:`~broker.types.Tick`
++            instances as they arrive. Stop consuming (e.g. break out of
++            an ``async for`` loop) to unsubscribe.
++
++        Raises:
++            core.exceptions.MarketDataError: If the subscription cannot
++                be established.
++        """
++
++    @abstractmethod
++    async def submit_order(self, order: OrderRequest) -> OrderResult:
++        """Mechanically submits an order to the broker.
++
++        This performs no risk checks, no position sizing, and no
++        strategy validation — it is the broker-facing "send this exact
++        order" primitive that later Risk/Execution Engine milestones
++        will call after making those decisions.
++
++        Args:
++            order: The order to submit.
++
++        Returns:
++            The result of the submission — filled, rejected, or
++            (for brokers that support it) pending.
++
++        Raises:
++            core.exceptions.ExecutionError: If the order cannot be
++                submitted at all (as opposed to being rejected by the
++                broker, which is reported via ``OrderResult.status``).
++        """
++
++    @abstractmethod
++    async def get_positions(self) -> list[Position]:
++        """Retrieves currently open positions/contracts.
++
++        Raises:
++            core.exceptions.BrokerConnectionError: If not connected, or
++                the broker call fails.
++        """
++
++    @abstractmethod
++    async def get_trade_history(self, count: int = 100) -> list[TradeHistoryEntry]:
++        """Retrieves recently closed trades, most recent last.
++
++        Args:
++            count: Maximum number of trades to retrieve.
++
++        Raises:
++            core.exceptions.BrokerConnectionError: If not connected, or
++                the broker call fails.
++        """
++
++    async def __aenter__(self) -> Self:
++        """Connects on entering an ``async with`` block."""
++        await self.connect()
++        return self
++
++    async def __aexit__(
++        self,
++        exc_type: type[BaseException] | None,
++        exc_value: BaseException | None,
++        traceback: TracebackType | None,
++    ) -> None:
++        """Disconnects on leaving an ``async with`` block, even on error."""
++        await self.disconnect()
+diff --git a/broker/types.py b/broker/types.py
+new file mode 100644
+index 0000000..a3b5279
+--- /dev/null
++++ b/broker/types.py
+@@ -0,0 +1,202 @@
++"""Broker-agnostic domain types shared by every :class:`~broker.base.BrokerGateway`
++implementation.
++
++These are the only shapes the Quant Core is ever meant to see — no
++implementation (:mod:`broker.deriv_gateway`, :mod:`broker.mt5_gateway`,
++:mod:`broker.simulation_gateway`) exposes broker-native objects (an MT5
++``TradeRequest`` struct, a Deriv ``contract`` dict, ...) past its own
++boundary. Every gateway method takes and returns these Pydantic models,
++so downstream code depends on one stable contract regardless of which
++broker is configured.
++"""
++
++from __future__ import annotations
++
++from datetime import datetime
++from enum import Enum
++from typing import Any
++
++from pydantic import BaseModel, Field
++
++
++class Timeframe(str, Enum):
++    """A broker-agnostic candle timeframe.
++
++    Each :class:`~broker.base.BrokerGateway` implementation maps these
++    to its own native representation (MT5's ``TIMEFRAME_*`` constants,
++    Deriv's granularity-in-seconds, ...).
++    """
++
++    M1 = "M1"
++    M5 = "M5"
++    M15 = "M15"
++    M30 = "M30"
++    H1 = "H1"
++    H4 = "H4"
++    D1 = "D1"
++
++
++#: Seconds per candle for each timeframe — used by gateways whose native
++#: API expresses granularity in seconds (e.g. Deriv's ``ticks_history``).
++TIMEFRAME_SECONDS: dict[Timeframe, int] = {
++    Timeframe.M1: 60,
++    Timeframe.M5: 300,
++    Timeframe.M15: 900,
++    Timeframe.M30: 1800,
++    Timeframe.H1: 3600,
++    Timeframe.H4: 14400,
++    Timeframe.D1: 86400,
++}
++
++
++class OrderSide(str, Enum):
++    """Direction of an order or position."""
++
++    BUY = "BUY"
++    SELL = "SELL"
++
++
++class OrderType(str, Enum):
++    """Order execution type.
++
++    Only ``MARKET`` is supported at this stage — this milestone builds
++    the gateway's mechanical order-submission capability only, not an
++    execution engine with pending/limit order strategies. Extend this
++    enum when that becomes real scope.
++    """
++
++    MARKET = "MARKET"
++
++
++class OrderStatus(str, Enum):
++    """Outcome of a submitted order."""
++
++    SUBMITTED = "SUBMITTED"
++    FILLED = "FILLED"
++    REJECTED = "REJECTED"
++
++
++class AccountInfo(BaseModel):
++    """Broker account snapshot.
++
++    Attributes:
++        account_id: Broker-assigned account/login identifier.
++        balance: Cash balance, in ``currency``.
++        currency: ISO-ish currency code (e.g. ``"USD"``).
++        equity: Balance plus floating P/L of open positions, if the
++            broker reports it separately from balance.
++        leverage: Account leverage ratio, if applicable to this broker.
++    """
++
++    account_id: str
++    balance: float
++    currency: str
++    equity: float | None = None
++    leverage: float | None = None
++
++
++class Candle(BaseModel):
++    """One OHLC(V) candle."""
++
++    time: datetime
++    open: float
++    high: float
++    low: float
++    close: float
++    volume: float = 0.0
++
++
++class Tick(BaseModel):
++    """One live price update for a symbol."""
++
++    time: datetime
++    symbol: str
++    bid: float
++    ask: float
++    last: float | None = None
++
++
++class OrderRequest(BaseModel):
++    """A mechanical instruction to submit an order to the broker.
++
++    This is intentionally minimal: no risk sizing, no strategy
++    rationale, no trade-management policy. Those are the concern of
++    later milestones (Risk Engine, Execution Engine) — a
++    :class:`~broker.base.BrokerGateway` only ever executes the request
++    it's handed.
++
++    Attributes:
++        symbol: Instrument symbol, in the broker-agnostic form the
++            caller uses (each gateway resolves it to the broker's
++            native symbol internally).
++        side: Direction of the order.
++        volume: Position size. Units are broker-specific (MT5 lots,
++            Deriv stake amount, ...) — callers targeting multiple
++            brokers must account for this until a unified sizing
++            concept exists (tracked for the Risk Engine milestone).
++        order_type: Execution type. Only ``MARKET`` is currently
++            supported.
++        stop_loss: Absolute stop-loss price, if any.
++        take_profit: Absolute take-profit price, if any.
++    """
++
++    symbol: str
++    side: OrderSide
++    volume: float = Field(gt=0)
++    order_type: OrderType = OrderType.MARKET
++    stop_loss: float | None = None
++    take_profit: float | None = None
++
++
++class OrderResult(BaseModel):
++    """Outcome of a submitted order.
++
++    Attributes:
++        order_id: Broker-assigned identifier for the resulting order or
++            contract. Empty string if the order was rejected before one
++            was assigned.
++        status: Whether the order filled, was rejected, or is pending.
++        symbol: Echoes the request's symbol.
++        side: Echoes the request's side.
++        volume: Echoes the request's volume.
++        filled_price: Execution price, if filled.
++        raw: The broker's raw response payload, for debugging —
++            never relied upon by calling code for control flow.
++    """
++
++    order_id: str
++    status: OrderStatus
++    symbol: str
++    side: OrderSide
++    volume: float
++    filled_price: float | None = None
++    raw: dict[str, Any] = Field(default_factory=dict)
++
++
++class Position(BaseModel):
++    """An open position/contract."""
++
++    position_id: str
++    symbol: str
++    side: OrderSide
++    volume: float
++    open_price: float
++    current_price: float | None = None
++    profit: float | None = None
++    stop_loss: float | None = None
++    take_profit: float | None = None
++    opened_at: datetime | None = None
++
++
++class TradeHistoryEntry(BaseModel):
++    """A single closed, historical trade."""
++
++    trade_id: str
++    symbol: str
++    side: OrderSide
++    volume: float
++    open_price: float
++    close_price: float
++    profit: float
++    opened_at: datetime
++    closed_at: datetime
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..8ae9904
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,5 @@
++[tool.pytest.ini_options]
++# broker/ tests use `async def test_...` directly (no per-test
++# @pytest.mark.asyncio needed) now that the broker layer's async
++# BrokerGateway interface requires async test functions.
++asyncio_mode = "auto"
+diff --git a/tests/test_broker_types.py b/tests/test_broker_types.py
+new file mode 100644
+index 0000000..8f96022
+--- /dev/null
++++ b/tests/test_broker_types.py
+@@ -0,0 +1,66 @@
++"""Tests for broker.types — the broker-agnostic DTOs and enums."""
++
++from __future__ import annotations
++
++from datetime import datetime, timezone
++
++import pytest
++from pydantic import ValidationError
++
++from broker.types import (
++    TIMEFRAME_SECONDS,
++    AccountInfo,
++    Candle,
++    OrderRequest,
++    OrderSide,
++    OrderStatus,
++    OrderType,
++    Timeframe,
++)
++
++
++class TestTimeframeSeconds:
++    def test_every_timeframe_has_a_seconds_mapping(self) -> None:
++        for timeframe in Timeframe:
++            assert timeframe in TIMEFRAME_SECONDS
++
++    def test_seconds_increase_with_timeframe_size(self) -> None:
++        assert TIMEFRAME_SECONDS[Timeframe.M1] < TIMEFRAME_SECONDS[Timeframe.M5]
++        assert TIMEFRAME_SECONDS[Timeframe.M5] < TIMEFRAME_SECONDS[Timeframe.H1]
++        assert TIMEFRAME_SECONDS[Timeframe.H1] < TIMEFRAME_SECONDS[Timeframe.D1]
++
++
++class TestOrderRequest:
++    def test_valid_order_constructs(self) -> None:
++        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
++        assert order.order_type is OrderType.MARKET
++        assert order.stop_loss is None
++
++    def test_zero_volume_rejected(self) -> None:
++        with pytest.raises(ValidationError):
++            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0)
++
++    def test_negative_volume_rejected(self) -> None:
++        with pytest.raises(ValidationError):
++            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=-1)
++
++
++class TestAccountInfo:
++    def test_optional_fields_default_to_none(self) -> None:
++        account = AccountInfo(account_id="123", balance=1000.0, currency="USD")
++        assert account.equity is None
++        assert account.leverage is None
++
++
++class TestCandle:
++    def test_volume_defaults_to_zero(self) -> None:
++        candle = Candle(time=datetime.now(timezone.utc), open=1.0, high=1.5, low=0.5, close=1.2)
++        assert candle.volume == 0.0
++
++
++class TestOrderStatusAndSide:
++    def test_order_status_values(self) -> None:
++        assert {status.value for status in OrderStatus} == {"SUBMITTED", "FILLED", "REJECTED"}
++
++    def test_order_side_values(self) -> None:
++        assert {side.value for side in OrderSide} == {"BUY", "SELL"}
+-- 
+2.43.0
+
