@@ -46,16 +46,39 @@ class JQEEngine:
         scanner = MarketScanner(symbols)
         return scanner.scan()
 
-    def evaluate_trade(self, signal: Any, score: Any, risk: Any) -> Any:
+    def evaluate_trade(
+        self,
+        signal: Any,
+        score: Any,
+        risk: Any,
+        market_data: Any = None,
+        symbol: str = "UNKNOWN",
+    ) -> Any:
         """Evaluates a candidate trade through the decision pipeline.
+
+        All arguments are explicit and named — the previous
+        ``decide(*args)`` positional sniffing has been removed.  Every
+        supplied value is forwarded to the pipeline and appears in the
+        returned decision dict (as ``signal_input``, ``score_input``,
+        ``risk_input``) so callers can verify the values were consumed.
 
         Args:
             signal: Strategy signal payload.
             score: Signal confidence/score payload.
             risk: Risk context payload.
+            market_data: Optional raw market data; if provided, the
+                pipeline runs a full analysis rather than working from
+                the pre-computed ``signal`` alone.
+            symbol: Instrument symbol, for logging/context.
 
         Returns:
-            The pipeline's decision. See
-            :class:`core.decision_pipeline.DecisionPipeline`.
+            The pipeline's decision dict. See
+            :class:`core.decision_pipeline.DecisionPipeline.decide`.
         """
-        return self.pipeline.decide(signal, score, risk)
+        return self.pipeline.decide(
+            signal=signal,
+            score=score,
+            risk=risk,
+            market_data=market_data,
+            symbol=symbol,
+        )

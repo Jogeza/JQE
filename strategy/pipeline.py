@@ -121,7 +121,8 @@ def generate_trading_signal(
     if "ATR" not in df.columns:
         raise KeyError("calculate_indicators() output is required (missing ATR column)")
 
-    aliased = df.rename(columns=_INDICATOR_COLUMN_ALIASES)
+    rename_map = {k: v for k, v in _INDICATOR_COLUMN_ALIASES.items() if v not in df.columns}
+    aliased = df.rename(columns=rename_map)
     intelligence = FeatureEngine().analyze(aliased)
 
     raw_regime = regime if regime is not None else detect_regime(df)

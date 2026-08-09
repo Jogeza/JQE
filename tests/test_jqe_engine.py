@@ -41,7 +41,13 @@ class TestJQEEngineDelegation:
         engine.pipeline = MagicMock()
         engine.pipeline.decide.return_value = {"approved": True}
 
-        result = engine.evaluate_trade("signal", "score", "risk")
+        result = engine.evaluate_trade(signal="signal", score="score", risk="risk")
 
-        engine.pipeline.decide.assert_called_once_with("signal", "score", "risk")
+        engine.pipeline.decide.assert_called_once_with(
+            signal="signal",
+            score="score",
+            risk="risk",
+            market_data=None,
+            symbol="UNKNOWN",
+        )
         assert result == {"approved": True}

@@ -6,20 +6,8 @@ Generates trading intelligence.
 """
 
 
-from strategy.features.market_regime import MarketRegime
-
-
-
-
 
 class FeatureEngine:
-
-
-
-    def __init__(self):
-
-        self.regime_engine = MarketRegime()
-
 
 
 
@@ -127,16 +115,6 @@ class FeatureEngine:
 
 
 
-
-        #
-        # REGIME
-        #
-
-        features["regime"] = self.regime_engine.analyze(
-
-            features
-
-        )
 
 
 

@@ -10,6 +10,6 @@ one implementation, re-exported at the old path so existing call sites
 don't need to change.
 """
 
-from intelligence.market_regime import detect_regime
+from intelligence.market_regime import detect_legacy_regime as detect_regime
 
 __all__ = ["detect_regime"]

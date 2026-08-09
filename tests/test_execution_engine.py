@@ -18,7 +18,9 @@ def test_execution_flow():
         order_manager=order_manager,
         position_manager=position_manager,
         symbol="XAUUSD",
-        price=4045.50
+        price=4045.50,
+        stop_loss=4035.0,
+        take_profit=4065.0
     )
 
 

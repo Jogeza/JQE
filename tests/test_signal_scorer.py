@@ -1,14 +1,10 @@
 from data.historical_data import HistoricalData
 
-from strategy.features.indicators import Indicators
-
 from strategy.features.feature_engine import FeatureEngine
-
-from strategy.features.market_regime import MarketRegime
-
-from strategy.signal_engine import SignalEngine
-
+from intelligence.market_regime import detect_regime
+from core.indicators import calculate_indicators
 from strategy.scoring.signal_scorer import SignalScorer
+from strategy.signal_engine import SignalEngine
 
 
 
@@ -22,9 +18,7 @@ data = database.load(
 
 
 
-data = Indicators.add_all(
-    data
-)
+data = calculate_indicators(data)
 
 
 
@@ -36,15 +30,7 @@ intelligence = feature_engine.analyze(
 )
 
 
-
-regime = MarketRegime()
-
-
-intelligence["regime"] = (
-    regime.detect(
-        intelligence
-    )
-)
+intelligence["regime"] = detect_regime(data)
 
 
 
