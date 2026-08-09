@@ -36,4 +36,9 @@ dist/
 .DS_Store
 Thumbs.db
 
-data/
+# Local market data
+data/storage/symbols/
+
+# Python cache
+__pycache__/
+*.py[cod]
