@@ -41,7 +41,7 @@ alembic
 
 # --- Testing & tooling --------------------------------------------
 pytest
-pytest-asyncio   # broker/ tests use async def test_... directly
+pytest-asyncio>=0.21.0   # broker/ tests use async def test_... directly
 pytest-cov
 black
 ruff
