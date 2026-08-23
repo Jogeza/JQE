@@ -180,19 +180,21 @@ implement it; the Quant Core never imports a broker SDK directly. See
   Milestone 2b/Broker Foundation debt) if that pathway is formally
   deprecated rather than fixed.
 
-## ⏳ Phase 4 — Risk Engine
+## ✅ Phase 4 — Risk Engine
 
-* Consolidate `risk/risk_controller.py`, `risk/risk_manager.py`,
-  `risk/dynamic_risk.py`, `risk/position_sizing.py` into
-  `risk/risk_engine.py` + `risk/position_sizing.py`.
-* Build `risk/drawdown_manager.py`, `risk/exposure_manager.py` (new).
-* Dynamic position sizing (balance, equity, drawdown, volatility,
-  confidence, prior performance) — no fixed lot sizes.
+* Consolidated `risk/risk_controller.py`, `risk/risk_manager.py`,
+  `risk/dynamic_risk.py`, `risk/position_sizing.py` into unified
+  `risk/risk_engine.py` (`RiskEngine`) and `risk/position_sizing.py` (`PositionSizing`).
+* Institutional position sizing based on risk capital, stop distance, and lot bounds.
+* Daily loss and trade count limit enforcement tracking.
+* Backward-compatible functional interface maintained in `risk/risk_controller.py`.
+* 6 new tests in `tests/test_risk_engine.py` covering RiskEngine and PositionSizing limits and bounds.
 
-## ⏳ Phase 5 — Strategy Engine
+## 🔜 Phase 5 — Strategy Engine
 
 * Rebuild `strategy/strategy_engine.py`/`signal_generator.py` against
-  Phase 3's actual confidence-model output shape.
+  Phase 3's actual confidence-model output shape and `min_confidence_threshold`.
+* Wire `ConfidenceModel` into the canonical `strategy/pipeline.py` signal path.
 
 ## ⏳ Phase 6 — Execution & Trade Management
 
