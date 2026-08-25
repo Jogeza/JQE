@@ -23,6 +23,7 @@ from broker.types import OrderRequest, OrderSide, OrderStatus, Timeframe
 from core.exceptions import (
     BrokerAuthenticationError,
     BrokerConnectionError,
+    ExecutionError,
     MarketDataError,
 )
 
@@ -36,8 +37,11 @@ class FakeDerivConnection:
     attached — mirroring how the read loop correlates real responses.
     """
 
-    def __init__(self, responses: dict[str, dict[str, Any]]) -> None:
+    def __init__(
+        self, responses: dict[str, dict[str, Any]], ignore_requests: set[str] | None = None
+    ) -> None:
         self._responses = responses
+        self._ignore_requests = ignore_requests or set()
         self._incoming: asyncio.Queue[str] = asyncio.Queue()
         self.sent: list[dict[str, Any]] = []
         self.closed = False
@@ -46,6 +50,8 @@ class FakeDerivConnection:
         message = json.loads(raw_message)
         self.sent.append(message)
         request_type = next(key for key in message if key != "req_id")
+        if request_type in self._ignore_requests:
+            return
         response = dict(
             self._responses.get(request_type, {"error": {"message": "unscripted request"}})
         )
@@ -204,6 +210,19 @@ class TestSubmitOrder:
         assert result.status is OrderStatus.REJECTED
         await gateway.disconnect()
 
+    async def test_proposal_error_raises_execution_error(self) -> None:
+        gateway, fake_connection = _connected_gateway(
+            {
+                "proposal": {"error": {"message": "ContractNotAvailable"}},
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        with pytest.raises(ExecutionError, match="Deriv proposal request failed"):
+            await gateway.submit_order(
+                OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+            )
+        await gateway.disconnect()
+
 
 class TestGetPositions:
     async def test_maps_portfolio_contracts(self) -> None:
@@ -229,4 +248,250 @@ class TestGetPositions:
         positions = await gateway.get_positions()
         assert len(positions) == 1
         assert positions[0].side is OrderSide.BUY
+        await gateway.disconnect()
+
+    async def test_portfolio_error_raises_broker_connection_error(self) -> None:
+        gateway, fake_connection = _connected_gateway(
+            {
+                "portfolio": {"error": {"message": "ServerError"}},
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        with pytest.raises(BrokerConnectionError, match="Failed to retrieve Deriv portfolio"):
+            await gateway.get_positions()
+        await gateway.disconnect()
+
+
+class TestRequestTimeout:
+    async def test_request_timeout_raises_broker_connection_error(self) -> None:
+        fake_connection = FakeDerivConnection(
+            {"authorize": {"authorize": {"loginid": "CR12345", "currency": "USD"}}},
+            ignore_requests={"balance"},
+        )
+        gateway = DerivGateway(api_token="test-token", app_id="1089", request_timeout=0.05)
+        await _connect_with_fake(gateway, fake_connection)
+
+        with pytest.raises(BrokerConnectionError, match="timed out"):
+            await gateway.get_account_info()
+        await gateway.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Helper: build a minimal valid profit_table transaction dict
+# ---------------------------------------------------------------------------
+
+def _txn(
+    *,
+    contract_id: int = 1001,
+    symbol: str = "R_100",
+    buy_price: float = 10.0,
+    sell_price: float = 8.0,
+    profit: float = -2.0,
+    purchase_time: int | None = 1_700_000_000,
+    sell_time: int | None = 1_700_003_600,
+) -> dict:
+    result: dict = {
+        "symbol": symbol,
+        "buy_price": buy_price,
+        "sell_price": sell_price,
+        "profit": profit,
+    }
+    if contract_id is not None:
+        result["contract_id"] = contract_id
+    if purchase_time is not None:
+        result["purchase_time"] = purchase_time
+    if sell_time is not None:
+        result["sell_time"] = sell_time
+    return result
+
+
+class TestGetTradeHistory:
+    """Tests for DerivGateway.get_trade_history timestamp and ID hardening."""
+
+    async def test_missing_sell_time_record_is_skipped(self) -> None:
+        """Test 8: A record with no sell_time must be silently skipped —
+        NOT converted to datetime.now() which would corrupt reconciliation."""
+        import datetime as _dt
+
+        gateway, fake_connection = _connected_gateway(
+            {
+                "profit_table": {
+                    "profit_table": {
+                        "transactions": [_txn(contract_id=1, sell_time=None)]
+                    }
+                }
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        # The record must be excluded — not present with today's date.
+        assert result == [], (
+            "Records with missing sell_time must be excluded, not assigned datetime.now()"
+        )
+        await gateway.disconnect()
+
+    async def test_missing_contract_id_record_is_skipped(self) -> None:
+        """Test 11 (stable ID): A malformed record with no contract_id must
+        be skipped, not assigned an empty string trade_id."""
+        gateway, fake_connection = _connected_gateway(
+            {
+                "profit_table": {
+                    "profit_table": {
+                        "transactions": [_txn(contract_id=None)]
+                    }
+                }
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        assert result == [], "Records with missing contract_id must be excluded"
+        await gateway.disconnect()
+
+    async def test_valid_sell_time_is_mapped_correctly(self) -> None:
+        """Test 9: A valid sell_time epoch is correctly converted to a UTC datetime."""
+        import datetime as _dt
+
+        sell_epoch = 1_700_010_000  # a fixed known timestamp
+        expected_closed_at = _dt.datetime.fromtimestamp(sell_epoch, tz=_dt.timezone.utc)
+
+        gateway, fake_connection = _connected_gateway(
+            {
+                "profit_table": {
+                    "profit_table": {
+                        "transactions": [_txn(contract_id=42, sell_time=sell_epoch)]
+                    }
+                }
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        assert len(result) == 1
+        assert result[0].closed_at == expected_closed_at, (
+            f"closed_at must be {expected_closed_at}, got {result[0].closed_at}"
+        )
+        await gateway.disconnect()
+
+    async def test_trade_id_is_stable_contract_id(self) -> None:
+        """Test 11: trade_id must be str(contract_id) — stable across API calls."""
+        gateway, fake_connection = _connected_gateway(
+            {
+                "profit_table": {
+                    "profit_table": {
+                        "transactions": [_txn(contract_id=99999)]
+                    }
+                }
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        assert len(result) == 1
+        assert result[0].trade_id == "99999"
+        await gateway.disconnect()
+
+    async def test_records_with_old_sell_time_excluded_by_reconciliation(self) -> None:
+        """Test 12: Historical contracts (non-today sell_time) produce entries
+        with a past closed_at date that reconciliation correctly excludes.
+        The gateway itself returns them — the date filter lives in RiskEngine."""
+        import datetime as _dt
+
+        # A sell_time clearly in the past (2023)
+        old_epoch = 1_672_531_200   # 2023-01-01 00:00:00 UTC
+        today_epoch = int(_dt.datetime.now(_dt.timezone.utc).timestamp())
+
+        gateway, fake_connection = _connected_gateway(
+            {
+                "profit_table": {
+                    "profit_table": {
+                        "transactions": [
+                            _txn(contract_id=1, sell_time=old_epoch, profit=-5.0),
+                            _txn(contract_id=2, sell_time=today_epoch, profit=-10.0),
+                        ]
+                    }
+                }
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        # Gateway returns both — reconciliation filters later.
+        assert len(result) == 2
+
+        # Verify the old one has a past date, not today's date.
+        today = _dt.datetime.now(_dt.timezone.utc).date()
+        old_entry = next(e for e in result if e.trade_id == "1")
+        today_entry = next(e for e in result if e.trade_id == "2")
+
+        assert old_entry.closed_at.date() < today, (
+            "Old sell_time must map to a past date, not today's date"
+        )
+        assert today_entry.closed_at.date() == today
+
+        await gateway.disconnect()
+
+    async def test_profit_table_request_does_not_include_unverified_date_from(
+        self,
+    ) -> None:
+        """Test 10: The profit_table request must NOT include a date_from parameter
+        because the Deriv API contract does not document it and adding an
+        unverified parameter could cause silent failures or unexpected behavior."""
+        gateway, fake_connection = _connected_gateway(
+            {"profit_table": {"profit_table": {"transactions": []}}}
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        await gateway.get_trade_history()
+
+        pt_request = next(
+            (m for m in fake_connection.sent if "profit_table" in m), None
+        )
+        assert pt_request is not None, "profit_table request must be sent"
+        assert "date_from" not in pt_request, (
+            "date_from must NOT be included — it is not verified against "
+            "the Deriv API contract and its behavior is undefined"
+        )
+        await gateway.disconnect()
+
+    async def test_profit_table_request_sends_sort_desc(self) -> None:
+        """Test 10 (continued): The request should include sort=DESC to get
+        the most recent contracts first, ensuring the count cap covers today."""
+        gateway, fake_connection = _connected_gateway(
+            {"profit_table": {"profit_table": {"transactions": []}}}
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        await gateway.get_trade_history(count=50)
+
+        pt_request = next(
+            (m for m in fake_connection.sent if "profit_table" in m), None
+        )
+        assert pt_request is not None
+        assert pt_request.get("sort") == "DESC", (
+            "sort=DESC ensures newest contracts are fetched first so that "
+            "today's records are included when count is reached"
+        )
+        assert pt_request.get("limit") == 50
+        await gateway.disconnect()
+
+    async def test_missing_purchase_time_falls_back_to_sell_time(self) -> None:
+        """Missing purchase_time should not cause a skip — sell_time is used
+        as the opened_at fallback. closed_at must still be the sell_time."""
+        import datetime as _dt
+
+        sell_epoch = 1_700_020_000
+        expected_dt = _dt.datetime.fromtimestamp(sell_epoch, tz=_dt.timezone.utc)
+
+        txn = _txn(contract_id=77, sell_time=sell_epoch, purchase_time=None)
+        gateway, fake_connection = _connected_gateway(
+            {"profit_table": {"profit_table": {"transactions": [txn]}}}
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.get_trade_history()
+
+        assert len(result) == 1, "Missing purchase_time alone must not skip the record"
+        assert result[0].closed_at == expected_dt
+        assert result[0].opened_at == expected_dt, (
+            "opened_at should fall back to sell_time when purchase_time is absent"
+        )
         await gateway.disconnect()

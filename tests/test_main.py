@@ -28,6 +28,7 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
     gateway.get_account_info = AsyncMock(
         return_value=AccountInfo(account_id="TEST", balance=balance, currency="USD")
     )
+    gateway.get_trade_history = AsyncMock(return_value=[])
     gateway.submit_order = AsyncMock(
         return_value=OrderResult(
             order_id="TEST-1",
@@ -50,6 +51,7 @@ def _valid_candle() -> MagicMock:
         "low": 1.0,
         "close": 1.0,
         "volume": 1.0,
+        "ATR_14": 1.0,
     }
     return candle
 
@@ -112,7 +114,7 @@ class TestRunSignalRiskExecution:
             "quality": "HIGH",
             "score": 95,
             "reasons": [],
-            "intelligence": {},
+            "intelligence": {"atr": 1.0},
         }
         mock_approve_trade.return_value = {
             "approved": True,
@@ -128,7 +130,7 @@ class TestRunSignalRiskExecution:
         submitted_order = gateway.submit_order.call_args[0][0]
         assert submitted_order.symbol == "XAUUSD"
         assert submitted_order.side is OrderSide.BUY
-        assert submitted_order.volume == 0.05
+        assert submitted_order.volume == 2.5
 
     @patch("main.approve_trade")
     @patch("main.generate_trading_signal")
@@ -151,7 +153,7 @@ class TestRunSignalRiskExecution:
             "quality": "POOR",
             "score": 0,
             "reasons": [],
-            "intelligence": {},
+            "intelligence": {"atr": 1.0},
         }
         mock_approve_trade.return_value = {
             "approved": False,
@@ -185,7 +187,7 @@ class TestRunSignalRiskExecution:
             "quality": "HIGH",
             "score": 95,
             "reasons": [],
-            "intelligence": {},
+            "intelligence": {"atr": 1.0},
         }
         mock_approve_trade.return_value = {
             "approved": False,

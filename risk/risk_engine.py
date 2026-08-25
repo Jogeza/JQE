@@ -69,6 +69,27 @@ class RiskEngine:
         self._daily_trades_count = 0
         self._daily_realized_loss_percent = 0.0
 
+    def reconcile_daily_history(self, trades: list[Any], balance: float) -> None:
+        """Rebuilds daily state statelessly from the broker's closed-trade history.
+
+        Args:
+            trades: A list of broker.types.TradeHistoryEntry objects.
+            balance: The current account balance to compute loss percentages.
+        """
+        from datetime import datetime, timezone
+
+        self.reset_daily_stats()
+        today = datetime.now(timezone.utc).date()
+
+        for trade in trades:
+            if getattr(trade, "closed_at").date() == today:
+                self.record_trade_execution()
+
+                profit = getattr(trade, "profit", 0.0)
+                if profit < 0:
+                    loss_percent = (abs(profit) / balance) * 100
+                    self.record_loss(loss_percent)
+
     def evaluate_limits(self) -> tuple[bool, str]:
         """Checks daily exposure and trade frequency limits.
 

@@ -31,8 +31,8 @@ from core.exceptions import JQEError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
-from execution.simulator import calculate_stop_target
-from risk.risk_controller import approve_trade
+from intelligence.trade_plan import TradePlanBuilder
+from risk.risk_controller import approve_trade, reconcile_daily_history
 from strategy.pipeline import generate_trading_signal
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
@@ -84,10 +84,14 @@ async def run() -> None:
         logger.info("Trading signal: {}", signal)
 
         account = await gateway.get_account_info()
+        trades = await gateway.get_trade_history(count=500)
+        reconcile_daily_history(trades, balance=account.balance)
+
         risk_decision = approve_trade(
             {"signal": signal["signal"], "confidence": signal["confidence"]},
             df,
             balance=account.balance,
+            enforce_limits=True,
         )
         logger.info("Risk decision: {}", risk_decision)
 
@@ -96,13 +100,35 @@ async def run() -> None:
             return
 
         latest = df.iloc[-1]
-        stop, target = calculate_stop_target(latest["close"], latest["ATR"], signal["signal"])
-        order = OrderRequest(
+        builder = TradePlanBuilder(atr_sl_multiplier=2.0, target_rr=2.0)
+
+        # Fallback to df for intelligence if missing ATR
+        intelligence = signal.get("intelligence", {})
+        if "atr" not in intelligence and "ATR" not in intelligence and "ATR_14" not in intelligence:
+            intelligence["atr"] = latest.get("ATR", latest.get("ATR_14"))
+
+        plan = builder.build(
             symbol=settings.default_symbol,
-            side=_SIDE_BY_SIGNAL[signal["signal"]],
-            volume=risk_decision["lot_size"],
-            stop_loss=stop,
-            take_profit=target,
+            intelligence=intelligence,
+            signal_dict=signal,
+            price=latest["close"],
+            account_balance=account.balance,
+            risk_percent=risk_decision["risk_percent"],
+        )
+
+        if not plan.is_valid():
+            logger.info(
+                "Cycle complete — Trade plan invalid: {}",
+                ", ".join(plan.warnings) if plan.warnings else plan.invalidation,
+            )
+            return
+
+        order = OrderRequest(
+            symbol=plan.symbol,
+            side=_SIDE_BY_SIGNAL[plan.signal],
+            volume=plan.position_size,
+            stop_loss=plan.stop_loss,
+            take_profit=plan.take_profit,
         )
         result = await gateway.submit_order(order)
         logger.info("Order result: {}", result)

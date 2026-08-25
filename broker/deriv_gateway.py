@@ -283,7 +283,16 @@ class DerivGateway(BrokerGateway):
 
     async def get_trade_history(self, count: int = 100) -> list[TradeHistoryEntry]:
         self._require_connected()
-        response = await self._request({"profit_table": 1, "limit": count})
+        # NOTE: The Deriv profit_table API is documented at
+        # https://developers.deriv.com/docs/profit_table. The API
+        # supports a "limit" parameter but does NOT document a
+        # date_from/date_to filter as of this implementation.
+        # We intentionally do NOT add an unverified parameter.
+        # Reconciliation uses closed_at (derived from sell_time) to
+        # filter records to today — records with missing or invalid
+        # sell_time are excluded rather than silently assigned a
+        # synthetic timestamp (see guard below).
+        response = await self._request({"profit_table": 1, "limit": count, "sort": "DESC"})
         if response.get("error"):
             raise BrokerConnectionError(
                 "Failed to retrieve Deriv trade history", reason=response["error"].get("message")
@@ -292,9 +301,41 @@ class DerivGateway(BrokerGateway):
         for txn in response.get("profit_table", {}).get("transactions", []):
             buy_price = float(txn.get("buy_price", 0.0))
             sell_price = float(txn.get("sell_price", 0.0))
+
+            # contract_id is the canonical Deriv identifier for a closed
+            # contract. It is stable across API calls and must exist for
+            # every entry in profit_table. If it is absent the record is
+            # malformed and we skip it with a warning.
+            raw_contract_id = txn.get("contract_id")
+            if not raw_contract_id:
+                logger.warning(
+                    "DerivGateway: profit_table entry missing contract_id — skipping: {}",
+                    txn,
+                )
+                continue
+
+            # sell_time is the Unix epoch of the contract's close. If it
+            # is absent we MUST NOT fall back to datetime.now() — that
+            # would assign today's date to an unknown historical record
+            # and corrupt daily risk reconciliation. Skip instead.
+            raw_sell_time = txn.get("sell_time")
+            if not raw_sell_time:
+                logger.warning(
+                    "DerivGateway: profit_table entry for contract_id={} has no"
+                    " sell_time — skipping to avoid assigning a synthetic close"
+                    " timestamp",
+                    raw_contract_id,
+                )
+                continue
+
+            # purchase_time should always accompany sell_time. If it is
+            # absent we use sell_time as a safe approximation (it does
+            # not affect reconciliation, which only uses closed_at).
+            raw_purchase_time = txn.get("purchase_time") or raw_sell_time
+
             entries.append(
                 TradeHistoryEntry(
-                    trade_id=str(txn.get("contract_id") or txn.get("transaction_id") or ""),
+                    trade_id=str(raw_contract_id),
                     symbol=str(txn.get("symbol") or txn.get("shortcode", "")),
                     # NOTE: Deriv's profit_table doesn't directly report
                     # BUY/SELL — approximated from price movement. See
@@ -304,16 +345,8 @@ class DerivGateway(BrokerGateway):
                     open_price=buy_price,
                     close_price=sell_price,
                     profit=float(txn.get("profit", sell_price - buy_price)),
-                    opened_at=(
-                        datetime.fromtimestamp(txn["purchase_time"], tz=timezone.utc)
-                        if txn.get("purchase_time")
-                        else datetime.now(timezone.utc)
-                    ),
-                    closed_at=(
-                        datetime.fromtimestamp(txn["sell_time"], tz=timezone.utc)
-                        if txn.get("sell_time")
-                        else datetime.now(timezone.utc)
-                    ),
+                    opened_at=datetime.fromtimestamp(raw_purchase_time, tz=timezone.utc),
+                    closed_at=datetime.fromtimestamp(raw_sell_time, tz=timezone.utc),
                 )
             )
         return entries

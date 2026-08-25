@@ -26,6 +26,7 @@ def approve_trade(
     signal: dict[str, Any] | None,
     market_data: Any,
     balance: float = _DEFAULT_BALANCE,
+    enforce_limits: bool = False,
 ) -> dict[str, Any]:
     """Evaluates a signal against institutional risk rules.
 
@@ -41,7 +42,9 @@ def approve_trade(
     Returns:
         A decision dict: ``{"approved": bool, "reason": str, "risk_percent": float, "lot_size": float}``.
     """
-    return _default_engine.approve_trade(signal=signal, market_data=market_data, balance=balance)
+    return _default_engine.approve_trade(
+        signal=signal, market_data=market_data, balance=balance, enforce_limits=enforce_limits
+    )
 
 
 def calculate_position_size(balance: float, risk_percent: float, stop_loss: float) -> float:
@@ -50,3 +53,10 @@ def calculate_position_size(balance: float, risk_percent: float, stop_loss: floa
     Delegates to :func:`~risk.position_sizing.calculate_position_size`.
     """
     return _calc_pos_size(balance=balance, risk_percent=risk_percent, stop_loss=stop_loss)
+
+def reconcile_daily_history(trades: list[Any], balance: float) -> None:
+    """Rebuilds daily state statelessly from the broker's closed-trade history.
+
+    Delegates to :class:`~risk.risk_engine.RiskEngine`.
+    """
+    _default_engine.reconcile_daily_history(trades=trades, balance=balance)

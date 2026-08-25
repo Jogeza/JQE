@@ -172,6 +172,10 @@ class SimulationGateway(BrokerGateway):
         self._require_connected()
         return self._trade_history[-count:]
 
+    def _inject_closed_trade(self, trade: TradeHistoryEntry) -> None:
+        """Test helper to seed closed trades for reconciliation tests."""
+        self._trade_history.append(trade)
+
     async def _tick_stream(self, symbol: str) -> AsyncIterator[Tick]:
         """Yields one synthetic tick per iteration for as long as connected."""
         while self._connected:

@@ -439,9 +439,45 @@ class MT5Gateway(BrokerGateway):
         if not deals:
             return []
 
+        # Filter to closing executions only.
+        #
+        # MT5 history_deals_get returns ALL deal types:
+        #   DEAL_ENTRY_IN    — position-opening deals (profit ≈ 0, not a close)
+        #   DEAL_ENTRY_OUT   — position-closing deals (carries realized P/L)
+        #   DEAL_ENTRY_INOUT — reversal deals (closing P/L in same deal)
+        # Non-execution accounting entries also appear:
+        #   DEAL_TYPE_COMMISSION — broker commission charge
+        #   DEAL_TYPE_INTEREST   — swap/overnight interest
+        #   DEAL_TYPE_BALANCE    — deposit/withdrawal adjustment
+        #   DEAL_TYPE_CREDIT     — credit adjustment
+        #   DEAL_TYPE_BONUS      — bonus credit
+        #
+        # For daily risk reconciliation we need only closing executions:
+        # they are the records that carry realized P/L and represent a
+        # completed trading event. DEAL_ENTRY_IN deals have profit ≈ 0
+        # and would double-count every position. Commission and interest
+        # deals are accounting entries, not trade executions.
+        closing_entry_types = {mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_INOUT}
+        non_trade_types = {
+            mt5.DEAL_TYPE_COMMISSION,
+            mt5.DEAL_TYPE_INTEREST,
+            mt5.DEAL_TYPE_BALANCE,
+            mt5.DEAL_TYPE_CREDIT,
+            mt5.DEAL_TYPE_BONUS,
+        }
+
+        closing_deals = [
+            d for d in deals
+            if d.entry in closing_entry_types and d.type not in non_trade_types
+        ]
+
         return [
             TradeHistoryEntry(
-                trade_id=str(deal.position_id),
+                # deal.ticket is the unique ID for this specific deal record;
+                # each partial close gets its own ticket.  deal.position_id
+                # is shared by all deals for the same position and must NOT
+                # be used here — it conflates opening and closing records.
+                trade_id=str(deal.ticket),
                 symbol=deal.symbol,
                 side=(
                     OrderSide.SELL
@@ -449,6 +485,11 @@ class MT5Gateway(BrokerGateway):
                     else OrderSide.BUY
                 ),
                 volume=float(deal.volume),
+                # A closing deal does not carry the original entry price.
+                # Recovering it would require joining against the opening
+                # deal via position_id — deferred as a future improvement.
+                # open_price is not consumed by reconciliation logic, so
+                # we use the closing execution price in both fields.
                 open_price=float(deal.price),
                 close_price=float(deal.price),
                 profit=float(deal.profit),
@@ -461,7 +502,7 @@ class MT5Gateway(BrokerGateway):
                     tz=timezone.utc,
                 ),
             )
-            for deal in deals[-count:]
+            for deal in closing_deals[-count:]
         ]
 
     async def _tick_stream(
