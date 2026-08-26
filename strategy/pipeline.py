@@ -17,7 +17,11 @@ _default_engine = StrategyEngine()
 
 
 def generate_trading_signal(
-    df: pd.DataFrame, symbol: str = "UNKNOWN", regime: str | None = None
+    df: pd.DataFrame,
+    symbol: str = "UNKNOWN",
+    regime: str | None = None,
+    engine: StrategyEngine | None = None,
+    include_details: bool = False,
 ) -> dict:
     """Generates a risk/execution-ready trading signal from indicator data.
 
@@ -56,5 +60,9 @@ def generate_trading_signal(
     if "ATR" not in df.columns and "ATR_14" not in df.columns:
         raise KeyError("calculate_indicators() output is required (missing ATR column)")
 
-    decision = _default_engine.evaluate(df=df, symbol=symbol, regime=regime)
-    return decision.to_pipeline_dict()
+    decision = (engine or _default_engine).evaluate(df=df, symbol=symbol, regime=regime)
+    result = decision.to_pipeline_dict()
+    if include_details:
+        result["confidence_breakdown"] = decision.confidence_breakdown
+        result["trade_plan"] = decision.trade_plan
+    return result

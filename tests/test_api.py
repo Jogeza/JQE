@@ -23,7 +23,7 @@ from api.routes import (
     get_strategy_signal,
     get_system_status,
 )
-from api.service import ApplicationService
+from api.service import ApplicationService, _maximum_realized_drawdown
 from broker.simulation_gateway import SimulationGateway
 from config.settings import Settings
 
@@ -56,6 +56,7 @@ class TestApplicationService:
         assert summary.latest_close > 0
         assert summary.atr >= 0
         assert 0 <= summary.rsi <= 100
+        assert summary.price_decimals == 2
 
     async def test_get_market_candles_returns_valid_series(
         self, sim_service: ApplicationService
@@ -64,6 +65,7 @@ class TestApplicationService:
         assert isinstance(candles_resp, CandlesResponse)
         assert candles_resp.count == 25
         assert len(candles_resp.candles) == 25
+        assert candles_resp.price_decimals == 2
         first = candles_resp.candles[0]
         assert first.open > 0
         assert first.close > 0
@@ -79,6 +81,7 @@ class TestApplicationService:
         assert signal_resp.confidence_breakdown is not None
         assert 0 <= signal_resp.confidence_breakdown.total <= 100
         assert signal_resp.trade_plan is not None
+        assert signal_resp.price_decimals == 2
 
     async def test_get_risk_status_returns_limits_and_balance(
         self, sim_service: ApplicationService
@@ -97,6 +100,7 @@ class TestApplicationService:
         assert isinstance(exec_resp, ExecutionStateResponse)
         assert exec_resp.open_positions_count == 0
         assert exec_resp.recent_trades_count == 0
+        assert exec_resp.currency == "USD"
 
     async def test_get_performance_summary_empty_history(
         self, sim_service: ApplicationService
@@ -105,6 +109,14 @@ class TestApplicationService:
         assert isinstance(perf_resp, PerformanceSummaryResponse)
         assert perf_resp.total_trades == 0
         assert perf_resp.win_rate_percent == 0.0
+        assert perf_resp.max_drawdown_amount == 0.0
+        assert perf_resp.max_drawdown_percent is None
+        assert perf_resp.drawdown_amount_unit == "account_currency"
+        assert perf_resp.drawdown_percent_unit == "percent"
+        assert perf_resp.currency == "USD"
+
+    async def test_realized_drawdown_does_not_require_synthetic_equity(self) -> None:
+        assert _maximum_realized_drawdown([10.0, -4.0, -9.0, 3.0]) == 13.0
 
     async def test_get_system_status_returns_online(
         self, sim_service: ApplicationService

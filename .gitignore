@@ -31,6 +31,10 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+node_modules/
+.vite/
+coverage/
+*.tsbuildinfo
 
 # OS
 .DS_Store

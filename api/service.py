@@ -12,7 +12,6 @@ from typing import Any
 
 import pandas as pd
 
-from analytics.performance import calculate_performance
 from api.dto import (
     CandleItemDTO,
     CandlesResponse,
@@ -37,8 +36,31 @@ from core.indicators import calculate_indicators
 from core.regime import detect_regime
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
+from strategy.pipeline import generate_trading_signal
 
 _TIMEFRAME_MAP: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
+
+
+def _price_decimals(symbol: str) -> int:
+    """Return backend-owned display precision for a normalized symbol."""
+    normalized = symbol.upper()
+    if normalized.endswith("JPY"):
+        return 3
+    if any(asset in normalized for asset in ("BTC", "XAU", "XAG")):
+        return 2
+    return 5
+
+
+def _maximum_realized_drawdown(profits: list[float]) -> float:
+    """Calculate peak-to-trough cumulative realized P&L without fake equity."""
+    cumulative = 0.0
+    peak = 0.0
+    maximum = 0.0
+    for profit in profits:
+        cumulative += profit
+        peak = max(peak, cumulative)
+        maximum = max(maximum, peak - cumulative)
+    return round(maximum, 2)
 
 
 class ApplicationService:
@@ -105,6 +127,7 @@ class ApplicationService:
             ema50=float(latest["EMA50"]) if "EMA50" in latest and pd.notna(latest["EMA50"]) else None,
             ema200=float(latest["EMA200"]) if "EMA200" in latest and pd.notna(latest["EMA200"]) else None,
             timestamp=timestamp,
+            price_decimals=_price_decimals(target_symbol),
         )
 
     async def get_market_candles(
@@ -124,7 +147,13 @@ class ApplicationService:
             candles = await gateway.get_candles(symbol=target_symbol, timeframe=tf, count=candle_count)
 
         if not candles:
-            return CandlesResponse(symbol=target_symbol, timeframe=tf.value, count=0, candles=[])
+            return CandlesResponse(
+                symbol=target_symbol,
+                timeframe=tf.value,
+                count=0,
+                candles=[],
+                price_decimals=_price_decimals(target_symbol),
+            )
 
         df = pd.DataFrame([c.model_dump() for c in candles])
         df = calculate_indicators(df)
@@ -156,6 +185,7 @@ class ApplicationService:
             timeframe=tf.value,
             count=len(candle_items),
             candles=candle_items,
+            price_decimals=_price_decimals(target_symbol),
         )
 
     async def get_strategy_signal(
@@ -186,13 +216,16 @@ class ApplicationService:
         df = calculate_indicators(df)
         regime = detect_regime(df)
 
-        decision = self.strategy_engine.evaluate(df, symbol=target_symbol, regime=regime)
-        intel = decision.intelligence
+        decision = generate_trading_signal(
+            df, symbol=target_symbol, regime=regime, engine=self.strategy_engine,
+            include_details=True,
+        )
+        intel = decision["intelligence"]
 
         # Map Breakdown DTO
         breakdown_dto: ConfidenceBreakdownDTO | None = None
-        if decision.confidence_breakdown:
-            cb = decision.confidence_breakdown
+        if decision["confidence_breakdown"]:
+            cb = decision["confidence_breakdown"]
             breakdown_dto = ConfidenceBreakdownDTO(
                 trend_score=cb.trend_score,
                 structure_score=cb.structure_score,
@@ -206,8 +239,8 @@ class ApplicationService:
 
         # Map TradePlan DTO
         plan_dto: TradePlanDTO | None = None
-        if decision.trade_plan:
-            tp = decision.trade_plan
+        if decision["trade_plan"]:
+            tp = decision["trade_plan"]
             plan_dto = TradePlanDTO(
                 symbol=tp.symbol,
                 signal=tp.signal,
@@ -230,11 +263,11 @@ class ApplicationService:
 
         return SignalResponse(
             symbol=target_symbol,
-            signal=decision.signal,
-            confidence=decision.confidence,
-            quality=decision.quality,
-            score=decision.score,
-            reasons=decision.reasons,
+            signal=decision["signal"],
+            confidence=decision["confidence"],
+            quality=decision["quality"],
+            score=decision["score"],
+            reasons=decision["reasons"],
             regime=str(intel.get("regime", "UNKNOWN")),
             trend=str(intel.get("trend", "UNKNOWN")),
             momentum=str(intel.get("momentum", "UNKNOWN")),
@@ -243,6 +276,7 @@ class ApplicationService:
             confidence_breakdown=breakdown_dto,
             trade_plan=plan_dto,
             generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            price_decimals=_price_decimals(target_symbol),
         )
 
     async def get_risk_status(
@@ -274,9 +308,12 @@ class ApplicationService:
             if validate_market_data(df):
                 df = calculate_indicators(df)
                 regime = detect_regime(df)
-                decision = self.strategy_engine.evaluate(df, symbol=target_symbol, regime=regime)
+                decision = generate_trading_signal(
+                    df, symbol=target_symbol, regime=regime, engine=self.strategy_engine,
+                    include_details=True,
+                )
                 risk_decision = self.risk_engine.approve_trade(
-                    {"signal": decision.signal, "confidence": decision.confidence},
+                    {"signal": decision["signal"], "confidence": decision["confidence"]},
                     df,
                     balance=account.balance,
                     enforce_limits=True,
@@ -309,6 +346,7 @@ class ApplicationService:
             is_conn = gateway.is_connected
             positions = await gateway.get_positions()
             history = await gateway.get_trade_history()
+            account = await gateway.get_account_info()
 
         pos_dtos = [
             PositionDTO(
@@ -321,6 +359,7 @@ class ApplicationService:
                 stop_loss=p.stop_loss,
                 take_profit=p.take_profit,
                 profit=p.profit,
+                price_decimals=_price_decimals(p.symbol),
             )
             for p in positions
         ]
@@ -336,6 +375,7 @@ class ApplicationService:
                 profit=t.profit,
                 open_time=t.open_time.isoformat() if hasattr(t.open_time, "isoformat") else str(t.open_time),
                 close_time=t.close_time.isoformat() if hasattr(t.close_time, "isoformat") else str(t.close_time),
+                price_decimals=_price_decimals(t.symbol),
             )
             for t in history
         ]
@@ -347,6 +387,7 @@ class ApplicationService:
             positions=pos_dtos,
             recent_trades_count=len(trade_dtos),
             recent_trades=trade_dtos,
+            currency=account.currency,
         )
 
     async def get_performance_summary(self) -> PerformanceSummaryResponse:
@@ -357,28 +398,26 @@ class ApplicationService:
             account = await gateway.get_account_info()
 
         if not history:
-            return PerformanceSummaryResponse()
+            return PerformanceSummaryResponse(currency=account.currency)
 
         trades_list: list[dict[str, Any]] = [{"profit": t.profit} for t in history]
-        equity_curve: list[float] = [account.balance]
-        running = account.balance
-        for t in history:
-            running += t.profit
-            equity_curve.append(running)
-
-        report = calculate_performance(trades_list, equity_curve)
         gross_profit = sum(t["profit"] for t in trades_list if t["profit"] > 0)
         gross_loss = abs(sum(t["profit"] for t in trades_list if t["profit"] < 0))
         net_profit = gross_profit - gross_loss
+        winning_trades = sum(1 for t in trades_list if t["profit"] > 0)
+        losing_trades = sum(1 for t in trades_list if t["profit"] < 0)
+        total_trades = len(trades_list)
 
         return PerformanceSummaryResponse(
-            total_trades=report.get("Total Trades", 0),
-            winning_trades=report.get("Winning Trades", 0),
-            losing_trades=report.get("Losing Trades", 0),
-            win_rate_percent=report.get("Win Rate %", 0.0),
-            profit_factor=report.get("Profit Factor", 0.0),
-            max_drawdown=report.get("Maximum Drawdown", 0.0),
-            average_trade=report.get("Average Trade", 0.0),
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            win_rate_percent=round(winning_trades / total_trades * 100, 2),
+            profit_factor=round(gross_profit / gross_loss, 2) if gross_loss else 0.0,
+            max_drawdown_amount=_maximum_realized_drawdown([t["profit"] for t in trades_list]),
+            max_drawdown_percent=None,
+            currency=account.currency,
+            average_trade=round(net_profit / total_trades, 2),
             gross_profit=round(gross_profit, 2),
             gross_loss=round(gross_loss, 2),
             net_profit=round(net_profit, 2),

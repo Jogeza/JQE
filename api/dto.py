@@ -25,6 +25,7 @@ class MarketSummaryResponse(BaseModel):
     ema50: float | None = None
     ema200: float | None = None
     timestamp: str | None = None
+    price_decimals: int = Field(default=5, ge=0, le=10)
 
 
 class CandleItemDTO(BaseModel):
@@ -49,6 +50,7 @@ class CandlesResponse(BaseModel):
     timeframe: str
     count: int
     candles: list[CandleItemDTO] = Field(default_factory=list)
+    price_decimals: int = Field(default=5, ge=0, le=10)
 
 
 class ConfidenceBreakdownDTO(BaseModel):
@@ -103,6 +105,7 @@ class SignalResponse(BaseModel):
     confidence_breakdown: ConfidenceBreakdownDTO | None = None
     trade_plan: TradePlanDTO | None = None
     generated_at: str | None = None
+    price_decimals: int = Field(default=5, ge=0, le=10)
 
 
 class RiskStatusResponse(BaseModel):
@@ -135,6 +138,7 @@ class PositionDTO(BaseModel):
     stop_loss: float | None = None
     take_profit: float | None = None
     profit: float = 0.0
+    price_decimals: int = Field(default=5, ge=0, le=10)
 
 
 class TradeHistoryDTO(BaseModel):
@@ -149,6 +153,7 @@ class TradeHistoryDTO(BaseModel):
     profit: float
     open_time: str
     close_time: str
+    price_decimals: int = Field(default=5, ge=0, le=10)
 
 
 class ExecutionStateResponse(BaseModel):
@@ -160,6 +165,7 @@ class ExecutionStateResponse(BaseModel):
     positions: list[PositionDTO] = Field(default_factory=list)
     recent_trades_count: int = 0
     recent_trades: list[TradeHistoryDTO] = Field(default_factory=list)
+    currency: str
 
 
 class PerformanceSummaryResponse(BaseModel):
@@ -170,7 +176,11 @@ class PerformanceSummaryResponse(BaseModel):
     losing_trades: int = 0
     win_rate_percent: float = 0.0
     profit_factor: float = 0.0
-    max_drawdown: float = 0.0
+    max_drawdown_amount: float = Field(default=0.0, description="Maximum realized P&L drawdown in account currency")
+    max_drawdown_percent: float | None = Field(default=None, description="Maximum drawdown percentage; null when historical equity is unavailable")
+    drawdown_amount_unit: str = "account_currency"
+    drawdown_percent_unit: str = "percent"
+    currency: str | None = None
     average_trade: float = 0.0
     gross_profit: float = 0.0
     gross_loss: float = 0.0

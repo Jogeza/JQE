@@ -1,0 +1,260 @@
+@import './styles/theme.css';
+
+/* Base App Layout */
+.app-container {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-app);
+}
+
+.main-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.dashboard-page-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Typography Helpers */
+.font-mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+.text-muted { color: var(--text-muted); }
+.text-dim { color: var(--text-dim); }
+.text-secondary { color: var(--text-secondary); }
+.text-primary { color: var(--text-primary); }
+
+.text-green { color: var(--quant-green); }
+.text-red { color: var(--quant-red); }
+.text-amber { color: var(--quant-amber); }
+.text-cyan { color: var(--quant-cyan); }
+.text-purple { color: var(--quant-purple); }
+
+/* Quant Surface Panels */
+.quant-panel {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.quant-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-elevated);
+}
+
+.quant-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quant-panel-body {
+  padding: 14px;
+  flex: 1;
+}
+
+/* Institutional Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+
+.badge-simulation {
+  background: var(--quant-cyan-subtle);
+  color: var(--quant-cyan);
+  border-color: rgba(0, 212, 255, 0.3);
+}
+
+.badge-demo {
+  background: var(--quant-amber-subtle);
+  color: var(--quant-amber);
+  border-color: rgba(255, 171, 0, 0.3);
+}
+
+.badge-live {
+  background: var(--quant-red-subtle);
+  color: var(--quant-red);
+  border-color: rgba(255, 82, 82, 0.4);
+  box-shadow: 0 0 8px rgba(255, 82, 82, 0.2);
+}
+
+.badge-green {
+  background: var(--quant-green-subtle);
+  color: var(--quant-green);
+  border-color: var(--quant-green-border);
+}
+
+.badge-red {
+  background: var(--quant-red-subtle);
+  color: var(--quant-red);
+  border-color: var(--quant-red-border);
+}
+
+.badge-neutral {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+
+/* Quant Data Tables */
+.quant-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.quant-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+
+.quant-table th {
+  padding: 8px 12px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+.quant-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.quant-table tr:hover td {
+  background-color: var(--bg-surface-hover);
+}
+
+/* Grid Layouts */
+.grid-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.grid-two-col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .grid-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grid-equal-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .grid-equal-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Status Indicator Dot */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-green {
+  background-color: var(--quant-green);
+  box-shadow: 0 0 6px var(--quant-green);
+}
+
+.status-dot-red {
+  background-color: var(--quant-red);
+  box-shadow: 0 0 6px var(--quant-red);
+}
+
+.status-dot-amber {
+  background-color: var(--quant-amber);
+  box-shadow: 0 0 6px var(--quant-amber);
+}
+
+/* Buttons */
+.btn-quant {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-quant:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+
+.btn-quant:active {
+  background-color: var(--bg-surface-active);
+}
+
+.btn-quant-primary {
+  background-color: var(--quant-cyan-subtle);
+  border-color: rgba(0, 212, 255, 0.4);
+  color: var(--quant-cyan);
+}
+
+.btn-quant-primary:hover {
+  background-color: rgba(0, 212, 255, 0.2);
+  border-color: var(--quant-cyan);
+}
