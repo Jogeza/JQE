@@ -138,6 +138,9 @@ class OrderRequest(BaseModel):
             supported.
         stop_loss: Absolute stop-loss price, if any.
         take_profit: Absolute take-profit price, if any.
+        idempotency_key: Execution intent identity propagated to brokers that
+            support request metadata. Gateways that do not support such
+            metadata still receive the same explicit request type.
     """
 
     symbol: str
@@ -146,6 +149,7 @@ class OrderRequest(BaseModel):
     order_type: OrderType = OrderType.MARKET
     stop_loss: float | None = None
     take_profit: float | None = None
+    idempotency_key: str | None = None
 
 
 class OrderResult(BaseModel):
@@ -170,6 +174,7 @@ class OrderResult(BaseModel):
     side: OrderSide
     volume: float
     filled_price: float | None = None
+    transaction_id: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -12,6 +12,7 @@ from broker.types import (
     AccountInfo,
     Candle,
     OrderRequest,
+    OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
@@ -45,6 +46,42 @@ class TestOrderRequest:
     def test_negative_volume_rejected(self) -> None:
         with pytest.raises(ValidationError):
             OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=-1)
+
+    def test_idempotency_key_defaults_to_none(self) -> None:
+        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+        assert order.idempotency_key is None
+
+    def test_accepts_explicit_idempotency_key(self) -> None:
+        order = OrderRequest(
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            volume=0.1,
+            idempotency_key="intent-1",
+        )
+        assert order.idempotency_key == "intent-1"
+
+
+class TestOrderResult:
+    def test_transaction_id_defaults_to_none(self) -> None:
+        result = OrderResult(
+            order_id="order-1",
+            status=OrderStatus.FILLED,
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            volume=0.1,
+        )
+        assert result.transaction_id is None
+
+    def test_accepts_explicit_transaction_id(self) -> None:
+        result = OrderResult(
+            order_id="order-1",
+            status=OrderStatus.FILLED,
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            volume=0.1,
+            transaction_id="transaction-1",
+        )
+        assert result.transaction_id == "transaction-1"
 
 
 class TestAccountInfo:
