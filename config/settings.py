@@ -105,9 +105,11 @@ class Settings(BaseSettings):
     mt5_password: str | None = None
     mt5_server: str | None = None
 
-    deriv_api_token: str | None = None
+    deriv_api_token: str | None = Field(default=None, repr=False)
     deriv_app_id: str = "1089"
     deriv_endpoint: str = "wss://ws.derivws.com/websockets/v3"
+    deriv_options_account_id: str | None = None
+    deriv_expected_environment: Literal["demo", "real"] | None = None
 
     default_symbol: str = "XAUUSD"
     default_timeframe: str = "M5"

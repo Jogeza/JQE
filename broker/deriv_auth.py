@@ -25,6 +25,9 @@ class DerivAuthErrorCode(str, Enum):
     MALFORMED_OTP_RESPONSE = "MALFORMED_OTP_RESPONSE"
     WEBSOCKET_FAILURE = "WEBSOCKET_FAILURE"
     ACCOUNT_MISMATCH = "ACCOUNT_MISMATCH"
+    ACCOUNT_IDENTITY_FAILURE = "ACCOUNT_IDENTITY_FAILURE"
+    ACCOUNT_IDENTITY_TIMEOUT = "ACCOUNT_IDENTITY_TIMEOUT"
+    MALFORMED_ACCOUNT_RESPONSE = "MALFORMED_ACCOUNT_RESPONSE"
     MISSING_ACCOUNT_ID = "MISSING_ACCOUNT_ID"
     ENVIRONMENT_MISMATCH = "ENVIRONMENT_MISMATCH"
     MISSING_ENVIRONMENT = "MISSING_ENVIRONMENT"
@@ -47,6 +50,7 @@ class DerivAuthConfig:
     pat: str = field(repr=False)
     options_account_id: str | None = None
     expected_environment: str | None = None
+    identity_timeout_seconds: float = 7.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +107,9 @@ class DerivAuthTransport(Protocol):
         options_account_id: str | None = None,
     ) -> dict[str, object]: ...
     async def connect_websocket(self, url: str, *, app_id: str | None = None) -> object: ...
+    async def verify_account_identity(
+        self, connection: object, *, expected_account_id: str, timeout_seconds: float,
+    ) -> str: ...
 
 
 HttpPost = Callable[[str, dict[str, str]], Awaitable[tuple[int, object]]]
@@ -189,6 +196,56 @@ class DerivPATOTPTransport:
         except Exception as exc:
             raise DerivAuthFailure(DerivAuthErrorCode.WEBSOCKET_FAILURE) from exc
 
+    async def verify_account_identity(
+        self, connection: object, *, expected_account_id: str, timeout_seconds: float,
+    ) -> str:
+        """Verify the OTP-authenticated socket reports the configured account."""
+        if not isinstance(expected_account_id, str) or not expected_account_id.strip():
+            raise DerivAuthFailure(DerivAuthErrorCode.MISSING_ACCOUNT_ID)
+        if not isinstance(timeout_seconds, (int, float)) or timeout_seconds <= 0:
+            raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_IDENTITY_TIMEOUT)
+        if not hasattr(connection, "send") or not hasattr(connection, "recv"):
+            raise DerivAuthFailure(DerivAuthErrorCode.WEBSOCKET_FAILURE)
+
+        try:
+            await connection.send(json.dumps({"balance": 1, "req_id": 1}))
+            async with asyncio.timeout(timeout_seconds):
+                while True:
+                    raw_message = await connection.recv()
+                    if isinstance(raw_message, bytes):
+                        raw_message = raw_message.decode("utf-8")
+                    if not isinstance(raw_message, str):
+                        raise DerivAuthFailure(DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE)
+                    try:
+                        response = json.loads(raw_message)
+                    except (TypeError, ValueError) as exc:
+                        raise DerivAuthFailure(
+                            DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE
+                        ) from exc
+                    if not isinstance(response, dict):
+                        raise DerivAuthFailure(DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE)
+                    if response.get("req_id") != 1:
+                        continue
+                    if response.get("error"):
+                        raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_IDENTITY_FAILURE)
+                    if response.get("msg_type") != "balance":
+                        raise DerivAuthFailure(DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE)
+                    balance = response.get("balance")
+                    if not isinstance(balance, dict):
+                        raise DerivAuthFailure(DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE)
+                    login_id = balance.get("loginid")
+                    if not isinstance(login_id, str) or not login_id.strip():
+                        raise DerivAuthFailure(DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE)
+                    if login_id.strip() != expected_account_id.strip():
+                        raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_MISMATCH)
+                    return login_id.strip()
+        except TimeoutError as exc:
+            raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_IDENTITY_TIMEOUT) from exc
+        except DerivAuthFailure:
+            raise
+        except Exception as exc:
+            raise DerivAuthFailure(DerivAuthErrorCode.WEBSOCKET_FAILURE) from exc
+
     @staticmethod
     def _is_valid_demo_url(url: object) -> bool:
         if not isinstance(url, str):
@@ -264,6 +321,8 @@ class DerivPATOTPSession:
             raise DerivAuthFailure(DerivAuthErrorCode.MISSING_APP_ID)
         if not isinstance(self._config.pat, str) or not self._config.pat.strip():
             raise DerivAuthFailure(DerivAuthErrorCode.MISSING_TOKEN)
+        if not isinstance(self._config.options_account_id, str) or not self._config.options_account_id.strip():
+            raise DerivAuthFailure(DerivAuthErrorCode.MISSING_ACCOUNT_ID)
         try:
             response = await self._transport.request_otp(
                 app_id=self._config.app_id.strip(),
@@ -317,7 +376,19 @@ class DerivPATOTPSession:
         except Exception as exc:
             self._state = DerivAuthState.FAILED
             raise DerivAuthFailure(DerivAuthErrorCode.WEBSOCKET_FAILURE) from exc
-        self._session = DerivAuthSession(account_id.strip(), environment, url.strip())
+        try:
+            verified_account_id = await self._transport.verify_account_identity(
+                self._connection,
+                expected_account_id=self._config.options_account_id.strip(),
+                timeout_seconds=self._config.identity_timeout_seconds,
+            )
+        except DerivAuthFailure:
+            self._state = DerivAuthState.FAILED
+            raise
+        except Exception as exc:
+            self._state = DerivAuthState.FAILED
+            raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_IDENTITY_FAILURE) from exc
+        self._session = DerivAuthSession(verified_account_id, environment, url.strip())
         self._state = DerivAuthState.READY
         return self._session
 

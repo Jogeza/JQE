@@ -1,5 +1,7 @@
 """Mocked Deriv PAT/OTP session tests; no network is used."""
 
+import asyncio
+
 import socket
 import ssl
 from http.client import InvalidURL
@@ -15,11 +17,13 @@ from broker.deriv_auth import (
 
 
 class FakeTransport:
-    def __init__(self, response=None, failure=None):
+    def __init__(self, response=None, failure=None, verified_account_id="CR1"):
         self.response = response or {"url": "wss://fake/demo", "account_id": "CR1", "environment": "demo"}
         self.failure = failure
+        self.verified_account_id = verified_account_id
         self.request_otp = AsyncMock(side_effect=self._request)
         self.connect_websocket = AsyncMock(side_effect=self._connect)
+        self.verify_account_identity = AsyncMock(side_effect=self._verify)
 
     async def _request(self, **kwargs):
         if self.failure:
@@ -29,6 +33,13 @@ class FakeTransport:
     async def _connect(self, url, **_kwargs):
         if self.failure:
             raise self.failure
+
+    async def _verify(self, _connection, **kwargs):
+        if self.failure:
+            raise self.failure
+        if self.verified_account_id != kwargs["expected_account_id"]:
+            raise DerivAuthFailure(DerivAuthErrorCode.ACCOUNT_MISMATCH)
+        return self.verified_account_id
 
 
 @pytest.mark.asyncio
@@ -61,7 +72,7 @@ async def test_missing_configuration_fails_closed(config, code):
     ("revoked_token", DerivAuthErrorCode.REVOKED_TOKEN),
 ])
 async def test_token_failures_are_typed_and_closed(error, code):
-    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat"), FakeTransport({"error": error}))
+    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat", "CR1", "demo"), FakeTransport({"error": error}))
     with pytest.raises(DerivAuthFailure) as exc:
         await session.connect()
     assert exc.value.code is code
@@ -76,7 +87,7 @@ async def test_token_failures_are_typed_and_closed(error, code):
     ({"url": "wss://fake/demo", "account_id": "CR1"}, DerivAuthErrorCode.MISSING_ENVIRONMENT),
 ])
 async def test_malformed_session_responses_fail_closed(response, code):
-    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat"), FakeTransport(response))
+    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat", "CR1", "demo"), FakeTransport(response))
     with pytest.raises(DerivAuthFailure) as exc:
         await session.connect()
     assert exc.value.code is code
@@ -87,7 +98,7 @@ async def test_malformed_session_responses_fail_closed(response, code):
 async def test_non_mapping_otp_response_fails_closed():
     transport = FakeTransport()
     transport.response = []
-    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat"), transport)
+    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat", "CR1", "demo"), transport)
     with pytest.raises(DerivAuthFailure) as exc:
         await session.connect()
     assert exc.value.code is DerivAuthErrorCode.MALFORMED_OTP_RESPONSE
@@ -108,10 +119,25 @@ async def test_account_and_environment_mismatch_fail_closed():
 
 
 @pytest.mark.asyncio
+async def test_websocket_reported_account_mismatch_fails_closed():
+    transport = FakeTransport(verified_account_id="DOT99999999")
+    transport.response = {
+        "url": "wss://fake/demo", "account_id": "DOT90004580", "environment": "demo"
+    }
+    session = DerivPATOTPSession(
+        DerivAuthConfig("app", "test-pat", "DOT90004580", "demo"), transport
+    )
+    with pytest.raises(DerivAuthFailure) as exc:
+        await session.connect()
+    assert exc.value.code is DerivAuthErrorCode.ACCOUNT_MISMATCH
+    assert session.state is DerivAuthState.FAILED
+
+
+@pytest.mark.asyncio
 async def test_websocket_failure_does_not_mark_ready():
     transport = FakeTransport()
     transport.connect_websocket.side_effect = ConnectionError("socket")
-    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat"), transport)
+    session = DerivPATOTPSession(DerivAuthConfig("app", "test-pat", "CR1", "demo"), transport)
     with pytest.raises(DerivAuthFailure) as exc:
         await session.connect()
     assert exc.value.code is DerivAuthErrorCode.WEBSOCKET_FAILURE
@@ -128,9 +154,16 @@ async def test_real_transport_uses_documented_headers_and_normalizes_otp_respons
 
     connected = []
 
+    class Socket:
+        async def send(self, raw):
+            assert raw == '{"balance": 1, "req_id": 1}'
+
+        async def recv(self):
+            return '{"msg_type":"balance","req_id":1,"balance":{"loginid":"CR1"}}'
+
     async def connect(url, **_kwargs):
         connected.append(url)
-        return object()
+        return Socket()
 
     transport = DerivPATOTPTransport(http_post=post, websocket_connect=connect)
     session = DerivPATOTPSession(
@@ -243,6 +276,67 @@ async def test_websocket_connector_receives_app_id_header_value():
     transport = DerivPATOTPTransport(websocket_connect=connect)
     await transport.connect_websocket("wss://api.derivws.com/trading/v1/options/ws/demo?otp=fake", app_id="app")
     assert captured["kwargs"] == {"app_id": "app"}
+
+
+class ScriptedSocket:
+    def __init__(self, messages):
+        self.messages = iter(messages)
+        self.sent = []
+
+    async def send(self, raw):
+        self.sent.append(raw)
+
+    async def recv(self):
+        message = next(self.messages)
+        if isinstance(message, BaseException):
+            raise message
+        return message
+
+
+@pytest.mark.asyncio
+async def test_identity_verification_exact_match_and_skips_unrelated_message():
+    socket = ScriptedSocket([
+        '{"msg_type":"tick","req_id":99}',
+        '{"msg_type":"balance","req_id":1,"balance":{"loginid":"DOT90004580"}}',
+    ])
+    result = await DerivPATOTPTransport().verify_account_identity(
+        socket, expected_account_id="DOT90004580", timeout_seconds=1
+    )
+    assert result == "DOT90004580"
+    assert socket.sent == ['{"balance": 1, "req_id": 1}']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message,code", [
+    ('{"msg_type":"balance","req_id":1,"balance":{"loginid":"DOT99999999"}}', DerivAuthErrorCode.ACCOUNT_MISMATCH),
+    ('{"msg_type":"balance","req_id":1,"balance":{}}', DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE),
+    ('{"msg_type":"balance","req_id":1,"balance":{"loginid":""}}', DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE),
+    ('{"msg_type":"balance","req_id":1}', DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE),
+    ('{"msg_type":"tick","req_id":1,"balance":{"loginid":"DOT90004580"}}', DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE),
+    ('{"req_id":1,"error":{"code":"AuthorizationRequired"}}', DerivAuthErrorCode.ACCOUNT_IDENTITY_FAILURE),
+])
+async def test_identity_verification_failures_are_typed(message, code):
+    with pytest.raises(DerivAuthFailure) as exc:
+        await DerivPATOTPTransport().verify_account_identity(
+            ScriptedSocket([message]), expected_account_id="DOT90004580", timeout_seconds=1
+        )
+    assert exc.value.code is code
+
+
+@pytest.mark.asyncio
+async def test_identity_verification_timeout_is_typed():
+    class SlowSocket:
+        async def send(self, _raw):
+            return None
+
+        async def recv(self):
+            await asyncio.sleep(1)
+
+    with pytest.raises(DerivAuthFailure) as exc:
+        await DerivPATOTPTransport().verify_account_identity(
+            SlowSocket(), expected_account_id="DOT90004580", timeout_seconds=0.01
+        )
+    assert exc.value.code is DerivAuthErrorCode.ACCOUNT_IDENTITY_TIMEOUT
 
 
 @pytest.mark.asyncio
