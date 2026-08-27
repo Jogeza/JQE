@@ -196,6 +196,21 @@ class TestSubmitOrder:
         assert result.order_id == "999"
         await gateway.disconnect()
 
+    async def test_successful_buy_preserves_transaction_id(self) -> None:
+        gateway, fake_connection = _connected_gateway(
+            {
+                "proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}},
+                "buy": {"buy": {"contract_id": 999, "transaction_id": 1234, "buy_price": 10.0}},
+            }
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        result = await gateway.submit_order(
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+        )
+        assert result.order_id == "999"
+        assert result.transaction_id == "1234"
+        await gateway.disconnect()
+
     async def test_rejected_buy_returns_rejected_status(self) -> None:
         gateway, fake_connection = _connected_gateway(
             {
@@ -221,6 +236,27 @@ class TestSubmitOrder:
             await gateway.submit_order(
                 OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
             )
+        await gateway.disconnect()
+
+    @pytest.mark.parametrize(
+        "buy",
+        [{}, {"buy_price": 10.0}, {"contract_id": 999}, {"contract_id": "", "buy_price": 10.0}, {"contract_id": 999, "buy_price": 0.0}],
+    )
+    async def test_malformed_buy_success_is_indeterminate(self, buy: dict[str, object]) -> None:
+        gateway, fake_connection = _connected_gateway(
+            {"proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}}, "buy": {"buy": buy}}
+        )
+        await _connect_with_fake(gateway, fake_connection)
+        with pytest.raises(ExecutionError, match="malformed or outcome is indeterminate"):
+            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0))
+        await gateway.disconnect()
+
+    @pytest.mark.parametrize("proposal", [{}, {"id": "prop-1"}, {"ask_price": 10.0}])
+    async def test_malformed_proposal_is_indeterminate(self, proposal: dict[str, object]) -> None:
+        gateway, fake_connection = _connected_gateway({"proposal": {"proposal": proposal}})
+        await _connect_with_fake(gateway, fake_connection)
+        with pytest.raises(ExecutionError, match="proposal response was malformed"):
+            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0))
         await gateway.disconnect()
 
 
@@ -274,6 +310,50 @@ class TestRequestTimeout:
         with pytest.raises(BrokerConnectionError, match="timed out"):
             await gateway.get_account_info()
         await gateway.disconnect()
+
+    async def test_send_failure_removes_pending_request(self) -> None:
+        gateway = DerivGateway(api_token="test-token", app_id="1089")
+        connection = AsyncMock()
+        connection.send.side_effect = OSError("send failed")
+        gateway._connection = connection
+        with pytest.raises(BrokerConnectionError, match="could not be sent"):
+            await gateway._request({"balance": 1})
+        assert gateway._pending == {}
+
+    async def test_malformed_frame_fails_pending_request_promptly(self) -> None:
+        class MalformedConnection:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if getattr(self, "sent", False):
+                    raise StopAsyncIteration
+                self.sent = True
+                return "not-json"
+
+        gateway = DerivGateway(api_token="test-token", app_id="1089")
+        gateway._connection = MalformedConnection()  # type: ignore[assignment]
+        future = asyncio.get_running_loop().create_future()
+        gateway._pending[1] = future
+        await gateway._read_loop()
+        with pytest.raises(BrokerConnectionError, match="reader failed"):
+            await future
+        assert gateway._pending == {}
+
+    async def test_reader_end_fails_pending_request_promptly(self) -> None:
+        class EndedConnection:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        gateway = DerivGateway(api_token="test-token", app_id="1089")
+        gateway._connection = EndedConnection()  # type: ignore[assignment]
+        future = asyncio.get_running_loop().create_future()
+        gateway._pending[1] = future
+        await gateway._read_loop()
+        with pytest.raises(BrokerConnectionError, match="reader ended"):
+            await future
+        assert gateway._pending == {}
 
 
 # ---------------------------------------------------------------------------

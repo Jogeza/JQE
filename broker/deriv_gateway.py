@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import math
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
@@ -214,10 +215,12 @@ class DerivGateway(BrokerGateway):
                 reason=proposal_response["error"].get("message"),
             )
         proposal = proposal_response.get("proposal", {})
+        proposal_id = proposal.get("id") if isinstance(proposal, dict) else None
+        ask_price = proposal.get("ask_price") if isinstance(proposal, dict) else None
+        if not proposal_id or not isinstance(ask_price, (int, float)) or isinstance(ask_price, bool) or not math.isfinite(float(ask_price)) or float(ask_price) <= 0:
+            raise ExecutionError("Deriv proposal response was malformed or indeterminate", symbol=order.symbol)
 
-        buy_response = await self._request(
-            {"buy": proposal.get("id"), "price": proposal.get("ask_price", order.volume)}
-        )
+        buy_response = await self._request({"buy": proposal_id, "price": ask_price})
         if buy_response.get("error"):
             logger.warning(
                 "DerivGateway order rejected: {} {} {} — {}",
@@ -235,21 +238,32 @@ class DerivGateway(BrokerGateway):
                 raw=buy_response,
             )
 
-        buy = buy_response.get("buy", {})
+        buy = buy_response.get("buy")
+        contract_id = buy.get("contract_id") if isinstance(buy, dict) else None
+        buy_price = buy.get("buy_price") if isinstance(buy, dict) else None
+        if (
+            contract_id in (None, "")
+            or not isinstance(buy_price, (int, float))
+            or isinstance(buy_price, bool)
+            or not math.isfinite(float(buy_price))
+            or float(buy_price) <= 0
+        ):
+            raise ExecutionError("Deriv buy response was malformed or outcome is indeterminate", symbol=order.symbol)
         logger.info(
             "DerivGateway order filled: {} {} {} contract_id={}",
             order.side,
             order.volume,
             order.symbol,
-            buy.get("contract_id"),
+            contract_id,
         )
         return OrderResult(
-            order_id=str(buy.get("contract_id", "")),
+            order_id=str(contract_id),
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
             volume=order.volume,
-            filled_price=float(buy.get("buy_price", 0.0)),
+            filled_price=float(buy_price),
+            transaction_id=(str(buy["transaction_id"]) if buy.get("transaction_id") is not None else None),
             raw=buy,
         )
 
@@ -400,10 +414,19 @@ class DerivGateway(BrokerGateway):
                     queue = self._tick_queues.get(symbol)
                     if queue is not None:
                         await queue.put(message)
-        except websockets.exceptions.ConnectionClosed:
+        except websockets.exceptions.ConnectionClosed as exc:
             logger.warning("DerivGateway connection closed unexpectedly")
+            self._fail_pending("Deriv WebSocket connection closed", exc)
+        except Exception as exc:
+            logger.warning("DerivGateway reader failed; pending requests were aborted")
+            self._fail_pending("Deriv WebSocket reader failed", exc)
         finally:
             self._connected = False
+            if self._pending:
+                self._fail_pending(
+                    "Deriv WebSocket reader ended before responses arrived",
+                    RuntimeError("reader ended"),
+                )
 
     async def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self._connection is None:
@@ -412,7 +435,15 @@ class DerivGateway(BrokerGateway):
         message = {**payload, "req_id": req_id}
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending[req_id] = future
-        await self._connection.send(json.dumps(message))
+        try:
+            await self._connection.send(json.dumps(message))
+        except Exception as exc:
+            self._pending.pop(req_id, None)
+            if not future.done():
+                future.cancel()
+            raise BrokerConnectionError(
+                "Deriv API request could not be sent", request_type=next(iter(payload))
+            ) from exc
         try:
             return await asyncio.wait_for(future, timeout=self._request_timeout)
         except TimeoutError as exc:
@@ -420,6 +451,12 @@ class DerivGateway(BrokerGateway):
             raise BrokerConnectionError(
                 "Deriv API request timed out", request_type=next(iter(payload))
             ) from exc
+
+    def _fail_pending(self, message: str, cause: Exception) -> None:
+        for req_id, future in tuple(self._pending.items()):
+            self._pending.pop(req_id, None)
+            if not future.done():
+                future.set_exception(BrokerConnectionError(message, reason=type(cause).__name__))
 
     @staticmethod
     def _parse_tick(tick: dict[str, Any]) -> Tick:
