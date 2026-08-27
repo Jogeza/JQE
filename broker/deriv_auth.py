@@ -106,6 +106,7 @@ class DerivAuthTransport(Protocol):
 
 
 HttpPost = Callable[[str, dict[str, str]], Awaitable[tuple[int, object]]]
+HttpGet = Callable[[str, dict[str, str]], Awaitable[tuple[int, object]]]
 WebSocketConnect = Callable[..., Awaitable[object]]
 
 
@@ -121,10 +122,12 @@ class DerivPATOTPTransport:
         *,
         base_url: str = "https://api.derivws.com",
         http_post: HttpPost | None = None,
+        http_get: HttpGet | None = None,
         websocket_connect: WebSocketConnect | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._http_post = http_post or self._default_http_post
+        self._http_get = http_get or self._default_http_get
         self._websocket_connect = websocket_connect or self._default_websocket_connect
 
     async def request_otp(
@@ -164,6 +167,17 @@ class DerivPATOTPTransport:
             raise DerivAuthFailure(DerivAuthErrorCode.ENVIRONMENT_MISMATCH)
         return {"url": url, "account_id": options_account_id.strip(), "environment": environment}
 
+    async def get_options_accounts(self, *, app_id: str, authorization: str) -> tuple[int, object]:
+        """Retrieve Options accounts without invoking any trading endpoint."""
+        try:
+            status, payload = await self._http_get(
+                f"{self._base_url}/trading/v1/options/accounts",
+                {"Deriv-App-ID": app_id, "Authorization": authorization, "Content-Type": "application/json"},
+            )
+            return status, payload
+        except HTTPError as exc:
+            return int(exc.code), {}
+
     async def connect_websocket(self, url: str, *, app_id: str | None = None) -> object:
         if not self._is_valid_demo_url(url):
             raise DerivAuthFailure(DerivAuthErrorCode.INVALID_SESSION_URL)
@@ -197,6 +211,16 @@ class DerivPATOTPTransport:
                 return int(exc.code), {}
             except (URLError, ValueError):
                 raise
+        return await asyncio.to_thread(do_request)
+
+    async def _default_http_get(self, url: str, headers: dict[str, str]) -> tuple[int, object]:
+        def do_request() -> tuple[int, object]:
+            request = Request(url, method="GET", headers=headers)
+            try:
+                with urlopen(request, timeout=15) as response:  # noqa: S310 - explicit production endpoint
+                    return int(response.status), json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                return int(exc.code), {}
         return await asyncio.to_thread(do_request)
 
     async def _default_websocket_connect(self, url: str, *, app_id: str | None = None) -> object:
