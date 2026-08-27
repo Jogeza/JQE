@@ -15,7 +15,9 @@ from broker.types import (
     OrderSide,
     OrderStatus,
     OrderType,
+    Position,
     Timeframe,
+    TradeHistoryEntry,
 )
 
 
@@ -56,6 +58,58 @@ class TestCandle:
     def test_volume_defaults_to_zero(self) -> None:
         candle = Candle(time=datetime.now(timezone.utc), open=1.0, high=1.5, low=0.5, close=1.2)
         assert candle.volume == 0.0
+
+
+class TestBrokerTransactionIds:
+    def test_position_transaction_id_defaults_to_none(self) -> None:
+        position = Position(
+            position_id="position-1",
+            symbol="EURUSD",
+            side=OrderSide.BUY,
+            volume=1.0,
+            open_price=1.1,
+        )
+        assert position.transaction_id is None
+
+    def test_position_accepts_transaction_id(self) -> None:
+        position = Position(
+            position_id="position-1",
+            symbol="EURUSD",
+            side=OrderSide.BUY,
+            volume=1.0,
+            open_price=1.1,
+            transaction_id="transaction-1",
+        )
+        assert position.transaction_id == "transaction-1"
+
+    def test_trade_history_transaction_id_defaults_to_none(self) -> None:
+        trade = TradeHistoryEntry(
+            trade_id="trade-1",
+            symbol="EURUSD",
+            side=OrderSide.SELL,
+            volume=1.0,
+            open_price=1.1,
+            close_price=1.0,
+            profit=100.0,
+            opened_at=datetime.now(timezone.utc),
+            closed_at=datetime.now(timezone.utc),
+        )
+        assert trade.transaction_id is None
+
+    def test_trade_history_accepts_transaction_id(self) -> None:
+        trade = TradeHistoryEntry(
+            trade_id="trade-1",
+            symbol="EURUSD",
+            side=OrderSide.SELL,
+            volume=1.0,
+            open_price=1.1,
+            close_price=1.0,
+            profit=100.0,
+            opened_at=datetime.now(timezone.utc),
+            closed_at=datetime.now(timezone.utc),
+            transaction_id="transaction-1",
+        )
+        assert trade.transaction_id == "transaction-1"
 
 
 class TestOrderStatusAndSide:
