@@ -87,6 +87,9 @@ class Settings(BaseSettings):
         cache_dir: Directory for the local historical-candle cache
             (SQLite; see ``data/storage.py``). Runtime state, not
             source — git-ignored.
+        intent_store_path: Deterministic SQLite path for durable execution
+            intent records. Relative paths resolve from the process working
+            directory; production should set an explicit absolute path.
     """
 
     model_config = SettingsConfigDict(
@@ -131,6 +134,7 @@ class Settings(BaseSettings):
     log_to_console: bool = True
 
     cache_dir: Path = Path("cache")
+    intent_store_path: Path = Path("state/intent_records.sqlite3")
 
     @field_validator("log_level", mode="before")
     @classmethod
