@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
@@ -81,6 +85,25 @@ class TestRiskEngine:
         )
         assert decision["approved"] is False
         assert "Daily maximum loss limit reached" in decision["reason"]
+
+    def test_daily_state_snapshot_reports_reconciled_values_and_is_immutable(self) -> None:
+        engine = RiskEngine(max_daily_loss=4.0, max_trades_daily=7)
+        engine.reconcile_daily_history(
+            [
+                SimpleNamespace(closed_at=datetime.now(timezone.utc), profit=-25.0),
+                SimpleNamespace(closed_at=datetime.now(timezone.utc), profit=10.0),
+            ],
+            balance=1_000.0,
+        )
+
+        state = engine.get_daily_state()
+
+        assert state.daily_realized_loss_percent == 2.5
+        assert state.daily_trades_count == 2
+        assert state.max_daily_loss == 4.0
+        assert state.max_trades_daily == 7
+        with pytest.raises(FrozenInstanceError):
+            state.daily_trades_count = 99
 
 
 class TestPositionSizingEngine:

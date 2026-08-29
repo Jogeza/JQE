@@ -10,6 +10,7 @@ Consolidates:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from config.settings import settings
@@ -25,6 +26,16 @@ MIN_ATR = 1.0
 MAX_SPREAD = 30.0
 
 _DEFAULT_BALANCE = 50.0
+
+
+@dataclass(frozen=True, slots=True)
+class DailyRiskState:
+    """Immutable public view of reconciled daily risk limits and usage."""
+
+    daily_realized_loss_percent: float
+    daily_trades_count: int
+    max_daily_loss: float
+    max_trades_daily: int
 
 
 class RiskEngine:
@@ -68,6 +79,15 @@ class RiskEngine:
         """Resets daily tracking counters for a new trading day."""
         self._daily_trades_count = 0
         self._daily_realized_loss_percent = 0.0
+
+    def get_daily_state(self) -> DailyRiskState:
+        """Return an immutable snapshot of current daily risk state."""
+        return DailyRiskState(
+            daily_realized_loss_percent=self._daily_realized_loss_percent,
+            daily_trades_count=self._daily_trades_count,
+            max_daily_loss=self.max_daily_loss,
+            max_trades_daily=self.max_trades_daily,
+        )
 
     def reconcile_daily_history(self, trades: list[Any], balance: float) -> None:
         """Rebuilds daily state statelessly from the broker's closed-trade history.

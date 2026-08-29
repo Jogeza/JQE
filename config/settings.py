@@ -135,6 +135,7 @@ class Settings(BaseSettings):
 
     cache_dir: Path = Path("cache")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
+    use_durable_executor: bool = False
 
     @field_validator("log_level", mode="before")
     @classmethod

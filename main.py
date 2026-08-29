@@ -32,7 +32,16 @@ from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
 from intelligence.trade_plan import TradePlanBuilder
-from risk.risk_controller import approve_trade, reconcile_daily_history
+from execution.executor import AsyncTradeExecutor
+from execution.idempotency import build_execution_idempotency_key
+from execution.persistence import SQLiteIntentRecordStore
+from execution.policy import ExecutionContext, ExecutionIntent
+from execution.trade_manager import PositionSnapshotAdapter
+from risk.risk_controller import (
+    approve_trade,
+    get_reconciled_daily_state,
+    reconcile_daily_history,
+)
 from strategy.pipeline import generate_trading_signal
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
@@ -58,6 +67,9 @@ async def run() -> None:
     logger.info(
         "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
     )
+
+    if settings.use_durable_executor and settings.broker != "simulation":
+        raise JQEError("Durable execution is authorized for the simulation broker only")
 
     timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
@@ -123,14 +135,70 @@ async def run() -> None:
             )
             return
 
-        order = OrderRequest(
-            symbol=plan.symbol,
-            side=_SIDE_BY_SIGNAL[plan.signal],
+        side = _SIDE_BY_SIGNAL[plan.signal]
+        if not settings.use_durable_executor:
+            order = OrderRequest(
+                symbol=plan.symbol,
+                side=side,
+                volume=plan.position_size,
+                stop_loss=plan.stop_loss,
+                take_profit=plan.take_profit,
+            )
+            result = await gateway.submit_order(order)
+            logger.info("Order result: {}", result)
+            return
+
+        normalized_symbol = plan.symbol.strip().upper()
+        idempotency_key = build_execution_idempotency_key(
+            symbol=normalized_symbol,
+            side=side.value,
             volume=plan.position_size,
+            entry=float(latest["close"]),
             stop_loss=plan.stop_loss,
             take_profit=plan.take_profit,
+            signal_time=latest.get("time", df.index[-1]),
         )
-        result = await gateway.submit_order(order)
+        records = SQLiteIntentRecordStore(settings.intent_store_path)
+        existing_record = records.get(idempotency_key)
+        open_positions = PositionSnapshotAdapter.from_positions(
+            tuple(await gateway.get_positions())
+        )
+        daily_loss, daily_count, max_daily_loss, max_daily_trades = (
+            get_reconciled_daily_state()
+        )
+        context = ExecutionContext(
+            emergency_stop=False,
+            daily_loss_percent=daily_loss,
+            max_daily_loss_percent=max_daily_loss,
+            daily_trade_count=daily_count,
+            max_daily_trades=max_daily_trades,
+            open_positions=open_positions,
+            max_open_positions=1,
+            used_idempotency_keys=(
+                frozenset({idempotency_key}) if existing_record is not None else frozenset()
+            ),
+            execution_enabled=True,
+            dry_run=False,
+            broker="simulation",
+            environment=settings.environment,
+            account_id=account.account_id,
+            approved_brokers=frozenset({"simulation"}),
+            approved_environments=frozenset({settings.environment}),
+            approved_accounts=frozenset({"SIMULATED"}),
+            approved_symbols=frozenset({normalized_symbol}),
+            daily_state_authoritative=True,
+        )
+        intent = ExecutionIntent(
+            symbol=normalized_symbol,
+            side=side,
+            volume=plan.position_size,
+            entry=float(latest["close"]),
+            stop_loss=plan.stop_loss,
+            take_profit=plan.take_profit,
+            idempotency_key=idempotency_key,
+            risk_approved=risk_decision["approved"],
+        )
+        result = await AsyncTradeExecutor(gateway, records).submit(intent, context)
         logger.info("Order result: {}", result)
 
 

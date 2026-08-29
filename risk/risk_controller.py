@@ -60,3 +60,14 @@ def reconcile_daily_history(trades: list[Any], balance: float) -> None:
     Delegates to :class:`~risk.risk_engine.RiskEngine`.
     """
     _default_engine.reconcile_daily_history(trades=trades, balance=balance)
+
+
+def get_reconciled_daily_state() -> tuple[float, int, float, int]:
+    """Return the authoritative counters populated by reconciliation."""
+    state = _default_engine.get_daily_state()
+    return (
+        state.daily_realized_loss_percent,
+        state.daily_trades_count,
+        state.max_daily_loss,
+        state.max_trades_daily,
+    )
