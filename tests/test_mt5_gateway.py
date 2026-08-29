@@ -51,6 +51,51 @@ class TestConnectionLifecycle:
         with pytest.raises(BrokerConnectionError):
             await gateway.get_account_info()
 
+    @patch("broker.mt5_gateway.mt5_disconnect")
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_configured_identity_must_match(self, mock_connect: MagicMock, mock_mt5: MagicMock, mock_disconnect: MagicMock) -> None:
+        mock_mt5.ACCOUNT_TRADE_MODE_DEMO = 0
+        mock_mt5.ACCOUNT_TRADE_MODE_REAL = 2
+        mock_mt5.account_info.return_value = MagicMock(login=42, server="Demo", trade_mode=0)
+        mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
+        gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo")
+        await gateway.connect()
+        assert gateway.is_connected is True
+
+    @patch("broker.mt5_gateway.mt5_disconnect")
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_identity_mismatch_fails_closed(self, mock_connect: MagicMock, mock_mt5: MagicMock, mock_disconnect: MagicMock) -> None:
+        mock_mt5.account_info.return_value = MagicMock(login=99, server="Live", trade_mode=2)
+        mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
+        gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo")
+        with pytest.raises(BrokerConnectionError):
+            await gateway.connect()
+        assert gateway.is_connected is False
+        mock_disconnect.assert_called_once()
+
+    @patch("broker.mt5_gateway.mt5_disconnect")
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_missing_health_fails_closed(self, mock_connect: MagicMock, mock_mt5: MagicMock, mock_disconnect: MagicMock) -> None:
+        mock_mt5.account_info.return_value = None
+        mock_mt5.terminal_info.return_value = None
+        gateway = MT5Gateway(login=42)
+        with pytest.raises(BrokerConnectionError):
+            await gateway.connect()
+        assert gateway.is_connected is False
+
+    @patch("broker.mt5_gateway.mt5_disconnect")
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_strict_lifecycle_requires_expected_environment(self, mock_connect: MagicMock, mock_mt5: MagicMock, mock_disconnect: MagicMock) -> None:
+        mock_mt5.account_info.return_value = MagicMock(login=42, server="Demo", trade_mode=0)
+        mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
+        gateway = MT5Gateway(login=42, strict_lifecycle=True)
+        with pytest.raises(BrokerConnectionError):
+            await gateway.connect()
+
 
 class TestGetAccountInfo:
     @patch("broker.mt5_gateway.mt5")
@@ -214,6 +259,33 @@ class TestSubmitOrder:
             OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
         )
         assert result.status is OrderStatus.REJECTED
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_absent_order_send_result_is_indeterminate(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        gateway._market_data = MagicMock()
+        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        mock_mt5.symbol_select.return_value = True
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
+        mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
+        mock_mt5.order_send.return_value = None
+        with pytest.raises(ExecutionError, match="outcome is indeterminate"):
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+
+    @patch("broker.mt5_gateway.mt5")
+    async def test_strict_gateway_rechecks_readiness_before_submission(
+        self, mock_mt5: MagicMock
+    ) -> None:
+        gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo", strict_lifecycle=True)
+        gateway._connected = True
+        mock_mt5.account_info.return_value = None
+        mock_mt5.terminal_info.return_value = None
+        with pytest.raises(BrokerConnectionError, match="pre-submit readiness"):
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+        mock_mt5.order_send.assert_not_called()
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)

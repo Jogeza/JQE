@@ -51,6 +51,13 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
         )
 
     if settings.broker == "mt5":
-        return MT5Gateway()
+        return MT5Gateway(
+            terminal_path=settings.mt5_terminal_path,
+            login=settings.mt5_login,
+            password=settings.mt5_password,
+            server=settings.mt5_server,
+            expected_environment=settings.mt5_expected_environment,
+            strict_lifecycle=settings.environment == "production",
+        )
 
     raise ConfigurationError(f"Unknown broker: {settings.broker!r}")

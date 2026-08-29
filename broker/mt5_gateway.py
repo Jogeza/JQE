@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import MetaTrader5 as mt5
 
@@ -67,20 +68,74 @@ class MT5Gateway(BrokerGateway):
     def __init__(
         self,
         tick_poll_interval: float = _DEFAULT_TICK_POLL_INTERVAL_SECONDS,
+        *,
+        terminal_path: Path | None = None,
+        login: int | None = None,
+        password: str | None = None,
+        server: str | None = None,
+        expected_environment: str | None = None,
+        strict_lifecycle: bool = False,
     ) -> None:
         self._market_data = MarketData()
         self._connected = False
         self.tick_poll_interval = tick_poll_interval
+        self.terminal_path = terminal_path
+        self.login = login
+        self.password = password
+        self.server = server
+        self.expected_environment = expected_environment
+        self.strict_lifecycle = strict_lifecycle
 
     async def connect(self) -> None:
-        connected = await asyncio.to_thread(mt5_connect)
+        connected = await asyncio.to_thread(
+            mt5_connect,
+            terminal_path=self.terminal_path,
+            login=self.login,
+            password=self.password,
+            server=self.server,
+        )
 
         if not connected:
             raise BrokerConnectionError(
                 "Failed to connect to MT5 terminal"
             )
 
+        if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
+            if not await asyncio.to_thread(self._verify_connection_identity):
+                await asyncio.to_thread(mt5_disconnect)
+                raise BrokerConnectionError("MT5 connection identity verification failed")
+
         self._connected = True
+
+    def _verify_connection_identity(self) -> bool:
+        account = mt5.account_info()
+        terminal = mt5.terminal_info()
+        if account is None or terminal is None:
+            logger.error("MT5 connection health unavailable")
+            return False
+        if getattr(terminal, "connected", False) is not True:
+            logger.error("MT5 terminal is not connected")
+            return False
+        if getattr(terminal, "trade_allowed", False) is not True or getattr(terminal, "tradeapi_disabled", False) is True:
+            logger.error("MT5 trading is disabled")
+            return False
+        if self.login is not None and int(getattr(account, "login", -1)) != self.login:
+            logger.error("MT5 account identity mismatch: expected {} observed {}", self.login, getattr(account, "login", None))
+            return False
+        if self.server is not None and str(getattr(account, "server", "")) != self.server:
+            logger.error("MT5 server identity mismatch: expected {} observed {}", self.server, getattr(account, "server", None))
+            return False
+        if self.expected_environment is not None:
+            demo_value = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)
+            real_value = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2)
+            observed = "demo" if getattr(account, "trade_mode", None) == demo_value else "live" if getattr(account, "trade_mode", None) == real_value else None
+            if observed != self.expected_environment:
+                logger.error("MT5 environment mismatch: expected {} observed {}", self.expected_environment, observed)
+                return False
+        elif self.strict_lifecycle:
+            logger.error("MT5 expected environment is not configured")
+            return False
+        return True
 
     async def disconnect(self) -> None:
         await asyncio.to_thread(mt5_disconnect)
@@ -189,6 +244,10 @@ class MT5Gateway(BrokerGateway):
     ) -> OrderResult:
 
         self._require_connected()
+        if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
+            if not await asyncio.to_thread(self._verify_connection_identity):
+                self._connected = False
+                raise BrokerConnectionError("MT5 pre-submit readiness verification failed")
 
         real_symbol = self._market_data.resolve_symbol(
             order.symbol
@@ -345,11 +404,14 @@ class MT5Gateway(BrokerGateway):
             request,
         )
 
-        if (
-            result is None
-            or result.retcode
-            != mt5.TRADE_RETCODE_DONE
-        ):
+        if result is None or getattr(result, "retcode", None) is None:
+            raise ExecutionError(
+                "MT5 order outcome is indeterminate",
+                symbol=order.symbol,
+                request=request,
+            )
+
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
 
             return OrderResult(
                 order_id="",
@@ -368,17 +430,24 @@ class MT5Gateway(BrokerGateway):
                         "comment",
                         "",
                     ),
+                    "order": getattr(result, "order", None),
+                    "deal": getattr(result, "deal", None),
                     "request": request,
                 },
             )
 
+        result_order = getattr(result, "order", None) or getattr(result, "deal", None)
+        result_price = getattr(result, "price", None)
+        if result_order in (None, "") or not isinstance(result_price, (int, float)) or isinstance(result_price, bool):
+            raise ExecutionError("MT5 successful response lacked execution evidence", symbol=order.symbol, retcode=result.retcode)
+
         return OrderResult(
-            order_id=str(result.order),
+            order_id=str(result_order),
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
             volume=order.volume,
-            filled_price=float(result.price),
+            filled_price=float(result_price),
             raw={
                 "retcode": result.retcode,
                 "request": request,

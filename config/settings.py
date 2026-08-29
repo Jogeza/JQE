@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     mt5_login: int | None = None
     mt5_password: str | None = None
     mt5_server: str | None = None
+    mt5_terminal_path: Path | None = None
+    mt5_expected_environment: Literal["demo", "live"] | None = None
 
     deriv_api_token: str | None = Field(default=None, repr=False)
     deriv_app_id: str = "1089"
