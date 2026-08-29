@@ -1,6 +1,6 @@
 # AGENTS.md — JQE AI Development & Architecture Guide
 
-This document is the authoritative developer and AI agent guide for the **JQE Quantitative Trading Platform**. It reflects the verified state of the codebase as of `phase5-foundation`.
+This document is the authoritative developer and AI agent guide for the **JQE Quantitative Trading Platform**. It reflects the verified execution architecture at the start of `phase6-execution`.
 
 ---
 
@@ -39,7 +39,7 @@ JQE follows a strict Clean Architecture pattern. The Quant Core is completely br
 - **`intelligence/`**: Feature engines, market regime detection, 6-factor `ConfidenceModel`.
 - **`strategy/`**: Signal generation. `strategy/pipeline.py` is the canonical bridge.
 - **`risk/`**: `RiskEngine` + `PositionSizing` (dynamic position sizing, limits, capital protection).
-- **`execution/`**: `TradeLifecycle` (invariant enforcement) and `Simulator` (backtest engine).
+- **`execution/`**: pure execution policy and lifecycle invariants; `Simulator` remains backtest-only. Broker mutation stays behind `BrokerGateway`.
 
 ---
 
@@ -56,9 +56,10 @@ main.py:run()
   5. detect_regime(df)
   6. generate_trading_signal(df, symbol, regime)
   7. account = gateway.get_account_info()
-  8. approve_trade(signal, df, balance=account.balance)
-  9. calculate_stop_target(close, ATR, signal) -> OrderRequest
- 10. gateway.submit_order(order)
+  8. reconcile broker trade history; approve_trade(..., enforce_limits=True)
+  9. TradePlanBuilder.build(...) and plan.is_valid()
+ 10. construct OrderRequest from the valid plan
+ 11. gateway.submit_order(order)
 ```
 
 ### 2.2 Backtest Cycle — `backtesting/backtest.py`
@@ -74,11 +75,23 @@ Replays historical data through the identical signal and risk pipeline via `Back
 2. **Trade Lifecycle Invariants:**
    - BUY: `stop_loss < entry < take_profit`
    - SELL: `take_profit < entry < stop_loss`
-   - Any violation is immediately rejected by `TradeLifecycle`.
+   - The live path currently rejects violations through `TradePlan.is_valid()`.
+   - `TradeLifecycle` enforces the same relationship in its isolated legacy path but is not yet wired into `main.py`.
 3. **Dead-Code Caution:**
    - `core.engine.JQEEngine`, `core.market_scanner.MarketScanner`, and `core.decision_pipeline.DecisionPipeline` are legacy dead-code paths. Do NOT build live logic on top of them.
 4. **Environment Execution:**
    - Always run Python commands and tests via `D:\JQE\venv\Scripts\python.exe` and `D:\JQE\venv\Scripts\pytest.exe`.
+
+5. **Phase 6 Execution Policy:**
+   - `execution.policy.ExecutionPolicy` is a pure, fail-closed authorization policy. It must not construct/connect gateways, submit orders, or own authoritative position state.
+   - Emergency stop blocks every new submission.
+   - Upstream risk approval must be explicitly `True`.
+   - Missing or unreadable safety state rejects execution.
+   - Open-position limits reject at or above the configured limit.
+   - Any existing position for the same symbol blocks another order; hedging and pyramiding remain undesigned.
+   - Reused idempotency keys reject.
+   - Broker-reported positions and history remain the source of truth.
+   - Do not integrate the synchronous legacy `OrderManager` into the async live path. It constructs its own gateway and uses `asyncio.run()`.
 
 ---
 

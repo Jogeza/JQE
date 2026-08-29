@@ -114,9 +114,12 @@ BrokerGateway.connect()
       → [regime map: TREND_UP→TRENDING, RANGE→RANGING, NO_TRADE→UNKNOWN]
       → strategy.signal_engine.SignalEngine.generate(intelligence)   # → {action, reason, confidence}
       → strategy.scoring.signal_scorer.SignalScorer.evaluate(...)    # → {score, quality, reasons}
-  → risk.risk_controller.approve_trade(signal, df, balance)
-  → if approved: calculate_stop_target(entry, ATR, direction)
-  → BrokerGateway.submit_order(OrderRequest)
+  → BrokerGateway.get_account_info() + get_trade_history()
+  → reconcile_daily_history(trades, balance)
+  → risk.risk_controller.approve_trade(signal, df, balance, enforce_limits=True)
+  → if approved: TradePlanBuilder.build(...)
+  → require TradePlan.is_valid()
+  → BrokerGateway.submit_order(OrderRequest built from TradePlan)
 ```
 
 ### Scanner path (`core.market_scanner.MarketScanner`)
@@ -135,34 +138,29 @@ core.market_data.MarketData.get_market_data(symbol)   # MT5 direct — NOT broke
 
 ---
 
-## Confirmed Bugs
+## Previously confirmed bugs and current disposition
 
-### Bug 1 — `execution/trade_lifecycle.py` direction bug
+### Fixed bug — `execution/trade_lifecycle.py` direction handling
 ```python
-# Current (WRONG for SELL):
-stop_loss = price - 10      # always below entry
-take_profit = price + 20    # always above entry
-
-# Required:
-# BUY:  SL < entry < TP
-# SELL: TP < entry < SL
+# Current invariant enforcement:
+# BUY:  stop_loss < entry < take_profit
+# SELL: take_profit < entry < stop_loss
 ```
 
-### Bug 2 — `core/decision_pipeline.py` fragile `decide(*args)`
-```python
-def decide(self, *args):
-    for item in args:
-        if isinstance(item, str):
-            symbol = item   # positional string sniffing
-        else:
-            data = item     # discards signal, score, risk separately
-```
-Called from `core/engine.py` as `self.pipeline.decide(signal, score, risk)` — the `score` and `risk` args are silently discarded.
+The isolated legacy lifecycle and the live `TradePlan.is_valid()` path both
+reject violations. `TradeLifecycle` itself is not yet wired into `main.py`.
 
-### Bug 3 — Indicator column naming split
+### Fixed bug — `core/decision_pipeline.py` argument handling
+
+The former positional `decide(*args)` sniffing was replaced with an explicit
+`decide(signal, score, risk, market_data, symbol)` contract. This remains a
+legacy, noncanonical path despite the bug fix.
+
+### Compatibility bridge — indicator column naming
 - `core/indicators.py` → `EMA50`, `EMA200`, `RSI`, `ATR`
 - `strategy/features/indicators.py` → `EMA_50`, `EMA_200`, `RSI_14`, `ATR_14`
-- Bridge shim in `strategy/pipeline.py` (functional but fragile)
+- `core/indicators.py` now emits canonical names and legacy aliases;
+  `strategy/pipeline.py` remains the mandatory translation boundary.
 
 ---
 
@@ -170,13 +168,16 @@ Called from `core/engine.py` as `self.pipeline.decide(signal, score, risk)` — 
 
 | Gap | Status |
 |---|---|
-| `ConfidenceModel` (6-factor) not in live path | Known, deferred |
+| `ConfidenceModel` (6-factor) | Integrated through `StrategyEngine`; threshold reconciliation remains |
 | `MarketScanner` uses raw MT5, not BrokerGateway | Known, deferred |
 | `Portfolio` is an empty stub | Known |
-| No `TradePlan` model | Missing |
-| No unified risk engine | Two competing: `risk_controller` vs `risk_manager` |
-| No paper trade lifecycle | Missing |
-| No dashboard API layer | Missing |
+| `TradePlan` model and builder | Live and validated before submission |
+| Unified risk engine | Live through `risk_controller` shim; legacy `risk_manager` remains |
+| Daily limits | Partial: closed history reconciled; open executions not reliably counted |
+| Execution policy | Pure Phase 6 policy exists; not integrated into live submission |
+| Minimum confidence setting | Incomplete: stored by strategy engine but not enforced; risk threshold remains separate |
+| Position sizing | Incomplete: competing formulas remain and live `TradePlan` volume differs from risk decision `lot_size` |
+| Dashboard API layer | Implemented |
 
 ---
 
@@ -218,9 +219,171 @@ MT5 is mocked in `tests/conftest.py` via `sys.modules` stub when not installed.
 
 | Path | Submits Live Orders? |
 |---|---|
-| `main.py` → `gateway.submit_order()` | Only if `broker=mt5` AND signal approved |
+| `main.py` → `gateway.submit_order()` | YES for configured MT5/Deriv gateways after plan and risk approval; simulation is paper-only |
 | `broker/simulation_gateway.py` | Paper simulation only — no real orders |
 | `broker/mt5_gateway.py` | YES — must not be called during development |
 | `broker/deriv_gateway.py` | YES — must not be called during development |
 | `execution/simulator.py` | No — backtest-only, no broker calls |
 | `execution/trade_lifecycle.py` | Calls `OrderManager` + `PositionManager` — in-memory only |
+| `execution/policy.py` | No — pure fail-closed decision logic, no gateway calls |
+
+### Phase 6 execution architecture decision
+
+`execution.policy.ExecutionPolicy` is the pure authorization boundary. It
+does not construct/connect a gateway, submit orders, mutate broker state, or
+own an authoritative position ledger. Broker positions and history remain the
+source of truth.
+
+The synchronous legacy `OrderManager` will not be reused in the async live
+path: it constructs and connects a second gateway and calls `asyncio.run()`,
+which conflicts with `main.py`'s active event loop and gateway ownership.
+Future submission work requires an async, gateway-injected executor.
+
+The Phase 6 policy is deliberately conservative:
+
+* emergency stop blocks every new submission;
+* explicit risk approval is mandatory;
+* missing or unreadable safety state fails closed;
+* daily and open-position limits reject at their configured boundaries;
+* any existing same-symbol position blocks another order until hedging or
+  pyramiding is explicitly designed;
+* reused idempotency keys reject.
+
+The non-live execution boundary now includes a SQLite-backed
+`IntentRecordStore`. It persists UTC intent state, uses a unique key with
+transactional `BEGIN IMMEDIATE` claims, and guards state transitions. The
+store does not reconcile broker executions; that remains the gateway/state
+coordinator's responsibility. It is not wired into `main.py` until durable
+deployment policy and broker-specific correlation are complete.
+
+Current broker correlation is limited. MT5 exposes broker order, position, and
+deal identifiers plus a fixed gateway comment/magic value; Deriv exposes
+contract IDs and portfolio/history records. Neither shared gateway contract
+propagates the JQE idempotency key. Symbol/side matches are therefore only
+conservative duplicate guards, not proof that a particular intent executed.
+For an unknown outcome, both a symbol match and an absent visible position are
+ambiguous evidence and never permit blind resubmission.
+
+## Pre-Live Operational Safety
+
+`JQE_INTENT_STORE_PATH` configures the absolute-resolved SQLite intent store;
+the default is `state/intent_records.sqlite3`, never a temporary directory.
+The store uses WAL, `synchronous=FULL`, a five-second busy timeout, atomic
+transactions, and guarded transitions. Deployments must use consistent SQLite
+backups and restore unresolved `PENDING`/`UNKNOWN` records before recovery.
+Database uncertainty prevents broker submission. The read-only `inspect()`
+method exposes state, timestamps, and known order IDs. These safeguards are
+technically implemented, but durable Deriv correlation, production filesystem
+validation, and backup/restore operations remain prerequisites for live use.
+Unresolved submission outcomes emit an allowlisted diagnostic record containing
+non-secret intent, broker, state, timestamp, and error-category fields.
+
+### Intent identity and recovery
+
+`ExecutionIntent.idempotency_key` is generated by the caller, persisted by
+`IntentRecordStore`, and retained by the executor. It is currently lost at
+the shared `OrderRequest` boundary because that broker DTO has no client
+correlation field. MT5 requests use a fixed comment and magic number, while
+Deriv returns broker-generated contract IDs; neither mechanism preserves the
+JQE key. Broker order/deal/position IDs are therefore evidence associated
+with an intent, never replacements for its identity.
+
+The correlation contract distinguishes `CONFIRMED_MATCH`,
+`CONFIRMED_ABSENCE`, `AMBIGUOUS`, and `UNAVAILABLE`. With current APIs,
+symbol/side matches and missing visible positions remain ambiguous. Unknown
+submissions stay unresolved and cannot be retried. Future live wiring
+requires a broker-supported, recoverable client identity plus historical
+reconciliation before any correlation can be considered confirmed.
+
+The execution boundary now preserves the JQE key in an execution-specific
+envelope. The Deriv gateway maps it deterministically to the documented Buy
+`passthrough` object (`{"jqe": {"idempotency_key": "..."}}`) and preserves
+the returned contract and transaction identifiers on the immediate result.
+Deriv documentation does not establish that passthrough is retained by later
+portfolio or history records, so this does not establish durable historical
+correlation.
+
+The Deriv reconciliation adapter can confirm a known contract ID or
+transaction ID against current portfolio/history DTOs. Symbol/side evidence
+remains ambiguous, and absence remains non-proof. `UNKNOWN` intents therefore
+stay fail-closed unless exact broker evidence is supplied.
+
+### Broker Correlation Evidence Model
+
+The reconciliation boundary distinguishes the authoritative JQE
+`idempotency_key` from broker execution evidence. `CorrelationEvidence` is an
+immutable, broker-neutral record containing the broker name, any identifiers
+actually returned by that broker, descriptive fields, source, and a
+`CorrelationStrength` of `EXACT`, `AMBIGUOUS`, `ABSENT`, or `UNAVAILABLE`.
+Broker order, deal, position, contract, transaction, and request identifiers
+are evidence only; none is substituted for the JQE key.
+
+`EXACT` is allowed only when a caller-supplied broker identifier is found.
+Symbol, side, volume, timestamps, MT5 magic/comment, and MT5 request IDs are
+not exact identity keys. Deriv passthrough persistence is unproven, and MT5
+request IDs are terminal-generated and not restart-safe. Empty successful
+queries produce `ABSENT`; broker failures produce `UNAVAILABLE`; approximate
+matches produce `AMBIGUOUS`.
+
+The Deriv and MT5 adapters own their broker-specific lookup and identifier
+semantics. The generic executor consumes only broker-neutral reconciliation
+results. Evidence is not persisted speculatively: durable storage remains for
+JQE intent state until a broker-supported correlation contract is proven.
+This model does not create durable correlation where the broker does not
+provide it, and `UNKNOWN` outcomes remain unresolved without exact evidence.
+
+### MT5 Terminal and Account Lifecycle Safety
+
+MT5 configuration may provide an explicit terminal executable path through
+`JQE_MT5_TERMINAL_PATH`, an account login, server, and expected environment
+(`demo` or `live`). When supplied, the path is resolved and validated; JQE
+does not scan for or silently choose another terminal. The gateway verifies
+`account_info()` login/server, `terminal_info()` connectivity and trading
+permissions, and the documented account trade mode before marking a strict
+connection usable. A successful `mt5.initialize()` alone does not authorize
+execution.
+
+If identity or health information is missing or mismatched, connection fails
+closed. Shutdown is explicit and reconnects do not resubmit uncertain orders;
+broker state must be reconciled and exact evidence obtained first. MT5
+supports netting and hedging account modes, so account-mode and partial-fill
+handling remain future reconciliation work. Demo/live verification relies on
+the documented account trade mode; unknown modes are rejected when an
+environment is expected.
+Production-configured MT5 gateways require an expected environment; development
+and test gateways may omit strict identity checks while the executor remains
+non-live.
+
+### Deriv PAT/OTP Authentication Boundary
+
+`broker.deriv_auth` defines a broker-specific, transport-injected PAT/OTP
+session boundary. It validates App ID and PAT presence, sends Bearer-authenticated
+OTP requests through a supplied transport, validates the returned session URL,
+account identity, and explicit `demo`/`real` environment, then establishes the
+authenticated WebSocket session. Tokens are excluded from representations and
+authentication errors contain only stable failure codes.
+
+The boundary now includes a production-capable, dependency-injected REST/OTP
+transport and WebSocket connector, alongside the in-memory fake used by tests.
+The production transport targets the documented account OTP endpoint and only
+connects to the returned authenticated URL; it is not wired to `main.py` or
+trading. The existing direct legacy-style `authorize` WebSocket path is not
+assumed compatible with newly registered Native Apps. Expired, revoked,
+malformed, unavailable, mismatched, or unverifiable authentication state
+remains not-ready and cannot authorize trading. PATs never enter execution
+models, SQLite, logs, or diagnostics. **No real Deriv authentication has been
+performed.**
+
+The aligned Options flow uses `POST /trading/v1/options/accounts/{accountId}/otp`
+with `Deriv-App-ID`, Bearer authorization, and JSON content type, then connects
+only to the returned `wss://api.derivws.com/trading/v1/options/ws/demo?otp=...`
+URL with the App-ID header. The configured account value is treated explicitly
+as an Options account identifier via `JQE_DERIV_OPTIONS_ACCOUNT_ID`, not inferred
+or transformed from a login ID. A Deriv login ID is not an Options account ID.
+OTP values are credentials and are never logged or persisted. Legacy endpoints,
+fallbacks, and retries are forbidden. Authoritative account verification remains
+blocked until the authenticated session supplies independently verifiable
+identity; live execution remains disabled.
+The prior controlled 404 investigation identified ambiguous account identity as
+the remaining authentication blocker; configuration now uses an explicit
+Options account ID field.

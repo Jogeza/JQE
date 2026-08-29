@@ -243,9 +243,10 @@ reflects what was verified in the repository — not what was planned.
   daily-loss/trade-count limit tracking, and dynamic risk percent
   scaling. Reads `settings.max_daily_loss` and `settings.max_trades_daily`
   at construction time. Daily-limit enforcement is opt-in
-  (`enforce_limits=False` by default); the stateful tracking methods
-  (`record_trade_execution`, `record_loss`, `reset_daily_stats`)
-  exist but are not called by the live pipeline.
+  (`enforce_limits=False` by default). The live path now opts in and
+  reconstructs state from broker closed-trade history before evaluation.
+  This remains partial: open executions are not counted reliably until
+  they appear in closed history.
 
 * **Documentation added:** `docs/architecture/current-state.md` and
   `docs/testing/baseline.md` created in `ab4a974`.
@@ -269,11 +270,11 @@ behaviour until Phase 5 integration work is completed.
 > These are known limitations, not completed work. Do not treat the
 > existence of a source file as evidence that the feature is live.
 
-* ❌ **`TradePlanBuilder` is not used by the live pipeline.**
-  `main.py` calls `execution.simulator.calculate_stop_target()` directly
-  to compute stop/target, then constructs `OrderRequest` manually.
-  `TradePlanBuilder` exists and is tested (`tests/test_trade_plan.py`)
-  but has zero importers in the live path.
+* ✅ **`TradePlanBuilder` is used by the live pipeline.**
+  `main.py` builds a plan, requires `plan.is_valid()`, and constructs the
+  broker `OrderRequest` from its symbol, direction, position size, stop,
+  and target. `execution.simulator.calculate_stop_target()` is now
+  backtest support rather than the live order-construction path.
 
 * ❌ **The canonical `intelligence.market_regime.detect_regime()` is
   not the live regime path.**
@@ -288,12 +289,12 @@ behaviour until Phase 5 integration work is completed.
   `main.py` does not read it. Signals below the threshold are not
   blocked.
 
-* ❌ **`settings.max_daily_loss` and `settings.max_trades_daily` are
-  not enforced.**
-  Both settings exist and are read by `RiskEngine.__init__()`, but
-  `main.py` calls `risk.risk_controller.approve_trade()`, which delegates
-  to `RiskEngine.approve_trade(enforce_limits=False)`. The daily-limit
-  check is never invoked; no state is tracked across cycles.
+* ⚠️ **`settings.max_daily_loss` and `settings.max_trades_daily` are
+  partially enforced.**
+  `main.py` reconciles recent closed broker history and calls
+  `approve_trade(..., enforce_limits=True)`. Closed-trade losses and counts
+  therefore block at their configured limits. Open executions are not
+  counted reliably, so the trade-count protection is not yet complete.
 
 * ❌ **Duplicate / legacy risk components.**
   `risk/` contains `risk_engine.py` (new, canonical), `risk_controller.py`
@@ -353,7 +354,7 @@ test reproducibility first (so subsequent changes can be verified), then
 regression coverage (so the live pipeline is protected before behavioral
 changes are introduced), then behavioral integration tasks.
 
-### Task 1 — Fresh-clone test reproducibility (Completed: ❌)
+### Task 1 — Fresh-clone test reproducibility (Completed: ⚠️ Partial)
 
 **Goal:** Zero collection errors, zero unexpected failures, environment-
 dependent MT5 tests skip cleanly when MT5 is unavailable.
@@ -370,7 +371,13 @@ dependent MT5 tests skip cleanly when MT5 is unavailable.
   and exclude from the default run via `pyproject.toml`.
 * Do NOT solve this by committing local market dataset CSV files.
 
-### Task 2 — End-to-end live-cycle regression test (Completed: ❌)
+The complete default suite currently passes, and scanner tests use mocks.
+However, legacy module-level debug scripts and demo-named execution tests
+remain in `tests/`, and a dedicated live-test marker policy has not been
+implemented. The zero-failure goal is met; the requested test hygiene is not
+fully complete.
+
+### Task 2 — End-to-end live-cycle regression test (Completed: ✅)
 
 **Goal:** A regression test that exercises the actual `main.run()` function
 end-to-end using `SimulationGateway`, verifying the `OrderRequest` produced
@@ -398,7 +405,7 @@ evaluation.
   confidence check (75 hardcoded in `RiskEngine`) at this time —
   reconcile the two thresholds as a separate documented decision.
 
-### Task 4 — Integrate TradePlanBuilder (Completed: ❌)
+### Task 4 — Integrate TradePlanBuilder (Completed: ⚠️ Partial)
 
 **Goal:** Wire the Phase 4 `TradePlanBuilder` into the live pipeline to
 replace the current manual stop/target calculation in `main.py`.
@@ -414,6 +421,10 @@ Before an order is submitted:
 * Add regression tests covering the rejection paths (invalid ATR,
   invalid price, failed R:R) to ensure `main.py` does not submit orders
   that `TradePlanBuilder` would reject.
+
+The live integration and valid end-to-end regression exist. Builder-level
+invalid ATR/price/R:R tests exist, but `main.run()` does not yet have focused
+no-submission regression tests for each invalid-plan path.
 
 ### Task 5 — Reconcile position sizing (Completed: ❌)
 
@@ -435,20 +446,21 @@ Steps:
 4. After selection, deprecate or remove the non-canonical formula.
 5. Do not change live risk exposure without explicit review.
 
-### Task 6 — Enforce daily risk limits (Completed: ❌)
+### Task 6 — Enforce daily risk limits (Completed: ⚠️ Partial)
 
 **Goal:** Implement enforcement of `settings.max_daily_loss` and
 `settings.max_trades_daily` so the system stops trading when either limit
 is reached within a session.
 
-* `RiskEngine` already tracks `_daily_trades_count` and
+* `RiskEngine` tracks `_daily_trades_count` and
   `_daily_realized_loss_percent` internally and has `evaluate_limits()`.
-  The gap is that `main.py` calls `approve_trade(enforce_limits=False)`.
+  `main.py` now rebuilds those counters from recent broker history and
+  calls `approve_trade(enforce_limits=True)`.
 * Determine the appropriate scope of "daily session" for this platform
   (single `run()` call, a long-running daemon, or a scheduled job) and
   implement the smallest state/tracking mechanism required.
-* Wire `record_trade_execution()` and `record_loss()` calls at the
-  appropriate points in the live cycle.
+* Remaining gap: include open/current-cycle executions without
+  double-counting them when they later become closed-history entries.
 * Add tests verifying the system halts at both the trade-count limit and
   the loss limit, and resumes after `reset_daily_stats()`.
 * Do not redesign the portfolio system to accomplish this.
@@ -482,12 +494,11 @@ The following items are deliberately **not** included in the Phase 5
 scope. They are documented here so they are not forgotten, but they
 require additional design work before becoming implementation tasks.
 
-* **Wiring `ConfidenceModel` into the live pipeline.** `ConfidenceModel`
-  produces a full 6-factor breakdown, but the live pipeline does not call
-  it. Wiring it in requires deciding how its `total` score relates to
-  `settings.min_confidence_threshold` and `RiskEngine.min_confidence`
-  (currently two separate thresholds). Deferred until the thresholds are
-  reconciled.
+* **Reconciling confidence thresholds.** `ConfidenceModel` is now wired
+  through `StrategyEngine` and produces the 6-factor breakdown. However,
+  `settings.min_confidence_threshold` is stored but not enforced by the
+  strategy engine, while `RiskEngine.min_confidence` remains a separate
+  threshold. Minimum-confidence enforcement is therefore still incomplete.
 
 * **Replacing `main.py`'s direct `gateway.submit_order()` call with
   `TradeLifecycle`.** `TradeLifecycle.process()` requires `order_manager`
@@ -509,11 +520,105 @@ require additional design work before becoming implementation tasks.
 
 ## ⏳ Phase 6 — Execution & Trade Management
 
-* `execution/trade_manager.py`, `execution/order_executor.py` against
-  `BrokerGateway`. Max open trades, duplicate-trade prevention, daily
-  loss/drawdown protection, emergency stop.
-* Integrate `TradeLifecycle` into the live path (after deferred decision
-  above is resolved).
+### WP0/WP1 — Architecture and pure execution policy
+
+* `execution/policy.py` is the pure, deterministic authorization boundary.
+  It performs no broker I/O and owns no authoritative position ledger.
+* Emergency stop blocks every new submission.
+* Explicit upstream risk approval is mandatory; missing or unreadable
+  safety context fails closed.
+* Maximum-open-position limits reject at or above the configured limit.
+* Any existing position for the same symbol blocks another order until
+  hedging/pyramiding is explicitly designed.
+* Reused idempotency keys reject.
+* Broker positions and history remain the source of truth.
+
+### Later Phase 6 work
+
+* Add an async, gateway-injected `execution/order_executor.py` and
+  broker-state coordinator such as `execution/trade_manager.py`.
+* Do **not** reuse the synchronous legacy `OrderManager` in `main.py`: it
+  constructs/connects its own gateway and bridges async calls with
+  `asyncio.run()`, conflicting with the live path's existing event loop and
+  gateway ownership.
+* Integrate the pure policy into the live path only after broker-state,
+  idempotency persistence, and submission reconciliation are designed.
+* Complete open-execution daily counting, sizing reconciliation, emergency
+  stop state ownership, and broker outcome reconciliation without silently
+  changing live exposure.
+* Deferred purity limitation: importing `broker.types` currently executes the
+  broad `broker` package initializer, which imports concrete gateway modules.
+  The pure policy never constructs, connects, or calls a gateway, but narrowing
+  that package import chain is a separate broker-packaging change and is not
+  part of WP1.
+* A SQLite-backed `IntentRecordStore` now provides durable, transactional
+  claims and guarded transitions for the non-live executor boundary. It is
+  intentionally not wired into `main.py`; production deployment, broker
+  correlation, and restart-recovery policy remain prerequisites.
+* Broker correlation remains unresolved: MT5 provides order/position/deal
+  IDs and fixed comment/magic metadata; Deriv provides contract IDs, but the
+  shared DTOs carry no JQE intent identity. Unknown outcomes therefore remain
+  unresolved when only symbol/side or absence is observable.
+* **MT5 Terminal and Account Lifecycle Safety.** Optional explicit terminal
+  path, account login/server verification, terminal health checks, trading
+  permission checks, and documented demo/live trade-mode validation are now
+  available below the gateway boundary. Invalid or ambiguous identity fails
+  closed; no terminal discovery or automatic order retry is performed. A
+  successful initialization is not execution authorization.
+  Production MT5 configuration requires an explicit expected environment;
+  development/test construction remains permissive only for non-live use.
+
+## Pre-Live Operational Safety
+
+`JQE_INTENT_STORE_PATH` defines the absolute-resolved SQLite intent database,
+defaulting to `state/intent_records.sqlite3`. WAL, `synchronous=FULL`, busy
+timeout, atomic claims, guarded transitions, restart persistence, and
+read-only inspection are implemented. Deployments require consistent backups
+and conservative restoration of unresolved intents. Database uncertainty
+blocks submission. These controls are technically implemented, not approval
+for live execution; Deriv historical correlation and production deployment
+validation remain blocked.
+Unresolved submission outcomes also emit allowlisted, non-secret diagnostic
+evidence; logging failures are swallowed and cannot affect execution.
+* The non-live Deriv execution envelope now carries the JQE key into the
+  documented Buy `passthrough` object and preserves immediate `contract_id`
+  and `transaction_id` metadata. Historical passthrough propagation remains
+unverified; unknown outcomes remain fail-closed.
+* Deriv-specific reconciliation now preserves and can match known contract
+  and transaction identifiers outside the generic executor. Symbol/side and
+  absence remain ambiguous; durable historical intent correlation is still
+  not established.
+* **Broker Correlation Evidence Model.** `execution.reconciliation` now
+  separates the authoritative JQE `idempotency_key` from immutable broker
+  evidence. `CorrelationStrength` is explicitly `EXACT`, `AMBIGUOUS`,
+  `ABSENT`, or `UNAVAILABLE`; broker-generated IDs are never treated as JQE
+  identity. Deriv and MT5 lookup remains adapter-specific, and approximate
+  symbol/side/time, MT5 magic/comment, and terminal `request_id` evidence stay
+  ambiguous. No speculative broker evidence is persisted, and `UNKNOWN`
+  remains fail-closed when exact evidence is unavailable.
+* **Deriv PAT/OTP Authentication Boundary — non-trading.** A transport-injected
+  session now supports both an in-memory fake and a production-capable REST
+  OTP/WebSocket transport. It validates PAT/App ID configuration, the
+  account-specific OTP response, returned session URL, account identity, and
+  explicit demo/real environment. It does not assume the legacy direct
+  WebSocket `authorize` flow is compatible with new Native Apps. The real
+  transport is not wired to `main.py`, is not invoked by tests, and has made no
+  real Deriv request. Tokens never enter execution persistence or logs; all
+  failures remain not-ready and non-live.
+* **Deriv Options protocol alignment.** The non-trading transport now follows
+  the documented JSON REST headers and validates only the returned demo Options
+  WebSocket host, path, and required OTP query parameter. The configured
+  `JQE_DERIV_OPTIONS_ACCOUNT_ID` is an explicit Options account identifier; no login-ID conversion,
+  legacy fallback, or retry is permitted. Independent account verification is
+  still a blocker until the authenticated session exposes authoritative
+  identity. Live execution remains disabled.
+  The earlier controlled 404 was attributed to this account-identifier
+  ambiguity; the required configuration is now explicit.
+* `ExecutionIntent.idempotency_key` is durable in the intent store but is not
+  propagated through the shared `OrderRequest`. Do not treat MT5's fixed
+  comment/magic or Deriv contract IDs as substitutes. A future correlation
+  package must add only broker-supported, recoverable metadata and must keep
+  unknown outcomes unresolved until it can prove an exact match.
 
 ---
 
@@ -540,24 +645,21 @@ require additional design work before becoming implementation tasks.
 
 ---
 
-## Known test debt
+## Remaining test hygiene debt
 
-Several pre-existing test files fail independent of any milestone above:
+The complete default suite currently collects and passes without a live
+broker. Remaining issues are hygiene and isolation risks rather than current
+zero-failure blockers:
 
-* `tests/test_data_manager.py` — a debug script (module-level
-  `DataManager().collect()` calls, no `test_*` functions). Raises a
-  collection error and attempts MT5 connections at import time. Target
-  for Task 1 cleanup.
-* `tests/test_autonomous_scanner.py` — exercises `JQEEngine`, requires
-  a live MT5 connection. Should be rewritten with mocks or deleted if
-  `JQEEngine`'s scanner pathway is formally deprecated.
-* `tests/test_core_engine.py` — same situation as above (also a
-  debug script with `print()` statements and no `test_*` functions).
-* Live-connection tests (`tests/test_live_demo_trade.py`,
-  `tests/test_live_market_data.py`, `tests/test_live_mt5_execution.py`,
-  `tests/test_live_scanner.py`, `tests/test_mt5_connection_live.py`) —
-  require a real broker. Should be excluded from the default test run
-  via a custom marker (see Task 1).
+* `tests/test_data_manager.py` remains a module-level debug script with no
+  pytest test functions and should be moved or converted when its legacy data
+  path is retired.
+* `tests/test_autonomous_scanner.py` now mocks `MarketData`, but still covers
+  the noncanonical scanner path.
+* Demo-named execution tests instantiate the legacy `OrderManager`; they use
+  the configured gateway and must not become the model for Phase 6 tests.
+* Live broker integration remains a separate, explicitly controlled concern;
+  default tests must continue to avoid real order submission.
 
 ---
 
