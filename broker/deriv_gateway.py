@@ -220,7 +220,10 @@ class DerivGateway(BrokerGateway):
         if not proposal_id or not isinstance(ask_price, (int, float)) or isinstance(ask_price, bool) or not math.isfinite(float(ask_price)) or float(ask_price) <= 0:
             raise ExecutionError("Deriv proposal response was malformed or indeterminate", symbol=order.symbol)
 
-        buy_response = await self._request({"buy": proposal_id, "price": ask_price})
+        buy_request: dict[str, Any] = {"buy": proposal_id, "price": ask_price}
+        if order.idempotency_key is not None:
+            buy_request["passthrough"] = {"jqe": {"idempotency_key": order.idempotency_key}}
+        buy_response = await self._request(buy_request)
         if buy_response.get("error"):
             logger.warning(
                 "DerivGateway order rejected: {} {} {} — {}",
@@ -291,6 +294,8 @@ class DerivGateway(BrokerGateway):
                     if contract.get("date_start")
                     else None
                 ),
+                transaction_id=(str(contract["transaction_id"]) if contract.get("transaction_id") is not None else None),
+                contract_type=str(contract.get("contract_type")) if contract.get("contract_type") is not None else None,
             )
             for contract in contracts
         ]
@@ -361,6 +366,8 @@ class DerivGateway(BrokerGateway):
                     profit=float(txn.get("profit", sell_price - buy_price)),
                     opened_at=datetime.fromtimestamp(raw_purchase_time, tz=timezone.utc),
                     closed_at=datetime.fromtimestamp(raw_sell_time, tz=timezone.utc),
+                    transaction_id=(str(txn["transaction_id"]) if txn.get("transaction_id") is not None else None),
+                    contract_type=str(txn.get("contract_type")) if txn.get("contract_type") is not None else None,
                 )
             )
         return entries

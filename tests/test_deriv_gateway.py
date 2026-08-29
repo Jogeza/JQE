@@ -196,7 +196,7 @@ class TestSubmitOrder:
         assert result.order_id == "999"
         await gateway.disconnect()
 
-    async def test_successful_buy_preserves_transaction_id(self) -> None:
+    async def test_execution_identity_is_sent_only_in_buy_passthrough(self) -> None:
         gateway, fake_connection = _connected_gateway(
             {
                 "proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}},
@@ -204,11 +204,20 @@ class TestSubmitOrder:
             }
         )
         await _connect_with_fake(gateway, fake_connection)
+        intent_key = "JQE-intent-001"
         result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+            OrderRequest(
+                symbol="R_100",
+                side=OrderSide.BUY,
+                volume=10.0,
+                idempotency_key=intent_key,
+            )
         )
+        buy_request = next(message for message in fake_connection.sent if "buy" in message)
+        assert buy_request["passthrough"] == {"jqe": {"idempotency_key": intent_key}}
         assert result.order_id == "999"
         assert result.transaction_id == "1234"
+        assert buy_request["req_id"] != intent_key
         await gateway.disconnect()
 
     async def test_rejected_buy_returns_rejected_status(self) -> None:

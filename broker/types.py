@@ -192,6 +192,7 @@ class Position(BaseModel):
     take_profit: float | None = None
     opened_at: datetime | None = None
     transaction_id: str | None = None
+    contract_type: str | None = None
 
 
 class TradeHistoryEntry(BaseModel):
@@ -207,3 +208,4 @@ class TradeHistoryEntry(BaseModel):
     opened_at: datetime
     closed_at: datetime
     transaction_id: str | None = None
+    contract_type: str | None = None
