@@ -167,12 +167,20 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("broker", ["deriv", "mt5"])
-async def test_non_simulation_durable_execution_fails_before_gateway_creation(broker: str) -> None:
+@pytest.mark.parametrize(
+    "broker,message",
+    [
+        ("deriv", "Deriv DEMO execution is not enabled"),
+        ("mt5", "simulation and Deriv DEMO only"),
+    ],
+)
+async def test_unauthorized_durable_execution_fails_before_gateway_creation(
+    broker: str, message: str
+) -> None:
     settings.use_durable_executor = True
     settings.broker = broker
     with patch("main.get_gateway") as get_gateway:
-        with pytest.raises(Exception, match="simulation broker only"):
+        with pytest.raises(Exception, match=message):
             await main.run()
     get_gateway.assert_not_called()
 

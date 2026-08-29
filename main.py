@@ -27,7 +27,7 @@ from broker.factory import get_gateway
 from broker.types import OrderRequest, OrderSide, Timeframe
 from config import settings
 from core.data_validator import validate_market_data
-from core.exceptions import JQEError, MarketDataError
+from core.exceptions import ConfigurationError, JQEError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
@@ -36,7 +36,7 @@ from execution.executor import AsyncTradeExecutor
 from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
-from execution.reconciliation import SimulationReconciliationAdapter
+from execution.reconciliation import DerivReconciliationAdapter, SimulationReconciliationAdapter
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
     approve_trade,
@@ -69,8 +69,37 @@ async def run() -> None:
         "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
     )
 
-    if settings.use_durable_executor and settings.broker != "simulation":
-        raise JQEError("Durable execution is authorized for the simulation broker only")
+    if settings.use_durable_executor:
+        if settings.broker == "simulation":
+            pass
+        elif settings.broker == "deriv":
+            approved_symbols = frozenset(
+                symbol.strip().upper()
+                for symbol in settings.deriv_approved_symbols
+                if isinstance(symbol, str) and symbol.strip()
+            )
+            if settings.environment != "development":
+                raise ConfigurationError(
+                    "Durable Deriv DEMO execution requires the development environment"
+                )
+            if settings.deriv_expected_environment != "demo":
+                raise ConfigurationError(
+                    "Durable Deriv execution requires the explicit demo environment"
+                )
+            if settings.deriv_demo_execution_enabled is not True:
+                raise ConfigurationError("Durable Deriv DEMO execution is not enabled")
+            if not settings.deriv_options_account_id or not settings.deriv_options_account_id.strip():
+                raise ConfigurationError(
+                    "Durable Deriv DEMO execution requires an approved account"
+                )
+            if settings.default_symbol.strip().upper() not in approved_symbols:
+                raise ConfigurationError(
+                    "Durable Deriv DEMO execution requires an approved symbol"
+                )
+        else:
+            raise ConfigurationError(
+                "Durable execution is authorized for simulation and Deriv DEMO only"
+            )
 
     timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
@@ -167,6 +196,20 @@ async def run() -> None:
         daily_loss, daily_count, max_daily_loss, max_daily_trades = (
             get_reconciled_daily_state()
         )
+        is_simulation = settings.broker == "simulation"
+        execution_environment = settings.environment
+        approved_account = (
+            "SIMULATED" if is_simulation else settings.deriv_options_account_id.strip()
+        )
+        approved_symbols = (
+            frozenset({normalized_symbol})
+            if is_simulation
+            else frozenset(
+                symbol.strip().upper()
+                for symbol in settings.deriv_approved_symbols
+                if isinstance(symbol, str) and symbol.strip()
+            )
+        )
         context = ExecutionContext(
             emergency_stop=False,
             daily_loss_percent=daily_loss,
@@ -180,13 +223,13 @@ async def run() -> None:
             ),
             execution_enabled=True,
             dry_run=False,
-            broker="simulation",
-            environment=settings.environment,
+            broker=settings.broker,
+            environment=execution_environment,
             account_id=account.account_id,
-            approved_brokers=frozenset({"simulation"}),
-            approved_environments=frozenset({settings.environment}),
-            approved_accounts=frozenset({"SIMULATED"}),
-            approved_symbols=frozenset({normalized_symbol}),
+            approved_brokers=frozenset({settings.broker}),
+            approved_environments=frozenset({execution_environment}),
+            approved_accounts=frozenset({approved_account}),
+            approved_symbols=approved_symbols,
             daily_state_authoritative=True,
         )
         intent = ExecutionIntent(
@@ -199,10 +242,15 @@ async def run() -> None:
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
         )
+        reconciler = (
+            SimulationReconciliationAdapter(gateway)
+            if is_simulation
+            else DerivReconciliationAdapter(gateway)
+        )
         executor = AsyncTradeExecutor(
             gateway,
             records,
-            reconciler=SimulationReconciliationAdapter(gateway),
+            reconciler=reconciler,
         )
         if existing_record is not None:
             result = await executor.reconcile(intent)

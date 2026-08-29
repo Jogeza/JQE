@@ -115,6 +115,8 @@ class Settings(BaseSettings):
     deriv_endpoint: str = "wss://ws.derivws.com/websockets/v3"
     deriv_options_account_id: str | None = None
     deriv_expected_environment: Literal["demo", "real"] | None = None
+    deriv_demo_execution_enabled: bool = False
+    deriv_approved_symbols: frozenset[str] = frozenset()
 
     default_symbol: str = "XAUUSD"
     default_timeframe: str = "M5"
