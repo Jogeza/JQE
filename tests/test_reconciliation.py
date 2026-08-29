@@ -52,6 +52,65 @@ async def test_deriv_adapter_confirms_exact_identifiers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deriv_adapter_confirms_consistent_contract_and_transaction() -> None:
+    result = await DerivReconciliationAdapter(Gateway([_position()])).reconcile(
+        contract_id="contract-1", transaction_id="txn-1"
+    )
+    assert result.state is BrokerReconciliationState.CONFIRMED_MATCH
+    assert result.contract_id == "contract-1"
+    assert result.transaction_id == "txn-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "contract_id,transaction_id,position",
+    [
+        ("contract-1", "txn-expected", _position().model_copy(update={"transaction_id": "txn-other"})),
+        ("contract-expected", "txn-1", _position().model_copy(update={"position_id": "contract-other"})),
+    ],
+)
+async def test_deriv_adapter_conflicting_persisted_identifiers_are_ambiguous(
+    contract_id: str, transaction_id: str, position: Position
+) -> None:
+    result = await DerivReconciliationAdapter(Gateway([position])).reconcile(
+        contract_id=contract_id, transaction_id=transaction_id
+    )
+    assert result.state is BrokerReconciliationState.AMBIGUOUS
+    assert result.evidence.correlation_strength is CorrelationStrength.AMBIGUOUS
+
+
+@pytest.mark.asyncio
+async def test_deriv_adapter_conflicting_observations_are_ambiguous() -> None:
+    first = _position()
+    second = _position().model_copy(update={"transaction_id": "txn-2"})
+    result = await DerivReconciliationAdapter(Gateway([first], [second])).reconcile(
+        contract_id="contract-1"
+    )
+    assert result.state is BrokerReconciliationState.AMBIGUOUS
+
+
+@pytest.mark.asyncio
+async def test_deriv_adapter_side_volume_and_idempotency_are_not_identity() -> None:
+    result = await DerivReconciliationAdapter(Gateway([_position()])).reconcile(
+        symbol="R_100", idempotency_key="jqe-intent"
+    )
+    assert result.state is BrokerReconciliationState.AMBIGUOUS
+    assert result.evidence.idempotency_key == "jqe-intent"
+
+
+@pytest.mark.asyncio
+async def test_deriv_adapter_unavailable_is_fail_closed() -> None:
+    class FailingGateway(Gateway):
+        async def get_positions(self):
+            raise RuntimeError("unavailable")
+
+    result = await DerivReconciliationAdapter(FailingGateway()).reconcile(
+        contract_id="contract-1"
+    )
+    assert result.state is BrokerReconciliationState.UNAVAILABLE
+
+
+@pytest.mark.asyncio
 async def test_deriv_adapter_keeps_symbol_match_ambiguous() -> None:
     result = await DerivReconciliationAdapter(Gateway([_position()])).reconcile(symbol="R_100")
     assert result.state is BrokerReconciliationState.AMBIGUOUS

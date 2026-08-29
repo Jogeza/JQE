@@ -68,20 +68,72 @@ class DerivReconciliationAdapter:
         self._gateway = gateway
 
     async def reconcile(self, *, order_id: str | None = None, contract_id: str | None = None, transaction_id: str | None = None, symbol: str | None = None, idempotency_key: str | None = None) -> BrokerReconciliationResult:
-        contract_id = contract_id or order_id
+        contract_id = _normalize_identifier(contract_id) or _normalize_identifier(order_id)
+        transaction_id = _normalize_identifier(transaction_id)
         try:
             positions = await self._gateway.get_positions()
             history = await self._gateway.get_trade_history()
         except Exception:
             return _result(BrokerReconciliationState.UNAVAILABLE, "Deriv state unavailable", idempotency_key=idempotency_key)
-        for item in (*positions, *history):
-            item_contract = getattr(item, "position_id", None) or getattr(item, "trade_id", None)
-            item_transaction = getattr(item, "transaction_id", None)
-            if contract_id is not None and str(item_contract) == str(contract_id):
-                return _result(BrokerReconciliationState.CONFIRMED_MATCH, "Contract ID matched", idempotency_key=idempotency_key, contract_id=str(item_contract), transaction_id=str(item_transaction) if item_transaction is not None else None, item=item)
-            if transaction_id is not None and item_transaction is not None and str(item_transaction) == str(transaction_id):
-                return _result(BrokerReconciliationState.CONFIRMED_MATCH, "Transaction ID matched", idempotency_key=idempotency_key, contract_id=str(item_contract) if item_contract else None, transaction_id=str(item_transaction), item=item)
-        symbol_match = bool(symbol) and any(getattr(item, "symbol", "").strip().upper() == symbol.strip().upper() for item in (*positions, *history))
+        observations = tuple(
+            (
+                item,
+                _normalize_identifier(item_contract),
+                _normalize_identifier(item_transaction),
+            )
+            for item in (*positions, *history)
+            for item_contract, item_transaction in ((
+                getattr(item, "position_id", None) or getattr(item, "trade_id", None),
+                getattr(item, "transaction_id", None),
+            ),)
+        )
+        contract_matches = tuple(
+            observation for observation in observations
+            if contract_id is not None and observation[1] == contract_id
+        )
+        transaction_matches = tuple(
+            observation for observation in observations
+            if transaction_id is not None and observation[2] == transaction_id
+        )
+
+        if contract_id is not None and transaction_id is not None:
+            conflicting = any(
+                item_transaction is not None and item_transaction != transaction_id
+                for _, _, item_transaction in contract_matches
+            ) or any(
+                item_contract is not None and item_contract != contract_id
+                for _, item_contract, _ in transaction_matches
+            )
+            exact = tuple(
+                observation for observation in observations
+                if observation[1] == contract_id and observation[2] == transaction_id
+            )
+            if conflicting or not exact:
+                if contract_matches or transaction_matches:
+                    return _result(
+                        BrokerReconciliationState.AMBIGUOUS,
+                        "Deriv authoritative identifiers conflict",
+                        idempotency_key=idempotency_key,
+                        contract_id=contract_id,
+                        transaction_id=transaction_id,
+                    )
+            else:
+                item = exact[0][0]
+                return _result(BrokerReconciliationState.CONFIRMED_MATCH, "Contract and transaction IDs matched", idempotency_key=idempotency_key, contract_id=contract_id, transaction_id=transaction_id, item=item)
+        elif contract_matches:
+            transaction_values = {value for _, _, value in contract_matches if value is not None}
+            if len(transaction_values) > 1:
+                return _result(BrokerReconciliationState.AMBIGUOUS, "Deriv contract observations conflict", idempotency_key=idempotency_key, contract_id=contract_id)
+            item, item_contract, item_transaction = contract_matches[0]
+            return _result(BrokerReconciliationState.CONFIRMED_MATCH, "Contract ID matched", idempotency_key=idempotency_key, contract_id=item_contract, transaction_id=item_transaction, item=item)
+        elif transaction_matches:
+            contract_values = {value for _, value, _ in transaction_matches if value is not None}
+            if len(contract_values) > 1:
+                return _result(BrokerReconciliationState.AMBIGUOUS, "Deriv transaction observations conflict", idempotency_key=idempotency_key, transaction_id=transaction_id)
+            item, item_contract, item_transaction = transaction_matches[0]
+            return _result(BrokerReconciliationState.CONFIRMED_MATCH, "Transaction ID matched", idempotency_key=idempotency_key, contract_id=item_contract, transaction_id=item_transaction, item=item)
+
+        symbol_match = bool(symbol) and any(getattr(item, "symbol", "").strip().upper() == symbol.strip().upper() for item, _, _ in observations)
         return classify_observation(broker_available=True, symbol_match=symbol_match, broker="deriv", idempotency_key=idempotency_key)
 
 
@@ -198,6 +250,13 @@ def classify_observation(*, broker_available: bool, symbol_match: bool, broker: 
     if symbol_match:
         return _result(BrokerReconciliationState.AMBIGUOUS, "Symbol match lacks intent correlation", broker=broker, idempotency_key=idempotency_key)
     return _result(BrokerReconciliationState.AMBIGUOUS, "Broker absence does not prove non-execution", broker=broker, idempotency_key=idempotency_key)
+
+
+def _normalize_identifier(value: object | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def _matches_id(item: object, expected: str | None, fields: tuple[str, ...]) -> bool:

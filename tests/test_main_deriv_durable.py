@@ -73,7 +73,16 @@ def _persist(
 ) -> None:
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     key = _expected_key()
-    assert store.try_claim(IntentRecord(key, IntentRecordStatus.PENDING)) is ClaimState.CLAIMED
+    pending_order_id = order_id if status is IntentRecordStatus.PENDING else None
+    pending_transaction_id = transaction_id if status is IntentRecordStatus.PENDING else None
+    assert store.try_claim(
+        IntentRecord(
+            key,
+            IntentRecordStatus.PENDING,
+            pending_order_id,
+            pending_transaction_id,
+        )
+    ) is ClaimState.CLAIMED
     if status is not IntentRecordStatus.PENDING:
         assert store.transition(
             IntentRecord(key, status, order_id, transaction_id)
@@ -223,6 +232,72 @@ async def test_deriv_demo_unknown_exact_contract_reconciles_accepted() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [IntentRecordStatus.UNKNOWN, IntentRecordStatus.PENDING])
+async def test_deriv_demo_exact_transaction_reconciles_accepted_after_restart(
+    status: IntentRecordStatus,
+) -> None:
+    _persist(status, transaction_id="txn-1")
+    gateway = _deriv_gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="contract-1", transaction_id="txn-1", symbol="XAUUSD",
+            side=OrderSide.BUY, volume=1.0, open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+    record = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
+    assert record.status is IntentRecordStatus.ACCEPTED
+    assert record.order_id == "contract-1"
+    assert record.transaction_id == "txn-1"
+
+
+@pytest.mark.asyncio
+async def test_deriv_demo_pending_exact_contract_reconciles_accepted() -> None:
+    _persist(IntentRecordStatus.PENDING, order_id="contract-1")
+    gateway = _deriv_gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="contract-1", transaction_id="txn-1", symbol="XAUUSD",
+            side=OrderSide.BUY, volume=1.0, open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(
+        _expected_key()
+    ).status is IntentRecordStatus.ACCEPTED
+
+
+@pytest.mark.asyncio
+async def test_deriv_demo_conflicting_identifiers_remain_unknown() -> None:
+    _persist(
+        IntentRecordStatus.UNKNOWN,
+        order_id="contract-1",
+        transaction_id="txn-expected",
+    )
+    gateway = _deriv_gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="contract-1", transaction_id="txn-other", symbol="XAUUSD",
+            side=OrderSide.BUY, volume=1.0, open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(
+        _expected_key()
+    ).status is IntentRecordStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
 async def test_deriv_demo_unknown_ambiguous_evidence_remains_unknown() -> None:
     _persist(IntentRecordStatus.UNKNOWN)
     gateway = _deriv_gateway()
@@ -242,8 +317,38 @@ async def test_deriv_demo_unknown_ambiguous_evidence_remains_unknown() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deriv_demo_pending_absence_becomes_unknown_without_submission() -> None:
+    _persist(IntentRecordStatus.PENDING)
+    gateway = _deriv_gateway()
+    gateway.get_positions.return_value = []
+    gateway.get_trade_history.return_value = []
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(
+        _expected_key()
+    ).status is IntentRecordStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
 async def test_deriv_demo_reconciliation_unavailable_remains_unknown() -> None:
     _persist(IntentRecordStatus.UNKNOWN)
+    gateway = _deriv_gateway()
+    gateway.get_positions.side_effect = [[], [], RuntimeError("Deriv unavailable")]
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(
+        _expected_key()
+    ).status is IntentRecordStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_deriv_demo_pending_unavailable_becomes_unknown() -> None:
+    _persist(IntentRecordStatus.PENDING)
     gateway = _deriv_gateway()
     gateway.get_positions.side_effect = [[], [], RuntimeError("Deriv unavailable")]
     patches = _pipeline_patches(gateway)
