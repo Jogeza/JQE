@@ -12,7 +12,7 @@ import main
 from broker.types import AccountInfo, OrderResult, OrderSide, OrderStatus, Position
 from config import Settings, settings
 from execution.idempotency import build_execution_idempotency_key
-from execution.models import IntentRecordStatus
+from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
 
 
@@ -87,6 +87,40 @@ def _pipeline_patches(gateway: MagicMock):
         }),
         patch("main.TradePlanBuilder.build", return_value=_plan()),
     )
+
+
+def _expected_key() -> str:
+    return build_execution_idempotency_key(
+        symbol="XAUUSD",
+        side="BUY",
+        volume=1.0,
+        entry=101.0,
+        stop_loss=99.0,
+        take_profit=105.0,
+        signal_time=pd.Timestamp("2026-08-29T12:00:00Z"),
+    )
+
+
+def _persist_record(
+    status: IntentRecordStatus,
+    *,
+    order_id: str | None = None,
+    transaction_id: str | None = None,
+) -> None:
+    store = SQLiteIntentRecordStore(settings.intent_store_path)
+    key = _expected_key()
+    pending_order_id = order_id if status is IntentRecordStatus.PENDING else None
+    pending_transaction_id = transaction_id if status is IntentRecordStatus.PENDING else None
+    assert store.try_claim(
+        IntentRecord(
+            key,
+            IntentRecordStatus.PENDING,
+            pending_order_id,
+            pending_transaction_id,
+        )
+    ) is ClaimState.CLAIMED
+    if status is not IntentRecordStatus.PENDING:
+        assert store.transition(IntentRecord(key, status, order_id, transaction_id)) is True
 
 
 @pytest.mark.asyncio
@@ -215,3 +249,113 @@ async def test_broker_open_same_symbol_position_blocks_durable_submission() -> N
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
         await main.run()
     gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,order_id",
+    [
+        (IntentRecordStatus.ACCEPTED, "SIM-prior"),
+        (IntentRecordStatus.REJECTED, None),
+    ],
+)
+async def test_terminal_record_survives_restart_without_resubmission(
+    status: IntentRecordStatus, order_id: str | None
+) -> None:
+    settings.use_durable_executor = True
+    _persist_record(status, order_id=order_id)
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
+    assert recovered is not None
+    assert recovered.status is status
+    assert recovered.order_id == order_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prior_status", [IntentRecordStatus.UNKNOWN, IntentRecordStatus.PENDING])
+async def test_uncertain_record_reconciles_exact_open_position_after_restart(
+    prior_status: IntentRecordStatus,
+) -> None:
+    settings.use_durable_executor = True
+    _persist_record(prior_status, order_id="SIM-prior")
+    gateway = _gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="SIM-prior", symbol="XAUUSD", side=OrderSide.BUY,
+            volume=1.0, open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
+    assert recovered is not None
+    assert recovered.status is IntentRecordStatus.ACCEPTED
+    assert recovered.order_id == "SIM-prior"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prior_status", [IntentRecordStatus.UNKNOWN, IntentRecordStatus.PENDING])
+async def test_uncertain_record_without_exact_evidence_remains_unknown_after_restart(
+    prior_status: IntentRecordStatus,
+) -> None:
+    settings.use_durable_executor = True
+    _persist_record(prior_status)
+    gateway = _gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="SIM-unrelated", symbol="XAUUSD", side=OrderSide.BUY,
+            volume=1.0, open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
+    assert recovered is not None
+    assert recovered.status is IntentRecordStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_recovery_store_read_failure_fails_closed() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    store = MagicMock()
+    store.get.side_effect = OSError("read failed")
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteIntentRecordStore", return_value=store
+    ):
+        with pytest.raises(OSError, match="read failed"):
+            await main.run()
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recovery_reconciliation_failure_keeps_unknown_and_fails_closed() -> None:
+    settings.use_durable_executor = True
+    _persist_record(IntentRecordStatus.UNKNOWN)
+    gateway = _gateway()
+    gateway.get_positions.side_effect = [[], RuntimeError("reconciliation unavailable")]
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
+    assert recovered is not None
+    assert recovered.status is IntentRecordStatus.UNKNOWN

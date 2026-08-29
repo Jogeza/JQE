@@ -67,6 +67,11 @@ class AsyncTradeExecutor:
             return ReconciliationResult(ReconciliationState.UNKNOWN, "Intent records unavailable")
         if record is not None and record.status is IntentRecordStatus.REJECTED:
             return ReconciliationResult(ReconciliationState.REJECTED, "Intent was rejected")
+        if record is not None and record.status is IntentRecordStatus.ACCEPTED:
+            return ReconciliationResult(
+                ReconciliationState.ALREADY_EXECUTED,
+                "Intent was already accepted",
+            )
         try:
             observed_positions = tuple(await self._gateway.get_positions()) if positions is None else positions
             snapshots = PositionSnapshotAdapter.from_positions(observed_positions)
@@ -93,10 +98,25 @@ class AsyncTradeExecutor:
                 idempotency_key=intent.idempotency_key,
             )
             if evidence.state is BrokerReconciliationState.CONFIRMED_MATCH:
-                self._transition(intent, IntentRecordStatus.ACCEPTED, record.order_id, record.transaction_id)
+                if not self._transition(
+                    intent,
+                    IntentRecordStatus.ACCEPTED,
+                    record.order_id or evidence.contract_id,
+                    record.transaction_id or evidence.transaction_id,
+                ):
+                    return ReconciliationResult(
+                        ReconciliationState.UNKNOWN,
+                        "Reconciled outcome could not be persisted",
+                    )
                 return ReconciliationResult(ReconciliationState.ALREADY_EXECUTED, evidence.reason)
+            if record.status is IntentRecordStatus.PENDING:
+                if not self._transition(intent, IntentRecordStatus.UNKNOWN):
+                    return ReconciliationResult(
+                        ReconciliationState.UNKNOWN,
+                        "Uncertain recovery state could not be persisted",
+                    )
             return ReconciliationResult(ReconciliationState.UNKNOWN, evidence.reason)
-        return ReconciliationResult(ReconciliationState.UNKNOWN, "Accepted intent not visible at broker")
+        return ReconciliationResult(ReconciliationState.UNKNOWN, "Intent state is not recoverable")
 
     async def submit(self, intent: ExecutionIntent, context: ExecutionContext | None) -> ExecutionResult:
         try:

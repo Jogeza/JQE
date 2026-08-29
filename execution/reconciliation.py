@@ -90,6 +90,75 @@ class MT5ObservationGateway(Protocol):
     async def get_trade_history(self, count: int = 100) -> list[object]: ...
 
 
+class SimulationObservationGateway(Protocol):
+    async def get_positions(self) -> list[Position]: ...
+    async def get_trade_history(self, count: int = 100) -> list[TradeHistoryEntry]: ...
+
+
+class SimulationReconciliationAdapter:
+    """Recover simulation intents only from exact persisted broker identity."""
+
+    def __init__(self, gateway: SimulationObservationGateway) -> None:
+        self._gateway = gateway
+
+    async def reconcile(
+        self,
+        *,
+        order_id: str | None = None,
+        transaction_id: str | None = None,
+        symbol: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> BrokerReconciliationResult:
+        try:
+            positions = tuple(await self._gateway.get_positions())
+            history = tuple(await self._gateway.get_trade_history())
+        except Exception:
+            return _result(
+                BrokerReconciliationState.UNAVAILABLE,
+                "Simulation state unavailable",
+                broker="simulation",
+                idempotency_key=idempotency_key,
+            )
+        for item in (*positions, *history):
+            item_order_id = getattr(item, "position_id", None) or getattr(item, "trade_id", None)
+            item_transaction_id = getattr(item, "transaction_id", None)
+            if order_id is not None and str(item_order_id) == str(order_id):
+                return _result(
+                    BrokerReconciliationState.CONFIRMED_MATCH,
+                    "Simulation order ID matched",
+                    broker="simulation",
+                    idempotency_key=idempotency_key,
+                    item=item,
+                    order_id=str(item_order_id),
+                    transaction_id=(
+                        str(item_transaction_id) if item_transaction_id is not None else None
+                    ),
+                )
+            if (
+                transaction_id is not None
+                and item_transaction_id is not None
+                and str(item_transaction_id) == str(transaction_id)
+            ):
+                return _result(
+                    BrokerReconciliationState.CONFIRMED_MATCH,
+                    "Simulation transaction ID matched",
+                    broker="simulation",
+                    idempotency_key=idempotency_key,
+                    item=item,
+                    transaction_id=str(item_transaction_id),
+                )
+        symbol_match = bool(symbol) and any(
+            getattr(item, "symbol", "").strip().upper() == symbol.strip().upper()
+            for item in (*positions, *history)
+        )
+        return classify_observation(
+            broker_available=True,
+            symbol_match=symbol_match,
+            broker="simulation",
+            idempotency_key=idempotency_key,
+        )
+
+
 class MT5ReconciliationAdapter:
     """Conservative MT5 evidence lookup, isolated from the generic executor."""
 

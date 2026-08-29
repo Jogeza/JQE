@@ -17,6 +17,7 @@ from execution.executor import (
     ReconciliationState,
 )
 from execution.policy import ExecutionContext, ExecutionDecisionCode, ExecutionIntent
+from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
 
 
 def _intent(**overrides: object) -> ExecutionIntent:
@@ -110,7 +111,7 @@ async def test_no_position_reconciles_ready_and_submits_once() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status,state", [(IntentRecordStatus.ACCEPTED, ReconciliationState.UNKNOWN), (IntentRecordStatus.PENDING, ReconciliationState.PENDING), (IntentRecordStatus.REJECTED, ReconciliationState.REJECTED), (IntentRecordStatus.UNKNOWN, ReconciliationState.UNKNOWN)])
+@pytest.mark.parametrize("status,state", [(IntentRecordStatus.ACCEPTED, ReconciliationState.ALREADY_EXECUTED), (IntentRecordStatus.PENDING, ReconciliationState.PENDING), (IntentRecordStatus.REJECTED, ReconciliationState.REJECTED), (IntentRecordStatus.UNKNOWN, ReconciliationState.UNKNOWN)])
 async def test_recorded_intent_prevents_resubmission(status: IntentRecordStatus, state: ReconciliationState) -> None:
     gateway, records = Gateway(), Records()
     records.values["key-1"] = IntentRecord("key-1", status)
@@ -183,8 +184,6 @@ async def test_malformed_result_after_submission_is_unknown_and_blocks_retry() -
 
 @pytest.mark.asyncio
 async def test_injected_reconciler_is_used_for_uncertain_intent() -> None:
-    from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
-
     gateway, records = Gateway(), Records()
     records.values["key-1"] = IntentRecord("key-1", IntentRecordStatus.UNKNOWN, "broker-1")
     reconciler = AsyncMock()
@@ -201,6 +200,83 @@ async def test_injected_reconciler_is_used_for_uncertain_intent() -> None:
         symbol="EURUSD",
         idempotency_key="key-1",
     )
+    assert gateway.submissions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "record_status,evidence_state",
+    [
+        (IntentRecordStatus.UNKNOWN, BrokerReconciliationState.CONFIRMED_ABSENCE),
+        (IntentRecordStatus.PENDING, BrokerReconciliationState.CONFIRMED_ABSENCE),
+        (IntentRecordStatus.UNKNOWN, BrokerReconciliationState.UNAVAILABLE),
+        (IntentRecordStatus.PENDING, BrokerReconciliationState.UNAVAILABLE),
+    ],
+)
+async def test_unresolved_recovery_evidence_remains_fail_closed(
+    record_status: IntentRecordStatus,
+    evidence_state: BrokerReconciliationState,
+) -> None:
+    gateway, records = Gateway(), Records()
+    records.values["key-1"] = IntentRecord("key-1", record_status)
+    reconciler = AsyncMock()
+    reconciler.reconcile.return_value = BrokerReconciliationResult(
+        evidence_state, "No authoritative execution or rejection evidence"
+    )
+
+    result = await AsyncTradeExecutor(gateway, records, reconciler).submit(
+        _intent(), _context()
+    )
+
+    assert result.state is ReconciliationState.UNKNOWN
+    assert records.values["key-1"].status is IntentRecordStatus.UNKNOWN
+    assert gateway.submissions == []
+
+
+@pytest.mark.asyncio
+async def test_exact_transaction_id_evidence_recovers_accepted() -> None:
+    gateway, records = Gateway(), Records()
+    records.values["key-1"] = IntentRecord(
+        "key-1", IntentRecordStatus.UNKNOWN, transaction_id="txn-1"
+    )
+    reconciler = AsyncMock()
+    reconciler.reconcile.return_value = BrokerReconciliationResult(
+        BrokerReconciliationState.CONFIRMED_MATCH,
+        "Exact transaction ID matched",
+        transaction_id="txn-1",
+    )
+
+    result = await AsyncTradeExecutor(gateway, records, reconciler).submit(
+        _intent(), _context()
+    )
+
+    assert result.state is ReconciliationState.ALREADY_EXECUTED
+    assert records.values["key-1"].status is IntentRecordStatus.ACCEPTED
+    assert records.values["key-1"].transaction_id == "txn-1"
+    assert gateway.submissions == []
+
+
+@pytest.mark.asyncio
+async def test_pending_to_unknown_persistence_failure_remains_fail_closed() -> None:
+    class FailingTransitionRecords(Records):
+        def transition(self, record: IntentRecord) -> bool:
+            return False
+
+    gateway, records = Gateway(), FailingTransitionRecords()
+    records.values["key-1"] = IntentRecord("key-1", IntentRecordStatus.PENDING)
+    reconciler = AsyncMock()
+    reconciler.reconcile.return_value = BrokerReconciliationResult(
+        BrokerReconciliationState.CONFIRMED_ABSENCE,
+        "No broker evidence",
+    )
+
+    result = await AsyncTradeExecutor(gateway, records, reconciler).submit(
+        _intent(), _context()
+    )
+
+    assert result.state is ReconciliationState.UNKNOWN
+    assert result.reason == "Uncertain recovery state could not be persisted"
+    assert records.values["key-1"].status is IntentRecordStatus.PENDING
     assert gateway.submissions == []
 
 
@@ -245,5 +321,5 @@ async def test_restart_and_concurrent_attempts_do_not_duplicate() -> None:
 
     restarted = AsyncTradeExecutor(gateway, records)
     result = await restarted.submit(_intent(), _context())
-    assert result.state is ReconciliationState.UNKNOWN
+    assert result.state is ReconciliationState.ALREADY_EXECUTED
     assert len(gateway.submissions) == 1

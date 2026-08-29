@@ -36,6 +36,7 @@ from execution.executor import AsyncTradeExecutor
 from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
+from execution.reconciliation import SimulationReconciliationAdapter
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
     approve_trade,
@@ -198,7 +199,16 @@ async def run() -> None:
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
         )
-        result = await AsyncTradeExecutor(gateway, records).submit(intent, context)
+        executor = AsyncTradeExecutor(
+            gateway,
+            records,
+            reconciler=SimulationReconciliationAdapter(gateway),
+        )
+        if existing_record is not None:
+            result = await executor.reconcile(intent)
+            logger.info("Recovered order result: {}", result)
+            return
+        result = await executor.submit(intent, context)
         logger.info("Order result: {}", result)
 
 
