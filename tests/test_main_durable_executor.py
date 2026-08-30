@@ -11,6 +11,7 @@ import pytest
 import main
 from broker.types import AccountInfo, OrderResult, OrderSide, OrderStatus, Position
 from config import Settings, settings
+from core.exceptions import ConfigurationError, ExecutionError
 from execution.idempotency import build_execution_idempotency_key
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
@@ -134,6 +135,17 @@ async def test_default_setting_preserves_direct_submission_path() -> None:
         await main.run()
     gateway.submit_order.assert_awaited_once()
     executor.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("broker", ["deriv", "mt5"])
+async def test_direct_real_broker_is_rejected_before_gateway_creation(broker: str) -> None:
+    settings.broker = broker
+    settings.use_durable_executor = False
+    with patch("main.get_gateway") as get_gateway:
+        with pytest.raises(ConfigurationError, match="simulation only"):
+            await main.run()
+    get_gateway.assert_not_called()
 
 
 @pytest.mark.asyncio

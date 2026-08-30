@@ -69,6 +69,9 @@ async def run() -> None:
         "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
     )
 
+    if not settings.use_durable_executor and settings.broker != "simulation":
+        raise ConfigurationError("Direct execution is authorized for simulation only")
+
     if settings.use_durable_executor:
         if settings.broker == "simulation":
             pass
