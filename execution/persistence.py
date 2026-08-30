@@ -100,6 +100,20 @@ class SQLiteIntentRecordStore:
             ).fetchone()
         return None if row is None else self._decode(row)
 
+    def list_unresolved(self) -> tuple[IntentRecord, ...]:
+        """Return non-terminal records in deterministic creation order."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT idempotency_key, state, order_id, transaction_id "
+                "FROM intent_records ORDER BY created_at ASC, idempotency_key ASC"
+            ).fetchall()
+        records = tuple(self._decode(row) for row in rows)
+        return tuple(
+            record
+            for record in records
+            if record.status in {IntentRecordStatus.PENDING, IntentRecordStatus.UNKNOWN}
+        )
+
     def inspect(self, idempotency_key: str) -> IntentRecordInspection | None:
         """Read-only operational inspection; never changes intent state."""
         self._validate_key(idempotency_key)

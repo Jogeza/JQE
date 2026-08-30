@@ -26,6 +26,38 @@ def test_lookup_and_restart_persistence(tmp_path) -> None:
     assert restarted.get("key-1") == _record()
 
 
+def test_unresolved_enumeration_is_read_only_and_deterministic(tmp_path) -> None:
+    store = SQLiteIntentRecordStore(tmp_path / "intents.sqlite3")
+    records = (
+        IntentRecord("pending-1", IntentRecordStatus.PENDING),
+        IntentRecord("accepted", IntentRecordStatus.ACCEPTED),
+        IntentRecord("unknown-1", IntentRecordStatus.UNKNOWN),
+        IntentRecord("rejected", IntentRecordStatus.REJECTED),
+        IntentRecord("pending-2", IntentRecordStatus.PENDING),
+    )
+    for record in records:
+        assert store.try_claim(record) is ClaimState.CLAIMED
+
+    unresolved = store.list_unresolved()
+
+    assert unresolved == (records[0], records[2], records[4])
+    assert store.list_unresolved() == unresolved
+    assert tuple(store.get(record.idempotency_key) for record in records) == records
+
+
+def test_malformed_record_blocks_unresolved_enumeration(tmp_path) -> None:
+    store = SQLiteIntentRecordStore(tmp_path / "intents.sqlite3")
+    with store._connect() as connection:
+        connection.execute(
+            "INSERT INTO intent_records "
+            "(idempotency_key, state, order_id, transaction_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("malformed", "NOT_A_STATE", None, None, "2026-08-30", "2026-08-30"),
+        )
+    with pytest.raises(ValueError, match="Malformed persisted intent record"):
+        store.list_unresolved()
+
+
 def test_idempotency_identity_round_trips_unchanged(tmp_path) -> None:
     store = SQLiteIntentRecordStore(tmp_path / "intents.sqlite3")
     record = IntentRecord("JQE-intent-α/01", IntentRecordStatus.PENDING)

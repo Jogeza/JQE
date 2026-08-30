@@ -171,6 +171,7 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
+    store.list_unresolved.return_value = ()
     store.get.return_value = None
     executor = MagicMock()
     executor.submit = AsyncMock(return_value=SimpleNamespace(state="accepted"))
@@ -299,7 +300,8 @@ async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
         await main.run()
-        await main.run()
+        with pytest.raises(ExecutionError, match="unresolved persisted intents"):
+            await main.run()
 
     gateway.submit_order.assert_awaited_once()
     store = SQLiteIntentRecordStore(settings.intent_store_path)
@@ -352,7 +354,7 @@ async def test_terminal_record_survives_restart_without_resubmission(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("prior_status", [IntentRecordStatus.UNKNOWN, IntentRecordStatus.PENDING])
-async def test_uncertain_record_reconciles_exact_open_position_after_restart(
+async def test_unresolved_record_blocks_startup_without_reconciliation(
     prior_status: IntentRecordStatus,
 ) -> None:
     settings.use_durable_executor = True
@@ -367,18 +369,20 @@ async def test_uncertain_record_reconciles_exact_open_position_after_restart(
     patches = _pipeline_patches(gateway)
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
-        await main.run()
+        with pytest.raises(ExecutionError, match="unresolved persisted intents"):
+            await main.run()
 
     gateway.submit_order.assert_not_awaited()
+    gateway.__aenter__.assert_not_awaited()
     recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
     assert recovered is not None
-    assert recovered.status is IntentRecordStatus.ACCEPTED
+    assert recovered.status is prior_status
     assert recovered.order_id == "SIM-prior"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("prior_status", [IntentRecordStatus.UNKNOWN, IntentRecordStatus.PENDING])
-async def test_uncertain_record_without_exact_evidence_remains_unknown_after_restart(
+async def test_unresolved_record_without_evidence_remains_unchanged(
     prior_status: IntentRecordStatus,
 ) -> None:
     settings.use_durable_executor = True
@@ -393,12 +397,14 @@ async def test_uncertain_record_without_exact_evidence_remains_unknown_after_res
     patches = _pipeline_patches(gateway)
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
-        await main.run()
+        with pytest.raises(ExecutionError, match="unresolved persisted intents"):
+            await main.run()
 
     gateway.submit_order.assert_not_awaited()
+    gateway.__aenter__.assert_not_awaited()
     recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
     assert recovered is not None
-    assert recovered.status is IntentRecordStatus.UNKNOWN
+    assert recovered.status is prior_status
 
 
 @pytest.mark.asyncio
@@ -406,6 +412,7 @@ async def test_recovery_store_read_failure_fails_closed() -> None:
     settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
+    store.list_unresolved.return_value = ()
     store.get.side_effect = OSError("read failed")
     patches = _pipeline_patches(gateway)
 
@@ -418,7 +425,7 @@ async def test_recovery_store_read_failure_fails_closed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_recovery_reconciliation_failure_keeps_unknown_and_fails_closed() -> None:
+async def test_unresolved_record_blocks_before_reconciliation_gateway_calls() -> None:
     settings.use_durable_executor = True
     _persist_record(IntentRecordStatus.UNKNOWN)
     gateway = _gateway()
@@ -426,9 +433,48 @@ async def test_recovery_reconciliation_failure_keeps_unknown_and_fails_closed() 
     patches = _pipeline_patches(gateway)
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
-        await main.run()
+        with pytest.raises(ExecutionError, match="unresolved persisted intents"):
+            await main.run()
 
     gateway.submit_order.assert_not_awaited()
+    gateway.get_positions.assert_not_awaited()
     recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
     assert recovered is not None
     assert recovered.status is IntentRecordStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [IntentRecordStatus.ACCEPTED, IntentRecordStatus.REJECTED])
+async def test_unrelated_terminal_records_do_not_block_new_durable_intent(
+    status: IntentRecordStatus,
+) -> None:
+    settings.use_durable_executor = True
+    store = SQLiteIntentRecordStore(settings.intent_store_path)
+    assert store.try_claim(IntentRecord("terminal-old", status)) is ClaimState.CLAIMED
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    gateway.submit_order.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order() -> None:
+    settings.use_durable_executor = True
+    store = SQLiteIntentRecordStore(settings.intent_store_path)
+    records = (
+        IntentRecord("pending-first", IntentRecordStatus.PENDING),
+        IntentRecord("accepted-middle", IntentRecordStatus.ACCEPTED),
+        IntentRecord("unknown-last", IntentRecordStatus.UNKNOWN),
+    )
+    for record in records:
+        assert store.try_claim(record) is ClaimState.CLAIMED
+    assert store.list_unresolved() == (records[0], records[2])
+
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        with pytest.raises(ExecutionError, match="unresolved persisted intents"):
+            await main.run()
+    gateway.submit_order.assert_not_awaited()
+    gateway.__aenter__.assert_not_awaited()

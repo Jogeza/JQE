@@ -28,7 +28,7 @@ from broker.factory import get_gateway
 from broker.types import OrderRequest, OrderSide, Timeframe
 from config import settings
 from core.data_validator import validate_market_data
-from core.exceptions import ConfigurationError, JQEError, MarketDataError
+from core.exceptions import ConfigurationError, ExecutionError, JQEError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
@@ -108,6 +108,23 @@ async def run() -> None:
     timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
     gateway = get_gateway(settings)
+    records = None
+    reconciler = None
+    if settings.use_durable_executor:
+        records = SQLiteIntentRecordStore(settings.intent_store_path)
+        reconciler = (
+            SimulationReconciliationAdapter(gateway)
+            if settings.broker == "simulation"
+            else DerivReconciliationAdapter(gateway)
+        )
+        unresolved_records = records.list_unresolved()
+        if unresolved_records:
+            raise ExecutionError(
+                "New durable execution blocked: unresolved persisted intents "
+                "cannot be safely reconstructed from the current schema",
+                unresolved_count=len(unresolved_records),
+            )
+
     async with gateway:
         candles = await gateway.get_candles(
             symbol=settings.default_symbol,
@@ -204,7 +221,8 @@ async def run() -> None:
             take_profit=plan.take_profit,
             signal_time=latest.get("time", df.index[-1]),
         )
-        records = SQLiteIntentRecordStore(settings.intent_store_path)
+        assert records is not None
+        assert reconciler is not None
         existing_record = records.get(idempotency_key)
         open_positions = PositionSnapshotAdapter.from_positions(
             tuple(await gateway.get_positions())
@@ -257,11 +275,6 @@ async def run() -> None:
             take_profit=plan.take_profit,
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
-        )
-        reconciler = (
-            SimulationReconciliationAdapter(gateway)
-            if is_simulation
-            else DerivReconciliationAdapter(gateway)
         )
         executor = AsyncTradeExecutor(
             gateway,
