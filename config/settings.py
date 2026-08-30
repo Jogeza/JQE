@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)
+    execution_reservation_lease_seconds: int = Field(default=120, gt=0)
 
     @field_validator("log_level", mode="before")
     @classmethod

@@ -20,6 +20,7 @@ Run directly to execute a single cycle:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, time, timezone
 
 import pandas as pd
@@ -331,6 +332,7 @@ async def run() -> None:
             gateway,
             records,
             reconciler=reconciler,
+            reservation_lease_seconds=settings.execution_reservation_lease_seconds,
         )
         if existing_record is not None:
             result = await executor.reconcile(intent)
@@ -351,38 +353,82 @@ async def run() -> None:
             )
             submission_started = True
 
-        result = await executor.submit(
-            intent,
-            context,
-            before_submit=publish_submission_started,
-        )
-        assert safety_store is not None
-        daily_authority = (
-            DailyStateAuthority.AUTHORITATIVE
-            if history_authoritative
-            else DailyStateAuthority.NOT_AUTHORITATIVE
-        )
-        if not result.decision.allowed:
-            publish_safety(
-                ExecutionAuthorization.BLOCKED,
-                (result.decision.code.value,),
-                daily_authority=daily_authority,
+        async def refresh_execution_context() -> ExecutionContext:
+            nonlocal history_authoritative
+            refreshed_account = await gateway.get_account_info()
+            refreshed_end = datetime.now(timezone.utc)
+            refreshed_start = datetime.combine(
+                refreshed_end.date(), time.min, tzinfo=timezone.utc
             )
-        elif submission_started:
-            if result.state is ReconciliationState.ALREADY_EXECUTED:
-                authorization = ExecutionAuthorization.AUTHORIZED
-                reason_codes = ("ORDER_ACCEPTED",)
-            elif result.state is ReconciliationState.REJECTED:
+            refreshed_history = await gateway.get_trade_history_snapshot(
+                start=refreshed_start,
+                end=refreshed_end,
+                count=500,
+            )
+            refreshed_authoritative = refreshed_history.covers(
+                refreshed_start, refreshed_end
+            )
+            history_authoritative = refreshed_authoritative
+            reconcile_daily_history(
+                refreshed_history.trades,
+                balance=refreshed_account.balance,
+            )
+            (
+                refreshed_daily_loss,
+                refreshed_daily_count,
+                refreshed_max_daily_loss,
+                refreshed_max_daily_trades,
+            ) = get_reconciled_daily_state()
+            return replace(
+                context,
+                account_id=refreshed_account.account_id,
+                daily_loss_percent=refreshed_daily_loss,
+                daily_trade_count=refreshed_daily_count,
+                max_daily_loss_percent=refreshed_max_daily_loss,
+                max_daily_trades=refreshed_max_daily_trades,
+                daily_state_authoritative=refreshed_authoritative,
+            )
+
+        terminal_safety_published = False
+
+        def publish_submission_result(result) -> None:
+            nonlocal terminal_safety_published
+            daily_authority = (
+                DailyStateAuthority.AUTHORITATIVE
+                if history_authoritative
+                else DailyStateAuthority.NOT_AUTHORITATIVE
+            )
+            if not result.decision.allowed:
                 authorization = ExecutionAuthorization.BLOCKED
-                reason_codes = ("BROKER_REJECTED",)
+                reason_codes = (result.decision.code.value,)
+            elif submission_started:
+                if result.state is ReconciliationState.ALREADY_EXECUTED:
+                    authorization = ExecutionAuthorization.AUTHORIZED
+                    reason_codes = ("ORDER_ACCEPTED",)
+                elif result.state is ReconciliationState.REJECTED:
+                    authorization = ExecutionAuthorization.BLOCKED
+                    reason_codes = ("BROKER_REJECTED",)
+                else:
+                    authorization = ExecutionAuthorization.UNKNOWN
+                    reason_codes = ("SUBMISSION_OUTCOME_UNKNOWN",)
             else:
-                authorization = ExecutionAuthorization.UNKNOWN
-                reason_codes = ("SUBMISSION_OUTCOME_UNKNOWN",)
+                return
             publish_safety(
                 authorization,
                 reason_codes,
                 daily_authority=daily_authority,
             )
+            terminal_safety_published = True
+
+        result = await executor.submit(
+            intent,
+            context,
+            before_submit=publish_submission_started,
+            context_provider=refresh_execution_context,
+            after_submit=publish_submission_result,
+        )
+        if not terminal_safety_published:
+            publish_submission_result(result)
         logger.info("Order result: {}", result)
 
 

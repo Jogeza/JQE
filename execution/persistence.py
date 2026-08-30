@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import sqlite3
 from pathlib import Path
 
-from execution.models import ClaimState, IntentRecord, IntentRecordStatus
+from execution.models import (
+    ClaimState,
+    ExecutionReservation,
+    IntentRecord,
+    IntentRecordStatus,
+    ReservationState,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +47,18 @@ class SQLiteIntentRecordStore:
     threads and processes sharing the database file.
     """
 
-    def __init__(self, path: str | Path, *, recovery_mode: bool = False) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        recovery_mode: bool = False,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         resolved = Path(path).expanduser().resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self._path = str(resolved)
         self.recovery_mode = recovery_mode
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -73,6 +87,16 @@ class SQLiteIntentRecordStore:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(intent_records)")}
             if "transaction_id" not in columns:
                 connection.execute("ALTER TABLE intent_records ADD COLUMN transaction_id TEXT")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS execution_reservations (
+                    scope TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    acquired_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                )
+                """
+            )
 
     @staticmethod
     def _validate_key(key: str) -> None:
@@ -90,6 +114,60 @@ class SQLiteIntentRecordStore:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Malformed persisted intent record") from exc
+
+    @staticmethod
+    def _validate_reservation_identity(scope: str, owner_id: str) -> None:
+        if not isinstance(scope, str) or not scope.strip():
+            raise ValueError("Reservation scope must be a nonblank string")
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("Reservation owner must be a nonblank string")
+
+    @staticmethod
+    def _decode_reservation(row: sqlite3.Row) -> ExecutionReservation:
+        try:
+            acquired_at = datetime.fromisoformat(row["acquired_at"])
+            expires_at = datetime.fromisoformat(row["expires_at"])
+            reservation = ExecutionReservation(
+                scope=row["scope"],
+                owner_id=row["owner_id"],
+                acquired_at=acquired_at,
+                expires_at=expires_at,
+            )
+            if (
+                not reservation.scope.strip()
+                or not reservation.owner_id.strip()
+                or acquired_at.tzinfo is None
+                or acquired_at.utcoffset() is None
+                or expires_at.tzinfo is None
+                or expires_at.utcoffset() is None
+                or expires_at <= acquired_at
+            ):
+                raise ValueError
+            return reservation
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("Malformed execution reservation") from exc
+
+    def _now(self) -> datetime:
+        now = self._clock()
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("Reservation clock must return a timezone-aware datetime")
+        return now.astimezone(timezone.utc)
+
+    @staticmethod
+    def _has_other_unresolved_intent(
+        connection: sqlite3.Connection, intent_key: str
+    ) -> bool:
+        rows = connection.execute(
+            "SELECT idempotency_key, state FROM intent_records"
+        ).fetchall()
+        states = tuple(
+            (row["idempotency_key"], IntentRecordStatus(row["state"])) for row in rows
+        )
+        return any(
+            key != intent_key
+            and state in {IntentRecordStatus.PENDING, IntentRecordStatus.UNKNOWN}
+            for key, state in states
+        )
 
     def get(self, idempotency_key: str) -> IntentRecord | None:
         self._validate_key(idempotency_key)
@@ -140,6 +218,106 @@ class SQLiteIntentRecordStore:
                 backup.close()
         finally:
             source.close()
+
+    def acquire_reservation(
+        self, scope: str, owner_id: str, lease_seconds: int, intent_key: str
+    ) -> ReservationState:
+        self._validate_reservation_identity(scope, owner_id)
+        self._validate_key(intent_key)
+        if not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool) or lease_seconds <= 0:
+            raise ValueError("Reservation lease duration must be a positive integer")
+        now = self._now()
+        expires_at = now + timedelta(seconds=lease_seconds)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT scope, owner_id, acquired_at, expires_at "
+                "FROM execution_reservations WHERE scope = ?",
+                (scope,),
+            ).fetchone()
+            if row is not None:
+                current = self._decode_reservation(row)
+                if current.expires_at > now:
+                    connection.rollback()
+                    return ReservationState.HELD
+            if self._has_other_unresolved_intent(connection, intent_key):
+                connection.rollback()
+                return ReservationState.UNRESOLVED_INTENT
+            connection.execute(
+                """INSERT INTO execution_reservations (scope, owner_id, acquired_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(scope) DO UPDATE SET owner_id=excluded.owner_id,
+                acquired_at=excluded.acquired_at, expires_at=excluded.expires_at""",
+                (
+                    scope,
+                    owner_id,
+                    now.isoformat(timespec="microseconds"),
+                    expires_at.isoformat(timespec="microseconds"),
+                ),
+            )
+            connection.commit()
+            return ReservationState.ACQUIRED
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def release_reservation(self, scope: str, owner_id: str) -> bool:
+        self._validate_reservation_identity(scope, owner_id)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            deleted = connection.execute(
+                "DELETE FROM execution_reservations WHERE scope = ? AND owner_id = ?",
+                (scope, owner_id),
+            ).rowcount
+            connection.commit()
+            return deleted == 1
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def try_claim_under_reservation(
+        self, record: IntentRecord, scope: str, owner_id: str
+    ) -> ClaimState:
+        self._validate_key(record.idempotency_key)
+        self._validate_reservation_identity(scope, owner_id)
+        now = self._now()
+        now_text = now.isoformat(timespec="microseconds")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT scope, owner_id, acquired_at, expires_at "
+                "FROM execution_reservations WHERE scope = ?",
+                (scope,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return ClaimState.CONFLICT
+            reservation = self._decode_reservation(row)
+            if reservation.owner_id != owner_id or reservation.expires_at <= now:
+                connection.rollback()
+                return ClaimState.CONFLICT
+            try:
+                connection.execute(
+                    "INSERT INTO intent_records (idempotency_key, state, order_id, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (record.idempotency_key, record.status.value, record.order_id, record.transaction_id, now_text, now_text),
+                )
+            except sqlite3.IntegrityError:
+                connection.rollback()
+                return ClaimState.ALREADY_EXISTS
+            connection.commit()
+            return ClaimState.CLAIMED
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def try_claim(self, record: IntentRecord) -> ClaimState:
         self._validate_key(record.idempotency_key)

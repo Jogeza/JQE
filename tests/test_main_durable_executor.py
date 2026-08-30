@@ -21,7 +21,7 @@ from broker.types import (
 from config import EmergencyStopState, Settings, settings
 from core.exceptions import ConfigurationError, ExecutionError
 from execution.idempotency import build_execution_idempotency_key
-from execution.models import ClaimState, IntentRecord, IntentRecordStatus
+from execution.models import ClaimState, IntentRecord, IntentRecordStatus, ReservationState
 from execution.persistence import SQLiteIntentRecordStore
 from execution.executor import ExecutionResult, ReconciliationState
 from execution.policy import ExecutionDecision, ExecutionDecisionCode
@@ -401,6 +401,27 @@ async def test_allowed_policy_is_published_before_durable_submission() -> None:
 
 
 @pytest.mark.asyncio
+async def test_held_execution_reservation_is_published_as_blocked() -> None:
+    settings.use_durable_executor = True
+    store = SQLiteIntentRecordStore(settings.intent_store_path)
+    assert store.acquire_reservation(
+        "SIMULATED", "other-process", 120, "other-key"
+    ) is ReservationState.ACQUIRED
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    safety = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert safety.reason_codes == ("EXECUTION_RESERVATION_HELD",)
+
+
+@pytest.mark.asyncio
 async def test_reconciliation_exit_before_pre_submit_remains_not_evaluated() -> None:
     settings.use_durable_executor = True
     gateway = _gateway()
@@ -437,7 +458,9 @@ async def test_durable_claim_failure_after_pre_submit_publishes_unknown() -> Non
     store.recovery_mode = False
     store.list_unresolved.return_value = ()
     store.get.return_value = None
-    store.try_claim.side_effect = OSError("claim unavailable")
+    store.acquire_reservation.return_value = ReservationState.ACQUIRED
+    store.release_reservation.return_value = True
+    store.try_claim_under_reservation.side_effect = OSError("claim unavailable")
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
         "main.SQLiteIntentRecordStore", return_value=store
@@ -495,7 +518,9 @@ async def test_durable_terminal_persistence_failure_publishes_unknown() -> None:
     store.recovery_mode = False
     store.list_unresolved.return_value = ()
     store.get.return_value = None
-    store.try_claim.return_value = ClaimState.CLAIMED
+    store.acquire_reservation.return_value = ReservationState.ACQUIRED
+    store.release_reservation.return_value = True
+    store.try_claim_under_reservation.return_value = ClaimState.CLAIMED
     store.transition.return_value = False
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(

@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol
+from uuid import uuid4
 
 from broker.types import OrderRequest, OrderResult, Position
 from execution.policy import ExecutionContext, ExecutionDecision, ExecutionIntent, ExecutionPolicy
 from execution.trade_manager import PositionSnapshotAdapter
 from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
 from execution.observability import log_unresolved_execution
-from execution.models import ClaimState, IntentRecord, IntentRecordStatus, IntentRecordStore
+from execution.models import (
+    ClaimState,
+    IntentRecord,
+    IntentRecordStatus,
+    IntentRecordStore,
+    ReservationState,
+)
+from execution.policy import ExecutionDecisionCode
+
+
+_DEFAULT_RESERVATION_LEASE_SECONDS = 120
 
 
 class ReconciliationState(str, Enum):
@@ -54,10 +65,18 @@ class ExecutionResult:
 class AsyncTradeExecutor:
     """Coordinate policy, atomic idempotency, reconciliation, and submission."""
 
-    def __init__(self, gateway: ExecutionGateway, records: IntentRecordStore, reconciler: ExecutionReconciler | None = None) -> None:
+    def __init__(
+        self,
+        gateway: ExecutionGateway,
+        records: IntentRecordStore,
+        reconciler: ExecutionReconciler | None = None,
+        *,
+        reservation_lease_seconds: int = _DEFAULT_RESERVATION_LEASE_SECONDS,
+    ) -> None:
         self._gateway = gateway
         self._records = records
         self._reconciler = reconciler
+        self._reservation_lease_seconds = reservation_lease_seconds
 
     async def reconcile(
         self, intent: ExecutionIntent, positions: tuple[Position, ...] | None = None,
@@ -125,6 +144,67 @@ class AsyncTradeExecutor:
         context: ExecutionContext | None,
         *,
         before_submit: Callable[[ExecutionDecision], None] | None = None,
+        context_provider: Callable[[], Awaitable[ExecutionContext | None]] | None = None,
+        after_submit: Callable[[ExecutionResult], None] | None = None,
+    ) -> ExecutionResult:
+        scope = context.account_id.strip() if context is not None and isinstance(context.account_id, str) else ""
+        if not scope:
+            decision = ExecutionDecision(
+                False,
+                ExecutionDecisionCode.SAFETY_CONTEXT_INVALID,
+                "Execution reservation requires an account identity",
+            )
+            return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason=decision.reason)
+        owner_id = str(uuid4())
+        try:
+            reservation = self._records.acquire_reservation(
+                scope,
+                owner_id,
+                self._reservation_lease_seconds,
+                intent.idempotency_key,
+            )
+        except Exception:
+            decision = ExecutionDecision(
+                False,
+                ExecutionDecisionCode.EXECUTION_RESERVATION_UNAVAILABLE,
+                "Execution reservation is unavailable",
+            )
+            return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason=decision.reason)
+        if reservation is not ReservationState.ACQUIRED:
+            code = (
+                ExecutionDecisionCode.UNRESOLVED_DURABLE_INTENT
+                if reservation is ReservationState.UNRESOLVED_INTENT
+                else ExecutionDecisionCode.EXECUTION_RESERVATION_HELD
+            )
+            decision = ExecutionDecision(False, code, "Execution reservation was not acquired")
+            return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason=decision.reason)
+        try:
+            if context_provider is not None:
+                try:
+                    context = await context_provider()
+                except Exception:
+                    context = None
+            result = await self._submit_reserved(
+                intent,
+                context,
+                scope=scope,
+                owner_id=owner_id,
+                before_submit=before_submit,
+            )
+            if after_submit is not None:
+                after_submit(result)
+            return result
+        finally:
+            self._records.release_reservation(scope, owner_id)
+
+    async def _submit_reserved(
+        self,
+        intent: ExecutionIntent,
+        context: ExecutionContext | None,
+        *,
+        scope: str,
+        owner_id: str,
+        before_submit: Callable[[ExecutionDecision], None] | None,
     ) -> ExecutionResult:
         try:
             broker_positions = tuple(await self._gateway.get_positions())
@@ -143,7 +223,11 @@ class AsyncTradeExecutor:
         if before_submit is not None:
             before_submit(decision)
         try:
-            claim = self._records.try_claim(IntentRecord(intent.idempotency_key, IntentRecordStatus.PENDING))
+            claim = self._records.try_claim_under_reservation(
+                IntentRecord(intent.idempotency_key, IntentRecordStatus.PENDING),
+                scope,
+                owner_id,
+            )
         except Exception:
             return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason="Intent records unavailable")
         if claim is not ClaimState.CLAIMED:

@@ -16,6 +16,7 @@ from execution.executor import (
     ClaimState,
     ReconciliationState,
 )
+from execution.models import ReservationState
 from execution.policy import ExecutionContext, ExecutionDecisionCode, ExecutionIntent
 from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
 
@@ -44,8 +45,11 @@ def _context() -> ExecutionContext:
 
 
 class Records:
+    recovery_mode = False
+
     def __init__(self) -> None:
         self.values: dict[str, IntentRecord] = {}
+        self.reservation_owner: str | None = None
 
     def get(self, key: str) -> IntentRecord | None:
         return self.values.get(key)
@@ -55,6 +59,33 @@ class Records:
             return ClaimState.ALREADY_EXISTS
         self.values[record.idempotency_key] = record
         return ClaimState.CLAIMED
+
+    def acquire_reservation(
+        self, scope: str, owner_id: str, lease_seconds: int, intent_key: str
+    ) -> ReservationState:
+        if any(
+            key != intent_key
+            and record.status in {IntentRecordStatus.PENDING, IntentRecordStatus.UNKNOWN}
+            for key, record in self.values.items()
+        ):
+            return ReservationState.UNRESOLVED_INTENT
+        if self.reservation_owner is not None:
+            return ReservationState.HELD
+        self.reservation_owner = owner_id
+        return ReservationState.ACQUIRED
+
+    def release_reservation(self, scope: str, owner_id: str) -> bool:
+        if self.reservation_owner != owner_id:
+            return False
+        self.reservation_owner = None
+        return True
+
+    def try_claim_under_reservation(
+        self, record: IntentRecord, scope: str, owner_id: str
+    ) -> ClaimState:
+        if self.reservation_owner != owner_id:
+            return ClaimState.CONFLICT
+        return self.try_claim(record)
 
     def transition(self, record: IntentRecord) -> bool:
         current = self.values.get(record.idempotency_key)
