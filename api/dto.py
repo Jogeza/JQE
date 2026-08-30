@@ -168,6 +168,24 @@ class ExecutionStateResponse(BaseModel):
     currency: str
 
 
+class ExecutionSafetyResponse(BaseModel):
+    """Read-only canonical execution-safety observation."""
+
+    schema_version: int | None = None
+    observed_at: str | None = None
+    observation_state: Literal["OBSERVED", "NOT_OBSERVED", "UNAVAILABLE", "STALE"]
+    emergency_stop_state: Literal["CLEAR", "ACTIVE", "UNKNOWN"] = "UNKNOWN"
+    execution_mode: Literal["DURABLE"] | None = None
+    broker: str | None = None
+    environment: str | None = None
+    durable_executor_enabled: bool | None = None
+    daily_state_authority: Literal["AUTHORITATIVE", "NOT_AUTHORITATIVE", "NOT_EVALUATED", "UNKNOWN"] = "UNKNOWN"
+    unresolved_intent_count: int | None = None
+    unresolved_intent_blocked: bool | None = None
+    execution_authorization: Literal["AUTHORIZED", "BLOCKED", "NOT_EVALUATED", "UNKNOWN"] = "UNKNOWN"
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class PerformanceSummaryResponse(BaseModel):
     """Quantitative performance analytics derived from trade history."""
 

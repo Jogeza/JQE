@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Protocol
@@ -118,7 +119,13 @@ class AsyncTradeExecutor:
             return ReconciliationResult(ReconciliationState.UNKNOWN, evidence.reason)
         return ReconciliationResult(ReconciliationState.UNKNOWN, "Intent state is not recoverable")
 
-    async def submit(self, intent: ExecutionIntent, context: ExecutionContext | None) -> ExecutionResult:
+    async def submit(
+        self,
+        intent: ExecutionIntent,
+        context: ExecutionContext | None,
+        *,
+        before_submit: Callable[[ExecutionDecision], None] | None = None,
+    ) -> ExecutionResult:
         try:
             broker_positions = tuple(await self._gateway.get_positions())
             fresh_positions = PositionSnapshotAdapter.from_positions(broker_positions)
@@ -133,6 +140,8 @@ class AsyncTradeExecutor:
         reconciliation = await self.reconcile(intent, broker_positions)
         if reconciliation.state is not ReconciliationState.READY_TO_SUBMIT:
             return ExecutionResult(reconciliation.state, decision, reason=reconciliation.reason)
+        if before_submit is not None:
+            before_submit(decision)
         try:
             claim = self._records.try_claim(IntentRecord(intent.idempotency_key, IntentRecordStatus.PENDING))
         except Exception:

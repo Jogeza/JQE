@@ -23,6 +23,9 @@ from core.exceptions import ConfigurationError, ExecutionError
 from execution.idempotency import build_execution_idempotency_key
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
+from execution.executor import ExecutionResult, ReconciliationState
+from execution.policy import ExecutionDecision, ExecutionDecisionCode
+from execution.safety import ExecutionAuthorization, SQLiteExecutionSafetyStore
 
 
 @pytest.fixture(autouse=True)
@@ -33,12 +36,14 @@ def _restore_execution_settings(tmp_path):
         settings.intent_store_path,
         settings.environment,
         settings.emergency_stop,
+        settings.execution_safety_store_path,
     )
     settings.broker = "simulation"
     settings.use_durable_executor = False
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.environment = "development"
     settings.emergency_stop = EmergencyStopState.CLEAR
+    settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     yield
     (
         settings.broker,
@@ -46,6 +51,7 @@ def _restore_execution_settings(tmp_path):
         settings.intent_store_path,
         settings.environment,
         settings.emergency_stop,
+        settings.execution_safety_store_path,
     ) = original
 
 
@@ -177,7 +183,9 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     store.list_unresolved.return_value = ()
     store.get.return_value = None
     executor = MagicMock()
-    executor.submit = AsyncMock(return_value=SimpleNamespace(state="accepted"))
+    executor.submit = AsyncMock(return_value=SimpleNamespace(
+        state="accepted", decision=SimpleNamespace(allowed=True, code=ExecutionDecisionCode.ALLOWED)
+    ))
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
         "main.SQLiteIntentRecordStore", return_value=store
@@ -218,6 +226,61 @@ async def test_non_clear_emergency_stop_blocks_durable_simulation_submission(
         await main.run()
 
     gateway.submit_order.assert_not_awaited()
+    snapshot = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert snapshot.reason_codes == (
+        "EMERGENCY_STOP" if stop_state is EmergencyStopState.ACTIVE else "SAFETY_CONTEXT_INVALID",
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_submit_safety_publication_failure_prevents_submission() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    safety_store = MagicMock()
+    safety_store.publish.side_effect = [None, OSError("safety publication failed")]
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteExecutionSafetyStore", return_value=safety_store
+    ):
+        with pytest.raises(OSError, match="safety publication failed"):
+            await main.run()
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_terminal_safety_publication_failure_leaves_submission_in_progress() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    real_store = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=True
+    )
+    safety_store = MagicMock()
+    publication_count = 0
+
+    def publish(snapshot) -> None:
+        nonlocal publication_count
+        publication_count += 1
+        if publication_count == 3:
+            raise OSError("terminal safety publication failed")
+        real_store.publish(snapshot)
+
+    safety_store.publish.side_effect = publish
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteExecutionSafetyStore", return_value=safety_store
+    ):
+        with pytest.raises(OSError, match="terminal safety publication failed"):
+            await main.run()
+
+    gateway.submit_order.assert_awaited_once()
+    snapshot = real_store.read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is ExecutionAuthorization.NOT_EVALUATED
+    assert snapshot.reason_codes == ("SUBMISSION_IN_PROGRESS",)
 
 
 @pytest.mark.asyncio
@@ -241,6 +304,12 @@ async def test_unproven_daily_history_blocks_durable_submission(
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
         await main.run()
     gateway.submit_order.assert_not_awaited()
+    safety = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert safety.reason_codes == ("DAILY_STATE_NOT_AUTHORITATIVE",)
 
 
 @pytest.mark.asyncio
@@ -316,6 +385,134 @@ async def test_complete_durable_path_preserves_key_and_blocks_duplicate() -> Non
 
 
 @pytest.mark.asyncio
+async def test_allowed_policy_is_published_before_durable_submission() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    safety = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.AUTHORIZED
+    assert safety.reason_codes == ("ORDER_ACCEPTED",)
+    gateway.submit_order.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_exit_before_pre_submit_remains_not_evaluated() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    store = MagicMock()
+    store.list_unresolved.return_value = ()
+    store.get.return_value = None
+    decision = ExecutionDecision(True, ExecutionDecisionCode.ALLOWED, "Execution authorized")
+    executor = MagicMock()
+    executor.submit = AsyncMock(return_value=ExecutionResult(
+        ReconciliationState.ALREADY_EXECUTED,
+        decision,
+        order_id="SIM-prior",
+        reason="Intent was already accepted",
+    ))
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteIntentRecordStore", return_value=store
+    ), patch("main.AsyncTradeExecutor", return_value=executor):
+        await main.run()
+
+    snapshot = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is ExecutionAuthorization.NOT_EVALUATED
+    assert snapshot.reason_codes == ("NOT_EVALUATED",)
+
+
+@pytest.mark.asyncio
+async def test_durable_claim_failure_after_pre_submit_publishes_unknown() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    store = MagicMock()
+    store.recovery_mode = False
+    store.list_unresolved.return_value = ()
+    store.get.return_value = None
+    store.try_claim.side_effect = OSError("claim unavailable")
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteIntentRecordStore", return_value=store
+    ):
+        await main.run()
+
+    gateway.submit_order.assert_not_awaited()
+    snapshot = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is ExecutionAuthorization.UNKNOWN
+    assert snapshot.reason_codes == ("SUBMISSION_OUTCOME_UNKNOWN",)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("broker_result", "expected_authorization", "expected_reason"),
+    [
+        (
+            OrderResult(
+                order_id="", status=OrderStatus.REJECTED, symbol="XAUUSD",
+                side=OrderSide.BUY, volume=1.0,
+            ),
+            ExecutionAuthorization.BLOCKED,
+            "BROKER_REJECTED",
+        ),
+        (object(), ExecutionAuthorization.UNKNOWN, "SUBMISSION_OUTCOME_UNKNOWN"),
+    ],
+    ids=["broker-rejection", "malformed-result"],
+)
+async def test_terminal_broker_results_publish_fail_closed_state(
+    broker_result, expected_authorization, expected_reason
+) -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    gateway.submit_order.return_value = broker_result
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    snapshot = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is expected_authorization
+    assert snapshot.reason_codes == (expected_reason,)
+
+
+@pytest.mark.asyncio
+async def test_durable_terminal_persistence_failure_publishes_unknown() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    store = MagicMock()
+    store.recovery_mode = False
+    store.list_unresolved.return_value = ()
+    store.get.return_value = None
+    store.try_claim.return_value = ClaimState.CLAIMED
+    store.transition.return_value = False
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
+        "main.SQLiteIntentRecordStore", return_value=store
+    ):
+        await main.run()
+
+    gateway.submit_order.assert_awaited_once()
+    snapshot = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert snapshot is not None
+    assert snapshot.execution_authorization is ExecutionAuthorization.UNKNOWN
+    assert snapshot.reason_codes == ("SUBMISSION_OUTCOME_UNKNOWN",)
+
+
+@pytest.mark.asyncio
 async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None:
     settings.use_durable_executor = True
     gateway = _gateway()
@@ -323,6 +520,12 @@ async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
         await main.run()
+        safety = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=False
+        ).read()
+        assert safety is not None
+        assert safety.execution_authorization is ExecutionAuthorization.UNKNOWN
+        assert safety.reason_codes == ("SUBMISSION_OUTCOME_UNKNOWN",)
         with pytest.raises(ExecutionError, match="unresolved persisted intents"):
             await main.run()
 
@@ -331,6 +534,12 @@ async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None
     with store._connect() as connection:
         key = connection.execute("SELECT idempotency_key FROM intent_records").fetchone()[0]
     assert store.get(key).status is IntentRecordStatus.UNKNOWN
+    safety = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert safety.reason_codes == ("UNRESOLVED_DURABLE_INTENT",)
 
 
 @pytest.mark.asyncio
@@ -401,6 +610,13 @@ async def test_unresolved_record_blocks_startup_without_reconciliation(
     assert recovered is not None
     assert recovered.status is prior_status
     assert recovered.order_id == "SIM-prior"
+    safety = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert safety.unresolved_intent_count == 1
+    assert safety.reason_codes == ("UNRESOLVED_DURABLE_INTENT",)
 
 
 @pytest.mark.asyncio

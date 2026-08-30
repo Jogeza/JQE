@@ -19,6 +19,7 @@ from config import EmergencyStopState, settings
 from core.exceptions import ExecutionError
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
+from execution.policy import ExecutionDecisionCode
 from tests.test_main_durable_executor import _expected_key, _gateway, _pipeline_patches
 
 
@@ -35,6 +36,7 @@ def _deriv_demo_settings(tmp_path):
         "default_symbol": settings.default_symbol,
         "environment": settings.environment,
         "emergency_stop": settings.emergency_stop,
+        "execution_safety_store_path": settings.execution_safety_store_path,
     }
     settings.broker = "deriv"
     settings.use_durable_executor = True
@@ -46,6 +48,7 @@ def _deriv_demo_settings(tmp_path):
     settings.default_symbol = "XAUUSD"
     settings.environment = "development"
     settings.emergency_stop = EmergencyStopState.CLEAR
+    settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     with patch(
         "broker.deriv_gateway.websockets.connect",
         side_effect=AssertionError("external Deriv WebSocket access is forbidden"),
@@ -107,7 +110,11 @@ async def test_durable_deriv_demo_is_authorized_with_explicit_context() -> None:
     store.list_unresolved.return_value = ()
     store.get.return_value = None
     executor = MagicMock()
-    executor.submit = AsyncMock(return_value=SimpleNamespace(state="accepted"))
+    executor.submit = AsyncMock(return_value=SimpleNamespace(
+        state="accepted", decision=SimpleNamespace(
+            allowed=False, code=ExecutionDecisionCode.DAILY_STATE_NOT_AUTHORITATIVE
+        )
+    ))
     patches = _pipeline_patches(gateway)
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
@@ -178,7 +185,11 @@ async def test_deriv_demo_daily_state_is_not_authoritative_without_coverage() ->
     store.list_unresolved.return_value = ()
     store.get.return_value = None
     executor = MagicMock()
-    executor.submit = AsyncMock(return_value=SimpleNamespace(state="denied"))
+    executor.submit = AsyncMock(return_value=SimpleNamespace(
+        state="denied", decision=SimpleNamespace(
+            allowed=False, code=ExecutionDecisionCode.DAILY_STATE_NOT_AUTHORITATIVE
+        )
+    ))
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
         "main.SQLiteIntentRecordStore", return_value=store

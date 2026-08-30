@@ -17,6 +17,7 @@ from api.dto import (
     CandlesResponse,
     ConfidenceBreakdownDTO,
     ExecutionStateResponse,
+    ExecutionSafetyResponse,
     MarketSummaryResponse,
     PerformanceSummaryResponse,
     PositionDTO,
@@ -34,6 +35,7 @@ from core.data_validator import validate_market_data
 from core.exceptions import MarketDataError
 from core.indicators import calculate_indicators
 from core.regime import detect_regime
+from execution.safety import SQLiteExecutionSafetyStore, utc_now
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
@@ -337,6 +339,52 @@ class ApplicationService:
             rejection_reason=rejection_reason,
             recommended_lot_size=recommended_lot,
             risk_percent=risk_pct,
+        )
+
+    def get_execution_safety(self) -> ExecutionSafetyResponse:
+        """Read the canonical snapshot without broker access or policy evaluation."""
+        store = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=False
+        )
+        try:
+            snapshot = store.read()
+        except Exception:
+            return ExecutionSafetyResponse(
+                observation_state="UNAVAILABLE",
+                reason_codes=["SNAPSHOT_UNAVAILABLE"],
+            )
+        if snapshot is None:
+            return ExecutionSafetyResponse(
+                observation_state="NOT_OBSERVED",
+                execution_authorization="NOT_EVALUATED",
+                daily_state_authority="NOT_EVALUATED",
+                reason_codes=["NOT_EVALUATED"],
+            )
+        age = utc_now() - snapshot.observed_at.astimezone(datetime.timezone.utc)
+        if age.total_seconds() > settings.execution_safety_freshness_seconds:
+            return ExecutionSafetyResponse(
+                schema_version=snapshot.schema_version,
+                observed_at=snapshot.observed_at.astimezone(datetime.timezone.utc).isoformat(),
+                observation_state="STALE",
+                broker=snapshot.broker,
+                environment=snapshot.environment,
+                durable_executor_enabled=snapshot.durable_executor_enabled,
+                reason_codes=["SNAPSHOT_STALE"],
+            )
+        return ExecutionSafetyResponse(
+            schema_version=snapshot.schema_version,
+            observed_at=snapshot.observed_at.astimezone(datetime.timezone.utc).isoformat(),
+            observation_state="OBSERVED",
+            emergency_stop_state=snapshot.emergency_stop_state.value,
+            execution_mode=snapshot.execution_mode.value,
+            broker=snapshot.broker,
+            environment=snapshot.environment,
+            durable_executor_enabled=snapshot.durable_executor_enabled,
+            daily_state_authority=snapshot.daily_state_authority.value,
+            unresolved_intent_count=snapshot.unresolved_intent_count,
+            unresolved_intent_blocked=snapshot.unresolved_intent_blocked,
+            execution_authorization=snapshot.execution_authorization.value,
+            reason_codes=list(snapshot.reason_codes),
         )
 
     async def get_execution_state(self) -> ExecutionStateResponse:

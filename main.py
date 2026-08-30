@@ -33,11 +33,20 @@ from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
 from intelligence.trade_plan import TradePlanBuilder
-from execution.executor import AsyncTradeExecutor
+from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
 from execution.reconciliation import DerivReconciliationAdapter, SimulationReconciliationAdapter
+from execution.safety import (
+    DailyStateAuthority,
+    EmergencyStopState,
+    ExecutionAuthorization,
+    ExecutionMode,
+    ExecutionSafetySnapshot,
+    SQLiteExecutionSafetyStore,
+    utc_now,
+)
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
     approve_trade,
@@ -73,6 +82,7 @@ async def run() -> None:
     if not settings.use_durable_executor and settings.broker != "simulation":
         raise ConfigurationError("Direct execution is authorized for simulation only")
 
+    safety_store = None
     if settings.use_durable_executor:
         if settings.broker == "simulation":
             pass
@@ -105,6 +115,35 @@ async def run() -> None:
                 "Durable execution is authorized for simulation and Deriv DEMO only"
             )
 
+        safety_store = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=True
+        )
+
+        def publish_safety(
+            authorization: ExecutionAuthorization,
+            reason_codes: tuple[str, ...],
+            *,
+            daily_authority: DailyStateAuthority = DailyStateAuthority.NOT_EVALUATED,
+            unresolved_count: int = 0,
+        ) -> None:
+            safety_store.publish(
+                ExecutionSafetySnapshot(
+                    observed_at=utc_now(),
+                    emergency_stop_state=settings.emergency_stop,
+                    execution_mode=ExecutionMode.DURABLE,
+                    broker=settings.broker,
+                    environment=settings.environment,
+                    durable_executor_enabled=True,
+                    daily_state_authority=daily_authority,
+                    unresolved_intent_count=unresolved_count,
+                    unresolved_intent_blocked=unresolved_count > 0,
+                    execution_authorization=authorization,
+                    reason_codes=reason_codes,
+                )
+            )
+
+        publish_safety(ExecutionAuthorization.NOT_EVALUATED, ("NOT_EVALUATED",))
+
     timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
     gateway = get_gateway(settings)
@@ -119,6 +158,12 @@ async def run() -> None:
         )
         unresolved_records = records.list_unresolved()
         if unresolved_records:
+            assert safety_store is not None
+            publish_safety(
+                ExecutionAuthorization.BLOCKED,
+                ("UNRESOLVED_DURABLE_INTENT",),
+                unresolved_count=len(unresolved_records),
+            )
             raise ExecutionError(
                 "New durable execution blocked: unresolved persisted intents "
                 "cannot be safely reconstructed from the current schema",
@@ -291,7 +336,53 @@ async def run() -> None:
             result = await executor.reconcile(intent)
             logger.info("Recovered order result: {}", result)
             return
-        result = await executor.submit(intent, context)
+        submission_started = False
+
+        def publish_submission_started(_decision) -> None:
+            nonlocal submission_started
+            publish_safety(
+                ExecutionAuthorization.NOT_EVALUATED,
+                ("SUBMISSION_IN_PROGRESS",),
+                daily_authority=(
+                    DailyStateAuthority.AUTHORITATIVE
+                    if history_authoritative
+                    else DailyStateAuthority.NOT_AUTHORITATIVE
+                ),
+            )
+            submission_started = True
+
+        result = await executor.submit(
+            intent,
+            context,
+            before_submit=publish_submission_started,
+        )
+        assert safety_store is not None
+        daily_authority = (
+            DailyStateAuthority.AUTHORITATIVE
+            if history_authoritative
+            else DailyStateAuthority.NOT_AUTHORITATIVE
+        )
+        if not result.decision.allowed:
+            publish_safety(
+                ExecutionAuthorization.BLOCKED,
+                (result.decision.code.value,),
+                daily_authority=daily_authority,
+            )
+        elif submission_started:
+            if result.state is ReconciliationState.ALREADY_EXECUTED:
+                authorization = ExecutionAuthorization.AUTHORIZED
+                reason_codes = ("ORDER_ACCEPTED",)
+            elif result.state is ReconciliationState.REJECTED:
+                authorization = ExecutionAuthorization.BLOCKED
+                reason_codes = ("BROKER_REJECTED",)
+            else:
+                authorization = ExecutionAuthorization.UNKNOWN
+                reason_codes = ("SUBMISSION_OUTCOME_UNKNOWN",)
+            publish_safety(
+                authorization,
+                reason_codes,
+                daily_authority=daily_authority,
+            )
         logger.info("Order result: {}", result)
 
 

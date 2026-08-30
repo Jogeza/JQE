@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dto import (
     CandlesResponse,
     ExecutionStateResponse,
+    ExecutionSafetyResponse,
     MarketSummaryResponse,
     PerformanceSummaryResponse,
     RiskStatusResponse,
@@ -92,6 +93,14 @@ async def get_execution_state(
         return await service.get_execution_state()
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/execution/safety", response_model=ExecutionSafetyResponse)
+def get_execution_safety(
+    service: ApplicationService = Depends(get_service),
+) -> ExecutionSafetyResponse:
+    """Returns the latest canonical cross-process safety observation."""
+    return service.get_execution_safety()
 
 
 @router.get("/performance", response_model=PerformanceSummaryResponse)

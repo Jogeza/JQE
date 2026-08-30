@@ -15,7 +15,6 @@ or environment support) with a single source of truth that:
 
 from __future__ import annotations
 
-from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -23,16 +22,10 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from execution.safety import EmergencyStopState
+
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 Environment = Literal["development", "staging", "production"]
-
-
-class EmergencyStopState(str, Enum):
-    """Explicit, fail-closed emergency-stop configuration state."""
-
-    CLEAR = "CLEAR"
-    ACTIVE = "ACTIVE"
-    UNKNOWN = "UNKNOWN"
 
 
 class Settings(BaseSettings):
@@ -148,6 +141,8 @@ class Settings(BaseSettings):
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     use_durable_executor: bool = False
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
+    execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
+    execution_safety_freshness_seconds: int = Field(default=15, gt=0)
 
     @field_validator("log_level", mode="before")
     @classmethod
