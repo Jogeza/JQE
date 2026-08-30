@@ -28,6 +28,8 @@ from broker.types import (
     Tick,
     Timeframe,
     TradeHistoryEntry,
+    TradeHistoryCompleteness,
+    TradeHistorySnapshot,
 )
 
 __all__ = [
@@ -46,5 +48,7 @@ __all__ = [
     "Tick",
     "Timeframe",
     "TradeHistoryEntry",
+    "TradeHistoryCompleteness",
+    "TradeHistorySnapshot",
     "get_gateway",
 ]

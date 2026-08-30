@@ -34,7 +34,9 @@ from broker.types import (
     Position,
     Tick,
     Timeframe,
+    TradeHistoryCompleteness,
     TradeHistoryEntry,
+    TradeHistorySnapshot,
 )
 from core.exceptions import BrokerConnectionError
 from core.logger import logger
@@ -171,6 +173,25 @@ class SimulationGateway(BrokerGateway):
     async def get_trade_history(self, count: int = 100) -> list[TradeHistoryEntry]:
         self._require_connected()
         return self._trade_history[-count:]
+
+    async def get_trade_history_snapshot(
+        self, *, start: datetime, end: datetime, count: int = 100
+    ) -> TradeHistorySnapshot:
+        self._require_connected()
+        interval_trades = [
+            trade for trade in self._trade_history if start <= trade.closed_at <= end
+        ]
+        truncated = len(interval_trades) > count
+        return TradeHistorySnapshot(
+            trades=interval_trades[-count:],
+            completeness=(
+                TradeHistoryCompleteness.TRUNCATED
+                if truncated
+                else TradeHistoryCompleteness.COMPLETE
+            ),
+            coverage_start=start,
+            coverage_end=end,
+        )
 
     def _inject_closed_trade(self, trade: TradeHistoryEntry) -> None:
         """Test helper to seed closed trades for reconciliation tests."""

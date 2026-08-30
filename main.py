@@ -20,6 +20,7 @@ Run directly to execute a single cycle:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, time, timezone
 
 import pandas as pd
 
@@ -129,7 +130,19 @@ async def run() -> None:
         logger.info("Trading signal: {}", signal)
 
         account = await gateway.get_account_info()
-        trades = await gateway.get_trade_history(count=500)
+        history_authoritative = False
+        if settings.use_durable_executor:
+            history_end = datetime.now(timezone.utc)
+            history_start = datetime.combine(history_end.date(), time.min, tzinfo=timezone.utc)
+            history = await gateway.get_trade_history_snapshot(
+                start=history_start,
+                end=history_end,
+                count=500,
+            )
+            trades = history.trades
+            history_authoritative = history.covers(history_start, history_end)
+        else:
+            trades = await gateway.get_trade_history(count=500)
         reconcile_daily_history(trades, balance=account.balance)
 
         risk_decision = approve_trade(
@@ -233,7 +246,7 @@ async def run() -> None:
             approved_environments=frozenset({execution_environment}),
             approved_accounts=frozenset({approved_account}),
             approved_symbols=approved_symbols,
-            daily_state_authoritative=True,
+            daily_state_authoritative=history_authoritative,
         )
         intent = ExecutionIntent(
             symbol=normalized_symbol,

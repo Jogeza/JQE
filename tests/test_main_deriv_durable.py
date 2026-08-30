@@ -8,7 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import main
-from broker.types import AccountInfo, OrderResult, OrderSide, OrderStatus, Position
+from broker.types import (
+    AccountInfo,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    TradeHistorySnapshot,
+)
 from config import settings
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
@@ -51,6 +57,8 @@ def _deriv_demo_settings(tmp_path):
 
 def _deriv_gateway(*, account_id: str = "CR-DEMO") -> MagicMock:
     gateway = _gateway()
+    gateway.get_trade_history_snapshot.side_effect = None
+    gateway.get_trade_history_snapshot.return_value = TradeHistorySnapshot()
     gateway.get_account_info.return_value = AccountInfo(
         account_id=account_id, balance=10_000.0, currency="USD"
     )
@@ -113,6 +121,7 @@ async def test_durable_deriv_demo_is_authorized_with_explicit_context() -> None:
     assert context.approved_environments == frozenset({"development"})
     assert context.approved_accounts == frozenset({"CR-DEMO"})
     assert context.approved_symbols == frozenset({"XAUUSD"})
+    assert context.daily_state_authoritative is False
     assert intent.idempotency_key == store.get.call_args.args[0]
     gateway.submit_order.assert_not_awaited()
 
@@ -159,7 +168,7 @@ async def test_deriv_demo_wrong_observed_account_fails_policy_closed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deriv_demo_uses_authoritative_daily_state() -> None:
+async def test_deriv_demo_daily_state_is_not_authoritative_without_coverage() -> None:
     gateway = _deriv_gateway()
     store = MagicMock()
     store.get.return_value = None
@@ -177,24 +186,19 @@ async def test_deriv_demo_uses_authoritative_daily_state() -> None:
     assert context.daily_trade_count == 2
     assert context.max_daily_loss_percent == 3.0
     assert context.max_daily_trades == 5
-    assert context.daily_state_authoritative is True
+    assert context.daily_state_authoritative is False
 
 
 @pytest.mark.asyncio
-async def test_deriv_demo_new_intent_submits_once_and_persists_broker_ids() -> None:
+async def test_deriv_demo_new_intent_fails_closed_without_complete_daily_history() -> None:
     gateway = _deriv_gateway()
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
         await main.run()
         await main.run()
 
-    gateway.submit_order.assert_awaited_once()
-    order = gateway.submit_order.await_args.args[0]
-    assert order.idempotency_key == _expected_key()
-    record = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
-    assert record == IntentRecord(
-        _expected_key(), IntentRecordStatus.ACCEPTED, "contract-1", "txn-1"
-    )
+    gateway.submit_order.assert_not_awaited()
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key()) is None
 
 
 @pytest.mark.asyncio

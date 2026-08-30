@@ -34,6 +34,7 @@ from broker.types import (
     Position,
     Tick,
     Timeframe,
+    TradeHistorySnapshot,
     TradeHistoryEntry,
 )
 
@@ -157,6 +158,13 @@ class BrokerGateway(ABC):
             core.exceptions.BrokerConnectionError: If not connected, or
                 the broker call fails.
         """
+
+    async def get_trade_history_snapshot(
+        self, *, start: datetime, end: datetime, count: int = 100
+    ) -> TradeHistorySnapshot:
+        """Return bounded history without claiming unproven interval coverage."""
+        trades = await self.get_trade_history(count=count)
+        return TradeHistorySnapshot(trades=trades)
 
     async def __aenter__(self) -> Self:
         """Connects on entering an ``async with`` block."""

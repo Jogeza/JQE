@@ -9,7 +9,15 @@ import pandas as pd
 import pytest
 
 import main
-from broker.types import AccountInfo, OrderResult, OrderSide, OrderStatus, Position
+from broker.types import (
+    AccountInfo,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    Position,
+    TradeHistoryCompleteness,
+    TradeHistorySnapshot,
+)
 from config import Settings, settings
 from core.exceptions import ConfigurationError, ExecutionError
 from execution.idempotency import build_execution_idempotency_key
@@ -57,6 +65,16 @@ def _gateway() -> MagicMock:
         return_value=AccountInfo(account_id="SIMULATED", balance=10_000.0, currency="USD")
     )
     gateway.get_trade_history = AsyncMock(return_value=[])
+
+    async def complete_history(*, start, end, count):
+        return TradeHistorySnapshot(
+            trades=[],
+            completeness=TradeHistoryCompleteness.COMPLETE,
+            coverage_start=start,
+            coverage_end=end,
+        )
+
+    gateway.get_trade_history_snapshot = AsyncMock(side_effect=complete_history)
     gateway.get_positions = AsyncMock(return_value=[])
     gateway.submit_order = AsyncMock(
         return_value=OrderResult(
@@ -175,6 +193,41 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     assert context.approved_accounts == frozenset({"SIMULATED"})
     assert context.approved_symbols == frozenset({"XAUUSD"})
     assert context.daily_state_authoritative is True
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        TradeHistorySnapshot(completeness=TradeHistoryCompleteness.TRUNCATED),
+        TradeHistorySnapshot(completeness=TradeHistoryCompleteness.UNKNOWN),
+        TradeHistorySnapshot(completeness=TradeHistoryCompleteness.COMPLETE),
+    ],
+    ids=["truncated", "unknown", "complete-without-coverage"],
+)
+async def test_unproven_daily_history_blocks_durable_submission(
+    snapshot: TradeHistorySnapshot,
+) -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    gateway.get_trade_history_snapshot.return_value = snapshot
+    gateway.get_trade_history_snapshot.side_effect = None
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unavailable_daily_history_fails_closed_before_submission() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    gateway.get_trade_history_snapshot.side_effect = RuntimeError("history unavailable")
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        with pytest.raises(RuntimeError, match="history unavailable"):
+            await main.run()
     gateway.submit_order.assert_not_awaited()
 
 

@@ -18,7 +18,9 @@ from broker.types import (
     OrderType,
     Position,
     Timeframe,
+    TradeHistoryCompleteness,
     TradeHistoryEntry,
+    TradeHistorySnapshot,
 )
 
 
@@ -147,6 +149,33 @@ class TestBrokerTransactionIds:
             transaction_id="transaction-1",
         )
         assert trade.transaction_id == "transaction-1"
+
+
+class TestTradeHistorySnapshot:
+    def test_complete_snapshot_requires_interval_coverage(self) -> None:
+        start = datetime(2026, 8, 30, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 30, 12, tzinfo=timezone.utc)
+        snapshot = TradeHistorySnapshot(
+            completeness=TradeHistoryCompleteness.COMPLETE,
+            coverage_start=start,
+            coverage_end=end,
+        )
+        assert snapshot.covers(start, end) is True
+
+    @pytest.mark.parametrize(
+        "snapshot",
+        [
+            TradeHistorySnapshot(completeness=TradeHistoryCompleteness.TRUNCATED),
+            TradeHistorySnapshot(completeness=TradeHistoryCompleteness.UNKNOWN),
+            TradeHistorySnapshot(completeness=TradeHistoryCompleteness.COMPLETE),
+        ],
+    )
+    def test_unproven_snapshot_does_not_cover_interval(
+        self, snapshot: TradeHistorySnapshot
+    ) -> None:
+        start = datetime(2026, 8, 30, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 30, 12, tzinfo=timezone.utc)
+        assert snapshot.covers(start, end) is False
 
 
 class TestOrderStatusAndSide:

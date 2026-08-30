@@ -7,7 +7,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from broker.simulation_gateway import SimulationGateway
-from broker.types import OrderRequest, OrderSide, OrderStatus, Timeframe
+from broker.types import (
+    OrderRequest,
+    OrderSide,
+    OrderStatus,
+    Timeframe,
+    TradeHistoryCompleteness,
+    TradeHistoryEntry,
+)
 from core.exceptions import BrokerConnectionError
 
 
@@ -137,3 +144,51 @@ class TestSubmitOrder:
             OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=1.0)
         )
         assert first.order_id != second.order_id
+
+
+class TestTradeHistoryCompleteness:
+    @staticmethod
+    def _trade(trade_id: str, closed_at: datetime) -> TradeHistoryEntry:
+        return TradeHistoryEntry(
+            trade_id=trade_id,
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            volume=1.0,
+            open_price=100.0,
+            close_price=101.0,
+            profit=1.0,
+            opened_at=closed_at - timedelta(minutes=5),
+            closed_at=closed_at,
+        )
+
+    async def test_full_in_memory_interval_is_complete(
+        self, gateway: SimulationGateway
+    ) -> None:
+        await gateway.connect()
+        start = datetime(2026, 8, 30, tzinfo=timezone.utc)
+        end = start + timedelta(hours=12)
+        gateway._inject_closed_trade(self._trade("inside", start + timedelta(hours=1)))
+        gateway._inject_closed_trade(self._trade("outside", start - timedelta(hours=1)))
+        snapshot = await gateway.get_trade_history_snapshot(
+            start=start, end=end, count=10
+        )
+        assert snapshot.completeness is TradeHistoryCompleteness.COMPLETE
+        assert [trade.trade_id for trade in snapshot.trades] == ["inside"]
+        assert snapshot.covers(start, end) is True
+
+    async def test_bounded_in_memory_interval_reports_truncation(
+        self, gateway: SimulationGateway
+    ) -> None:
+        await gateway.connect()
+        start = datetime(2026, 8, 30, tzinfo=timezone.utc)
+        end = start + timedelta(hours=12)
+        for index in range(3):
+            gateway._inject_closed_trade(
+                self._trade(str(index), start + timedelta(hours=index + 1))
+            )
+        snapshot = await gateway.get_trade_history_snapshot(
+            start=start, end=end, count=2
+        )
+        assert snapshot.completeness is TradeHistoryCompleteness.TRUNCATED
+        assert [trade.trade_id for trade in snapshot.trades] == ["1", "2"]
+        assert snapshot.covers(start, end) is False

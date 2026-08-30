@@ -209,3 +209,30 @@ class TradeHistoryEntry(BaseModel):
     closed_at: datetime
     transaction_id: str | None = None
     contract_type: str | None = None
+
+
+class TradeHistoryCompleteness(str, Enum):
+    """Whether a history snapshot proves coverage of its requested interval."""
+
+    COMPLETE = "COMPLETE"
+    TRUNCATED = "TRUNCATED"
+    UNKNOWN = "UNKNOWN"
+
+
+class TradeHistorySnapshot(BaseModel):
+    """Closed trades plus explicit evidence about interval completeness."""
+
+    trades: list[TradeHistoryEntry] = Field(default_factory=list)
+    completeness: TradeHistoryCompleteness = TradeHistoryCompleteness.UNKNOWN
+    coverage_start: datetime | None = None
+    coverage_end: datetime | None = None
+
+    def covers(self, start: datetime, end: datetime) -> bool:
+        """Return true only for positively established interval coverage."""
+        return (
+            self.completeness is TradeHistoryCompleteness.COMPLETE
+            and self.coverage_start is not None
+            and self.coverage_end is not None
+            and self.coverage_start <= start
+            and self.coverage_end >= end
+        )
