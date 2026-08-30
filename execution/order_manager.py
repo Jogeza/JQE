@@ -4,6 +4,8 @@ import asyncio
 
 from broker.factory import get_gateway
 from broker.types import OrderRequest, OrderSide
+from config import settings
+from core.exceptions import ConfigurationError
 
 
 class OrderManager:
@@ -25,6 +27,11 @@ class OrderManager:
     """
 
     def __init__(self):
+        if settings.broker != "simulation":
+            raise ConfigurationError(
+                "Legacy OrderManager supports Simulation only; real-broker "
+                "execution must use the canonical durable executor"
+            )
         self.gateway = get_gateway()
 
         # Connect broker gateway

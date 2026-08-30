@@ -1,34 +1,18 @@
+"""Offline regression: the legacy manager must never reach MT5."""
+
+from unittest.mock import patch
+
+import pytest
+
+from core.exceptions import ConfigurationError
 from execution.order_manager import OrderManager
 
 
-def test_mt5_demo_trade():
+def test_legacy_manager_refuses_mt5_before_gateway_construction() -> None:
+    with patch("execution.order_manager.settings.broker", "mt5"), patch(
+        "execution.order_manager.get_gateway"
+    ) as get_gateway:
+        with pytest.raises(ConfigurationError, match="canonical durable executor"):
+            OrderManager()
 
-
-    manager = OrderManager()
-
-
-    result = manager.create_order(
-
-        signal="BUY",
-
-        symbol="XAUUSD",
-
-        lot=0.01,
-
-        entry=0,
-
-        stop_loss=4030,
-
-        take_profit=4070,
-
-        execute=True
-
-    )
-
-
-    print("\n===== JQE MT5 DEMO RESULT =====")
-
-    print(result)
-
-
-    assert result["status"] == "EXECUTED"
+    get_gateway.assert_not_called()

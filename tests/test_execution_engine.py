@@ -1,11 +1,16 @@
+from unittest.mock import patch
+
+from broker.simulation_gateway import SimulationGateway
 from execution.order_manager import OrderManager
 from execution.position_manager import PositionManager
 from execution.trade_lifecycle import TradeLifecycle
 
 
 def test_execution_flow():
-
-    order_manager = OrderManager()
+    with patch("execution.order_manager.settings.broker", "simulation"), patch(
+        "execution.order_manager.get_gateway", return_value=SimulationGateway()
+    ):
+        order_manager = OrderManager()
     position_manager = PositionManager()
     lifecycle = TradeLifecycle()
 
