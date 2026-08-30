@@ -15,6 +15,7 @@ or environment support) with a single source of truth that:
 
 from __future__ import annotations
 
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -24,6 +25,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 Environment = Literal["development", "staging", "production"]
+
+
+class EmergencyStopState(str, Enum):
+    """Explicit, fail-closed emergency-stop configuration state."""
+
+    CLEAR = "CLEAR"
+    ACTIVE = "ACTIVE"
+    UNKNOWN = "UNKNOWN"
 
 
 class Settings(BaseSettings):
@@ -138,6 +147,7 @@ class Settings(BaseSettings):
     cache_dir: Path = Path("cache")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     use_durable_executor: bool = False
+    emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -152,6 +162,12 @@ class Settings(BaseSettings):
             original value (letting Pydantic raise its own validation
             error for genuinely invalid types).
         """
+        return value.upper() if isinstance(value, str) else value
+
+    @field_validator("emergency_stop", mode="before")
+    @classmethod
+    def _normalize_emergency_stop(cls, value: object) -> object:
+        """Normalize recognized enum text while leaving invalid values to fail validation."""
         return value.upper() if isinstance(value, str) else value
 
 

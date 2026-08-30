@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from config.settings import Settings, get_settings
+from config.settings import EmergencyStopState, Settings, get_settings
 
 
 class TestSettingsDefaults:
@@ -39,6 +39,10 @@ class TestSettingsDefaults:
         settings = Settings(_env_file=None)
         assert settings.log_level == "INFO"
 
+    def test_missing_emergency_stop_defaults_to_unknown(self) -> None:
+        settings = Settings(_env_file=None)
+        assert settings.emergency_stop is EmergencyStopState.UNKNOWN
+
 
 class TestSettingsEnvOverrides:
     """Environment variables (JQE_-prefixed) should override defaults."""
@@ -62,6 +66,16 @@ class TestSettingsEnvOverrides:
         monkeypatch.setenv("JQE_LOG_LEVEL", "debug")
         settings = Settings(_env_file=None)
         assert settings.log_level == "DEBUG"
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("CLEAR", EmergencyStopState.CLEAR), ("active", EmergencyStopState.ACTIVE)],
+    )
+    def test_emergency_stop_env_is_explicit_and_normalized(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str, expected: EmergencyStopState
+    ) -> None:
+        monkeypatch.setenv("JQE_EMERGENCY_STOP", raw)
+        assert Settings(_env_file=None).emergency_stop is expected
 
 
 class TestSettingsValidation:
@@ -90,6 +104,10 @@ class TestSettingsValidation:
     def test_invalid_log_level_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Settings(_env_file=None, log_level="NOT_A_LEVEL")
+
+    def test_invalid_emergency_stop_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, emergency_stop="DISABLED")
 
 
 class TestGetSettingsCaching:

@@ -18,7 +18,7 @@ from broker.types import (
     TradeHistoryCompleteness,
     TradeHistorySnapshot,
 )
-from config import Settings, settings
+from config import EmergencyStopState, Settings, settings
 from core.exceptions import ConfigurationError, ExecutionError
 from execution.idempotency import build_execution_idempotency_key
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
@@ -32,17 +32,20 @@ def _restore_execution_settings(tmp_path):
         settings.use_durable_executor,
         settings.intent_store_path,
         settings.environment,
+        settings.emergency_stop,
     )
     settings.broker = "simulation"
     settings.use_durable_executor = False
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.environment = "development"
+    settings.emergency_stop = EmergencyStopState.CLEAR
     yield
     (
         settings.broker,
         settings.use_durable_executor,
         settings.intent_store_path,
         settings.environment,
+        settings.emergency_stop,
     ) = original
 
 
@@ -194,6 +197,26 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     assert context.approved_accounts == frozenset({"SIMULATED"})
     assert context.approved_symbols == frozenset({"XAUUSD"})
     assert context.daily_state_authoritative is True
+    assert context.emergency_stop is False
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stop_state",
+    [EmergencyStopState.ACTIVE, EmergencyStopState.UNKNOWN],
+)
+async def test_non_clear_emergency_stop_blocks_durable_simulation_submission(
+    stop_state: EmergencyStopState,
+) -> None:
+    settings.use_durable_executor = True
+    settings.emergency_stop = stop_state
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
     gateway.submit_order.assert_not_awaited()
 
 

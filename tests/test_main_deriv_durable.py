@@ -15,7 +15,7 @@ from broker.types import (
     OrderStatus,
     TradeHistorySnapshot,
 )
-from config import settings
+from config import EmergencyStopState, settings
 from core.exceptions import ExecutionError
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
@@ -34,6 +34,7 @@ def _deriv_demo_settings(tmp_path):
         "deriv_approved_symbols": settings.deriv_approved_symbols,
         "default_symbol": settings.default_symbol,
         "environment": settings.environment,
+        "emergency_stop": settings.emergency_stop,
     }
     settings.broker = "deriv"
     settings.use_durable_executor = True
@@ -44,6 +45,7 @@ def _deriv_demo_settings(tmp_path):
     settings.deriv_approved_symbols = frozenset({"XAUUSD"})
     settings.default_symbol = "XAUUSD"
     settings.environment = "development"
+    settings.emergency_stop = EmergencyStopState.CLEAR
     with patch(
         "broker.deriv_gateway.websockets.connect",
         side_effect=AssertionError("external Deriv WebSocket access is forbidden"),

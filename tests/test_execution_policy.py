@@ -67,6 +67,10 @@ def _code(intent: ExecutionIntent, context: ExecutionContext | None) -> Executio
 
 
 class TestPrecedenceAndApproval:
+    def test_explicit_clear_passes_emergency_stop_gate(self) -> None:
+        decision = ExecutionPolicy.evaluate(_intent(), _context(emergency_stop=False))
+        assert decision.allowed is True
+
     def test_emergency_stop_has_precedence_over_every_other_failure(self) -> None:
         decision = ExecutionPolicy.evaluate(
             _intent(risk_approved=False, side="HOLD", volume=0),
@@ -74,6 +78,11 @@ class TestPrecedenceAndApproval:
         )
         assert decision.allowed is False
         assert decision.code is ExecutionDecisionCode.EMERGENCY_STOP
+
+    def test_unknown_emergency_stop_fails_closed(self) -> None:
+        decision = ExecutionPolicy.evaluate(_intent(), _context(emergency_stop=None))
+        assert decision.allowed is False
+        assert decision.code is ExecutionDecisionCode.SAFETY_CONTEXT_INVALID
 
     @pytest.mark.parametrize("approval", [None, False])
     def test_missing_or_false_risk_approval_rejects(self, approval: bool | None) -> None:

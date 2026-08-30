@@ -26,7 +26,7 @@ import pandas as pd
 
 from broker.factory import get_gateway
 from broker.types import OrderRequest, OrderSide, Timeframe
-from config import settings
+from config import EmergencyStopState, settings
 from core.data_validator import validate_market_data
 from core.exceptions import ConfigurationError, ExecutionError, JQEError, MarketDataError
 from core.indicators import calculate_indicators
@@ -245,7 +245,13 @@ async def run() -> None:
             )
         )
         context = ExecutionContext(
-            emergency_stop=False,
+            emergency_stop=(
+                False
+                if settings.emergency_stop is EmergencyStopState.CLEAR
+                else True
+                if settings.emergency_stop is EmergencyStopState.ACTIVE
+                else None
+            ),
             daily_loss_percent=daily_loss,
             max_daily_loss_percent=max_daily_loss,
             daily_trade_count=daily_count,

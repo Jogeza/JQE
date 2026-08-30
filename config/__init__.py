@@ -14,6 +14,6 @@ environment variables), use :func:`get_settings` directly together with
 ``get_settings.cache_clear()``.
 """
 
-from config.settings import Settings, get_settings, settings
+from config.settings import EmergencyStopState, Settings, get_settings, settings
 
-__all__ = ["Settings", "get_settings", "settings"]
+__all__ = ["EmergencyStopState", "Settings", "get_settings", "settings"]
