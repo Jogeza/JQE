@@ -1,4 +1,4 @@
-"""JQE Institutional Position Sizing Engine.
+"""Canonical execution authorization plus legacy backtesting lot helpers.
 
 Calculates lot size dynamically from account risk capital, stop distance,
 and instrument specifications to ensure strict risk management and prevent
@@ -62,7 +62,11 @@ def authorize_execution_quantity(
 
 
 class PositionSizing:
-    """Calculates position lot sizes based on capital at risk."""
+    """Noncanonical lot calculator retained for backtesting compatibility only.
+
+    Its float output must never be passed to ``ExecutionIntent`` or
+    ``OrderRequest``. Broker-bound sizing uses ``authorize_execution_quantity``.
+    """
 
     def __init__(self, min_lot: float = 0.01, max_lot: float = 100.0) -> None:
         self.min_lot = min_lot
@@ -103,7 +107,10 @@ def calculate_position_size(
     stop_loss: float,
     pip_value: float = 10.0,
 ) -> float:
-    """Convenience function calculating position lot size from balance and percentage risk.
+    """Calculate a noncanonical backtesting lot value.
+
+    This compatibility helper is not an execution authorization and its raw
+    float result must never cross a broker request boundary.
 
     Args:
         balance: Account balance.

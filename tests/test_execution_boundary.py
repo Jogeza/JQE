@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import ast
-import asyncio
 from pathlib import Path
-from unittest.mock import patch
-
-from broker.simulation_gateway import SimulationGateway
-from execution.order_manager import OrderManager
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +25,6 @@ ALLOWED_DIRECT_SUBMIT_MODULES = frozenset(
     {
         "main.py",                 # Explicitly Simulation-only direct compatibility path.
         "execution/executor.py",  # Canonical durable application submission boundary.
-        "execution/order_manager.py",  # Legacy Simulation-only compatibility boundary.
     }
 )
 
@@ -80,22 +74,5 @@ def test_guard_accepts_current_explicit_boundaries() -> None:
         assert _direct_submit_order_calls(REPOSITORY_ROOT / relative_path)
 
 
-def test_legacy_manager_retains_explicit_simulation_submission() -> None:
-    gateway = SimulationGateway()
-    with patch("execution.order_manager.settings.broker", "simulation"), patch(
-        "execution.order_manager.get_gateway", return_value=gateway
-    ):
-        manager = OrderManager()
-        result = manager.create_order(
-            signal="BUY",
-            symbol="XAUUSD",
-            lot=0.01,
-            entry=100.0,
-            stop_loss=99.0,
-            take_profit=102.0,
-            execute=True,
-        )
-
-    assert result["status"] == "EXECUTED"
-    assert result["symbol"] == "XAUUSD"
-    asyncio.run(gateway.disconnect())
+def test_legacy_order_manager_submission_boundary_is_removed() -> None:
+    assert not (REPOSITORY_ROOT / "execution" / "order_manager.py").exists()

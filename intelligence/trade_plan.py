@@ -36,7 +36,14 @@ class TradePlan(BaseModel):
     risk_reward: Optional[float] = Field(default=None)
 
     # Risk & Sizing
-    position_size: Optional[float] = Field(default=None)
+    position_size: Optional[float] = Field(
+        default=None,
+        deprecated=True,
+        description=(
+            "Deprecated compatibility field; never an executable quantity. "
+            "Execution sizing is authorized later as a typed ExecutionQuantity."
+        ),
+    )
     risk_percent: Optional[float] = Field(default=None)
     risk_amount: Optional[float] = Field(default=None)
 

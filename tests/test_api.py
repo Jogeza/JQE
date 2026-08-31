@@ -162,6 +162,8 @@ class TestApplicationService:
         assert risk_resp.max_daily_loss > 0
         assert risk_resp.max_trades_daily > 0
         assert risk_resp.risk_allowed is True
+        assert risk_resp.model_dump()["recommended_lot_size"] == 0.0
+        assert RiskStatusResponse.model_fields["recommended_lot_size"].deprecated is True
 
     async def test_get_execution_state_returns_simulation_state(
         self, sim_service: ApplicationService

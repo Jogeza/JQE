@@ -19,7 +19,6 @@ from core.logger import logger
 from risk.dynamic_risk import DynamicRisk
 from risk.position_sizing import (
     ExecutionSizingDecision,
-    PositionSizing,
     authorize_execution_quantity,
 )
 
@@ -65,8 +64,6 @@ class RiskEngine:
             max_trades_daily if max_trades_daily is not None else settings.max_trades_daily
         )
         self.dynamic_risk = DynamicRisk()
-        self.position_sizer = PositionSizing()
-
         # Session state tracking for limits
         self._daily_trades_count = 0
         self._daily_realized_loss_percent = 0.0

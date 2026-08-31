@@ -54,8 +54,14 @@ def test_valid_buy_plan(base_intelligence, base_signal):
     reward = plan.take_profit - plan.entry
     assert plan.risk_reward == pytest.approx(reward / risk)
     
-    assert plan.position_size is None
+    assert plan.model_dump()["position_size"] is None
     assert plan.risk_amount is None
+
+
+def test_trade_plan_compatibility_size_is_never_executable() -> None:
+    field = TradePlan.model_fields["position_size"]
+    assert field.deprecated is True
+    assert field.default is None
 
 
 def test_valid_sell_plan(base_intelligence, base_signal):

@@ -79,7 +79,11 @@ class TradePlanDTO(BaseModel):
     stop_loss: float | None = None
     take_profit: float | None = None
     risk_reward: float | None = None
-    position_size: float | None = None
+    position_size: float | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated compatibility field; not an executable order quantity.",
+    )
     risk_percent: float | None = None
     risk_amount: float | None = None
     invalidation: str | None = None
@@ -122,7 +126,14 @@ class RiskStatusResponse(BaseModel):
     risk_message: str = "Limits OK"
     approved: bool = False
     rejection_reason: str = ""
-    recommended_lot_size: float = 0.0
+    recommended_lot_size: float = Field(
+        default=0.0,
+        deprecated=True,
+        description=(
+            "Deprecated compatibility field. Always zero; broker-neutral risk "
+            "approval does not imply an executable lot quantity."
+        ),
+    )
     risk_percent: float = 0.0
 
 

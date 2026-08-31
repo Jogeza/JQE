@@ -254,7 +254,7 @@ class ApplicationService:
                 stop_loss=tp.stop_loss,
                 take_profit=tp.take_profit,
                 risk_reward=tp.risk_reward,
-                position_size=tp.position_size,
+                position_size=None,
                 risk_percent=tp.risk_percent,
                 risk_amount=tp.risk_amount,
                 invalidation=tp.invalidation,
@@ -302,7 +302,6 @@ class ApplicationService:
 
         approved = False
         rejection_reason = "No market data"
-        recommended_lot = 0.0
         risk_pct = 0.0
 
         if candles:
@@ -322,7 +321,6 @@ class ApplicationService:
                 )
                 approved = risk_decision.get("approved", False)
                 rejection_reason = risk_decision.get("reason", "")
-                recommended_lot = risk_decision.get("lot_size", 0.0)
                 risk_pct = risk_decision.get("risk_percent", 0.0)
 
         return RiskStatusResponse(
@@ -337,7 +335,7 @@ class ApplicationService:
             risk_message=limit_msg,
             approved=approved,
             rejection_reason=rejection_reason,
-            recommended_lot_size=recommended_lot,
+            recommended_lot_size=0.0,
             risk_percent=risk_pct,
         )
 

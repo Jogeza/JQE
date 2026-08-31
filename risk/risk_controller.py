@@ -1,7 +1,7 @@
 """JQE Institutional Risk Controller.
 
-Maintains backward-compatible functional API while delegating to the unified
-RiskEngine and PositionSizing architectures.
+Execution authorization delegates to ``RiskEngine``. The raw-float position
+helper remains solely for backtesting compatibility.
 """
 
 from __future__ import annotations
@@ -41,10 +41,11 @@ def approve_trade(
             and a ``"confidence"`` key (0-100).
         market_data: OHLC+indicator data; the latest row (``.iloc[-1]``)
             must have ``"ATR"`` and (optionally) ``"spread"`` columns.
-        balance: Account balance used for position sizing.
+        balance: Account balance used to authorize account-currency risk.
 
     Returns:
-        A decision dict: ``{"approved": bool, "reason": str, "risk_percent": float, "lot_size": float}``.
+        A decision containing approval, reason, risk percentage, and
+        authorized account-currency risk amount. It does not authorize lots.
     """
     return _default_engine.approve_trade(
         signal=signal, market_data=market_data, balance=balance, enforce_limits=enforce_limits
@@ -52,9 +53,10 @@ def approve_trade(
 
 
 def calculate_position_size(balance: float, risk_percent: float, stop_loss: float) -> float:
-    """Calculates lot size from account risk parameters.
+    """Deprecated noncanonical raw lot helper for backtesting only.
 
-    Delegates to :func:`~risk.position_sizing.calculate_position_size`.
+    Never use its float result to construct a broker order. Broker-bound code
+    must use :func:`authorize_execution_quantity`.
     """
     return _calc_pos_size(balance=balance, risk_percent=risk_percent, stop_loss=stop_loss)
 

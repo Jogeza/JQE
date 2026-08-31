@@ -64,6 +64,29 @@ class TestOrderRequest:
         )
         assert order.idempotency_key == "intent-1"
 
+    def test_legacy_volume_cannot_construct_or_override_quantity(self) -> None:
+        with pytest.raises(ValidationError):
+            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+        with pytest.raises(ValidationError):
+            OrderRequest(
+                symbol="XAUUSD",
+                side=OrderSide.BUY,
+                quantity=ExecutionQuantity(
+                    value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS
+                ),
+                volume=99,
+            )
+
+    def test_volume_is_read_only_noncanonical_compatibility(self) -> None:
+        order = OrderRequest(
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
+        )
+        assert order.volume == order.quantity.value
+        with pytest.raises(AttributeError):
+            order.volume = 2.0
+
 
 class TestOrderResult:
     def test_transaction_id_defaults_to_none(self) -> None:

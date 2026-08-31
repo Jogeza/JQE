@@ -8,8 +8,8 @@ Validates risk approval, creates an order, and opens a position.
     SELL:  take_profit < entry < stop_loss
 
 The *caller* is responsible for computing ``stop_loss`` and
-``take_profit`` via :mod:`risk.risk_manager` or
-:func:`execution.simulator.calculate_stop_target` before calling
+``take_profit`` (for example with
+:func:`execution.simulator.calculate_stop_target`) before calling
 :meth:`TradeLifecycle.process`.  This class validates that the supplied
 levels satisfy the directional invariant and rejects the trade if they
 do not — it does **not** fabricate levels itself.

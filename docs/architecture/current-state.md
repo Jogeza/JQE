@@ -66,17 +66,14 @@ D:\JQE\
 │       └── signal_scorer.py       # SignalScorer.evaluate(intelligence, signal) → {action, score, quality, reasons}
 │
 ├── risk/
-│   ├── risk_controller.py         # approve_trade(signal, market_data, balance) → {approved, reason, lot_size}
+│   ├── risk_controller.py         # approve_trade(...) → approval + authorized account-currency risk
 │   │                              #    Uses hardcoded MIN_CONFIDENCE=75, MAX_RISK_PERCENT=0.5
-│   ├── risk_manager.py            # calculate_risk/position_size/stop_loss/take_profit (standalone functions)
-│   │                              #    ⚠️  DUPLICATE of risk_controller.py — different API, same purpose
 │   ├── dynamic_risk.py            # DynamicRisk stub
-│   └── position_sizing.py         # Simple lot calculator stub
+│   └── position_sizing.py         # Canonical typed execution authorization; raw-lot helpers are backtest-only
 │
 ├── execution/
 │   ├── simulator.py               # simulate_trade() + calculate_stop_target() — backtest-only, no look-ahead
-│   ├── trade_lifecycle.py         # 🐛 BUG: stop_loss=price-10, take_profit=price+20 for ALL directions
-│   ├── order_manager.py           # OrderManager.create_order() — validation + dict builder
+│   ├── trade_lifecycle.py         # Isolated legacy lifecycle invariant validation; no submission
 │   └── position_manager.py        # PositionManager.open_position() — dict builder
 │
 ├── backtesting/
@@ -172,11 +169,11 @@ legacy, noncanonical path despite the bug fix.
 | `MarketScanner` uses raw MT5, not BrokerGateway | Known, deferred |
 | `Portfolio` is an empty stub | Known |
 | `TradePlan` model and builder | Live and validated before submission |
-| Unified risk engine | Live through `risk_controller` shim; legacy `risk_manager` remains |
+| Unified risk engine | Live through `risk_controller`; duplicate legacy `risk_manager` removed |
 | Daily limits | Partial: closed history reconciled; open executions not reliably counted |
-| Execution policy | Pure Phase 6 policy exists; not integrated into live submission |
+| Execution policy | Integrated into the canonical durable executor; direct compatibility remains Simulation-only |
 | Minimum confidence setting | Incomplete: stored by strategy engine but not enforced; risk threshold remains separate |
-| Position sizing | Incomplete: competing formulas remain and live `TradePlan` volume differs from risk decision `lot_size` |
+| Position sizing | Typed `ExecutionQuantity` is canonical; Simulation risk is provable, Deriv fails closed, MT5 is disabled |
 | Dashboard API layer | Implemented |
 
 ---
@@ -219,12 +216,13 @@ MT5 is mocked in `tests/conftest.py` via `sys.modules` stub when not installed.
 
 | Path | Submits Live Orders? |
 |---|---|
-| `main.py` → `gateway.submit_order()` | YES for configured MT5/Deriv gateways after plan and risk approval; simulation is paper-only |
+| `main.py` → `gateway.submit_order()` | Direct compatibility submission is Simulation-only |
+| `execution/executor.py` → `gateway.submit_order()` | Canonical durable boundary after policy, reservation, reconciliation, and durable claim |
 | `broker/simulation_gateway.py` | Paper simulation only — no real orders |
 | `broker/mt5_gateway.py` | YES — must not be called during development |
 | `broker/deriv_gateway.py` | YES — must not be called during development |
 | `execution/simulator.py` | No — backtest-only, no broker calls |
-| `execution/trade_lifecycle.py` | Calls `OrderManager` + `PositionManager` — in-memory only |
+| `execution/trade_lifecycle.py` | Isolated legacy lifecycle; no broker submission boundary |
 | `execution/policy.py` | No — pure fail-closed decision logic, no gateway calls |
 
 ### Phase 6 execution architecture decision
@@ -234,10 +232,9 @@ does not construct/connect a gateway, submit orders, mutate broker state, or
 own an authoritative position ledger. Broker positions and history remain the
 source of truth.
 
-The synchronous legacy `OrderManager` will not be reused in the async live
-path: it constructs and connects a second gateway and calls `asyncio.run()`,
-which conflicts with `main.py`'s active event loop and gateway ownership.
-Future submission work requires an async, gateway-injected executor.
+The synchronous legacy `OrderManager` was removed. Broker submission is
+limited to the Simulation-only direct compatibility branch in `main.py` and
+the async, gateway-injected durable executor.
 
 The Phase 6 policy is deliberately conservative:
 

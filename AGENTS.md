@@ -38,7 +38,7 @@ JQE follows a strict Clean Architecture pattern. The Quant Core is completely br
 - **`data/`**: `CandleStore` (SQLite) + `HistoricalDataService` (gap-filling & incremental cache).
 - **`intelligence/`**: Feature engines, market regime detection, 6-factor `ConfidenceModel`.
 - **`strategy/`**: Signal generation. `strategy/pipeline.py` is the canonical bridge.
-- **`risk/`**: `RiskEngine` + `PositionSizing` (dynamic position sizing, limits, capital protection).
+- **`risk/`**: `RiskEngine` authorizes account-currency risk and typed broker quantities. Legacy raw-lot helpers are backtesting-only.
 - **`execution/`**: pure execution policy and lifecycle invariants; `Simulator` remains backtest-only. Broker mutation stays behind `BrokerGateway`.
 
 ---
@@ -91,7 +91,7 @@ Replays historical data through the identical signal and risk pipeline via `Back
    - Any existing position for the same symbol blocks another order; hedging and pyramiding remain undesigned.
    - Reused idempotency keys reject.
    - Broker-reported positions and history remain the source of truth.
-   - Do not integrate the synchronous legacy `OrderManager` into the async live path. It constructs its own gateway and uses `asyncio.run()`.
+   - The synchronous legacy `OrderManager` has been removed. Do not recreate an execution boundary outside `main.py` or `execution.executor.AsyncTradeExecutor`.
 
 ---
 

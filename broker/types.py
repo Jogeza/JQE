@@ -158,6 +158,8 @@ class OrderRequest(BaseModel):
             metadata still receive the same explicit request type.
     """
 
+    model_config = {"extra": "forbid"}
+
     symbol: str
     side: OrderSide
     quantity: ExecutionQuantity
@@ -168,7 +170,7 @@ class OrderRequest(BaseModel):
 
     @property
     def volume(self) -> float:
-        """Numeric broker value for read-only compatibility and logging."""
+        """Deprecated read-only numeric accessor; never identifies financial units."""
         return self.quantity.value
 
 
