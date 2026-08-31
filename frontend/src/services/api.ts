@@ -88,7 +88,7 @@ export const jqeApi = {
     return fetchJson(`${API_BASE}/signal${query}`, { signal });
   },
 
-  /** Account risk status, daily limit usage, and trade sizing evaluation */
+  /** Broker-neutral risk authorization and typed quantity observation */
   async getRiskStatus(symbol?: string, timeframe?: string, signal?: AbortSignal): Promise<RiskStatusResponse> {
     const params = new URLSearchParams();
     if (symbol) params.append('symbol', symbol);

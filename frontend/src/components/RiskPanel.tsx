@@ -16,6 +16,22 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
   const currentTrades = risk?.daily_trades_count ?? 0;
   const riskAllowed = risk?.risk_allowed;
   const rejectionReason = risk?.rejection_reason || risk?.risk_message || 'Risk telemetry unavailable';
+  const riskStatus = stale || !risk
+    ? 'Unavailable'
+    : risk.risk_authorized
+      ? 'Authorized'
+      : 'Blocked';
+  const authorizedRisk = risk?.risk_authorized
+    && risk.authorized_risk_amount !== null
+    && risk.authorized_risk_percent !== null
+      ? `${risk.currency} ${risk.authorized_risk_amount.toFixed(2)} (${risk.authorized_risk_percent.toFixed(2)}%)`
+      : 'Unavailable';
+  const executionQuantity = !stale
+    && risk?.execution_quantity_available
+    && risk.execution_quantity_value !== null
+    && risk.execution_quantity_unit !== null
+      ? `${risk.execution_quantity_value.toFixed(4)} ${risk.execution_quantity_unit.replace(/_/g, ' ').toLowerCase()}`
+      : `Unavailable${risk?.execution_quantity_reason ? ` — ${risk.execution_quantity_reason}` : ''}`;
 
   // Calculate percentage of daily loss limit consumed
   const lossProgress = Math.min(100, Math.max(0, (currentLoss / (maxLoss || 1)) * 100));
@@ -77,8 +93,8 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
       };
     }
     return {
-      text: 'TRADING ENABLED',
-      sub: risk.risk_message,
+      text: 'RISK LIMITS CLEAR',
+      sub: 'Daily limits allow evaluation; execution still requires risk and quantity authorization',
       bg: 'var(--quant-green-subtle)',
       border: 'var(--quant-green-border)',
       color: 'var(--quant-green)',
@@ -167,11 +183,11 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
           </div>
         </div>
 
-        {/* Frequency & Sizing Metrics */}
+        {/* Frequency & broker-neutral risk authorization metrics */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             gap: '8px',
             backgroundColor: 'var(--bg-app)',
             padding: '10px',
@@ -189,9 +205,23 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
           </div>
 
           <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>LOT SIZING PERMITTED</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--quant-cyan)', marginTop: '2px' }}>
-              {risk ? `${risk.recommended_lot_size.toFixed(2)} LOTS` : '—'}
+            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>RISK STATUS</div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: riskStatus === 'Authorized' ? 'var(--quant-green)' : 'var(--quant-amber)', marginTop: '2px' }}>
+              {riskStatus}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>AUTHORIZED RISK</div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--quant-cyan)', marginTop: '2px' }}>
+              {authorizedRisk}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>EXECUTION QUANTITY</div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: risk?.execution_quantity_available && !stale ? 'var(--quant-cyan)' : 'var(--text-muted)', marginTop: '2px' }}>
+              {executionQuantity}
             </div>
           </div>
         </div>

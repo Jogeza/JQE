@@ -176,6 +176,12 @@ legacy, noncanonical path despite the bug fix.
 | Position sizing | Typed `ExecutionQuantity` is canonical; Simulation risk is provable, Deriv fails closed, MT5 is disabled |
 | Dashboard API layer | Implemented |
 
+The risk dashboard exposes broker-neutral risk authorization separately from
+broker-specific typed execution quantity. Simulation quantity may be observed
+when canonical sizing verifies it; Deriv quantity authorization remains
+fail-closed, and MT5 execution remains disabled. `recommended_lot_size` is a
+deprecated API compatibility field that stays at zero and is never executable.
+
 ---
 
 ## Non-pytest Files in `tests/`

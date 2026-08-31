@@ -126,12 +126,20 @@ class RiskStatusResponse(BaseModel):
     risk_message: str = "Limits OK"
     approved: bool = False
     rejection_reason: str = ""
+    risk_authorized: bool = False
+    authorized_risk_amount: float | None = None
+    authorized_risk_percent: float | None = None
+    execution_quantity_available: bool = False
+    execution_quantity_value: float | None = None
+    execution_quantity_unit: str | None = None
+    execution_quantity_reason: str | None = None
     recommended_lot_size: float = Field(
         default=0.0,
         deprecated=True,
         description=(
             "Deprecated compatibility field. Always zero; broker-neutral risk "
-            "approval does not imply an executable lot quantity."
+            "approval does not imply an executable lot quantity. Clients must "
+            "migrate to the risk authorization and typed execution quantity fields."
         ),
     )
     risk_percent: float = 0.0

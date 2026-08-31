@@ -303,6 +303,10 @@ class ApplicationService:
         approved = False
         rejection_reason = "No market data"
         risk_pct = 0.0
+        authorized_risk_amount: float | None = None
+        execution_quantity_value: float | None = None
+        execution_quantity_unit: str | None = None
+        execution_quantity_reason = "Risk authorization unavailable: no market data"
 
         if candles:
             df = pd.DataFrame([c.model_dump() for c in candles])
@@ -322,6 +326,36 @@ class ApplicationService:
                 approved = risk_decision.get("approved", False)
                 rejection_reason = risk_decision.get("reason", "")
                 risk_pct = risk_decision.get("risk_percent", 0.0)
+                if approved:
+                    authorized_risk_amount = float(
+                        risk_decision["authorized_risk_amount"]
+                    )
+                    plan = decision.get("trade_plan")
+                    if settings.broker == "mt5":
+                        execution_quantity_reason = "MT5 execution is disabled"
+                    elif (
+                        plan is None
+                        or not plan.is_valid()
+                        or plan.entry is None
+                        or plan.stop_loss is None
+                    ):
+                        execution_quantity_reason = (
+                            "Executable quantity unavailable: trade plan is incomplete"
+                        )
+                    else:
+                        sizing = self.risk_engine.authorize_execution_quantity(
+                            broker=settings.broker,
+                            balance=account.balance,
+                            risk_percent=risk_pct,
+                            entry=plan.entry,
+                            stop_loss=plan.stop_loss,
+                        )
+                        execution_quantity_reason = sizing.reason
+                        if sizing.risk_verifiable and sizing.quantity is not None:
+                            execution_quantity_value = sizing.quantity.value
+                            execution_quantity_unit = sizing.quantity.unit.value
+                else:
+                    execution_quantity_reason = rejection_reason or "Risk blocked"
 
         return RiskStatusResponse(
             balance=account.balance,
@@ -335,6 +369,16 @@ class ApplicationService:
             risk_message=limit_msg,
             approved=approved,
             rejection_reason=rejection_reason,
+            risk_authorized=approved,
+            authorized_risk_amount=authorized_risk_amount,
+            authorized_risk_percent=risk_pct if approved else None,
+            execution_quantity_available=(
+                execution_quantity_value is not None
+                and execution_quantity_unit is not None
+            ),
+            execution_quantity_value=execution_quantity_value,
+            execution_quantity_unit=execution_quantity_unit,
+            execution_quantity_reason=execution_quantity_reason,
             recommended_lot_size=0.0,
             risk_percent=risk_pct,
         )

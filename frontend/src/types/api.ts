@@ -112,6 +112,14 @@ export interface RiskStatusResponse {
   risk_message: string;
   approved: boolean;
   rejection_reason: string;
+  risk_authorized: boolean;
+  authorized_risk_amount: number | null;
+  authorized_risk_percent: number | null;
+  execution_quantity_available: boolean;
+  execution_quantity_value: number | null;
+  execution_quantity_unit: string | null;
+  execution_quantity_reason: string | null;
+  /** @deprecated Compatibility only; always zero and never executable. */
   recommended_lot_size: number;
   risk_percent: number;
 }

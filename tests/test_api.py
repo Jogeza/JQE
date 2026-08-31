@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -164,6 +165,110 @@ class TestApplicationService:
         assert risk_resp.risk_allowed is True
         assert risk_resp.model_dump()["recommended_lot_size"] == 0.0
         assert RiskStatusResponse.model_fields["recommended_lot_size"].deprecated is True
+
+    @pytest.mark.parametrize(
+        ("broker", "quantity_available", "quantity_unit", "reason"),
+        [
+            ("simulation", True, "SIMULATION_UNITS", "Simulation assumes"),
+            ("deriv", False, None, "not proven"),
+            ("mt5", False, None, "disabled"),
+        ],
+    )
+    async def test_risk_observation_separates_cash_risk_from_broker_quantity(
+        self,
+        sim_service: ApplicationService,
+        monkeypatch,
+        broker: str,
+        quantity_available: bool,
+        quantity_unit: str | None,
+        reason: str,
+    ) -> None:
+        monkeypatch.setattr(settings, "broker", broker)
+        plan = SimpleNamespace(
+            entry=100.0, stop_loss=99.0, is_valid=lambda: True
+        )
+        with patch(
+            "api.service.generate_trading_signal",
+            return_value={
+                "signal": "BUY",
+                "confidence": 90,
+                "trade_plan": plan,
+            },
+        ), patch.object(
+            sim_service.risk_engine,
+            "approve_trade",
+            return_value={
+                "approved": True,
+                "reason": "Institutional risk passed",
+                "risk_percent": 0.5,
+                "authorized_risk_amount": 0.5,
+            },
+        ):
+            response = await sim_service.get_risk_status(symbol="XAUUSD")
+
+        assert response.risk_authorized is True
+        assert response.authorized_risk_amount == 0.5
+        assert response.authorized_risk_percent == 0.5
+        assert response.execution_quantity_available is quantity_available
+        assert response.execution_quantity_unit == quantity_unit
+        assert response.execution_quantity_value == (0.5 if quantity_available else None)
+        assert reason in (response.execution_quantity_reason or "")
+        assert response.model_dump()["recommended_lot_size"] == 0.0
+
+    async def test_blocked_risk_never_exposes_quantity(
+        self, sim_service: ApplicationService
+    ) -> None:
+        with patch(
+            "api.service.generate_trading_signal",
+            return_value={"signal": "NO_TRADE", "confidence": 0, "trade_plan": None},
+        ), patch.object(
+            sim_service.risk_engine,
+            "approve_trade",
+            return_value={
+                "approved": False,
+                "reason": "No trade signal",
+                "risk_percent": 0.0,
+                "authorized_risk_amount": 0.0,
+            },
+        ), patch.object(
+            sim_service.risk_engine, "authorize_execution_quantity"
+        ) as authorize:
+            response = await sim_service.get_risk_status(symbol="XAUUSD")
+
+        assert response.risk_authorized is False
+        assert response.authorized_risk_amount is None
+        assert response.authorized_risk_percent is None
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+        assert response.execution_quantity_unit is None
+        assert response.execution_quantity_reason == "No trade signal"
+        authorize.assert_not_called()
+
+    async def test_unavailable_market_state_never_exposes_quantity(
+        self, sim_service: ApplicationService
+    ) -> None:
+        gateway = sim_service._gateway
+        assert gateway is not None
+        gateway.get_candles = AsyncMock(return_value=[])
+        response = await sim_service.get_risk_status(symbol="XAUUSD")
+        assert response.risk_authorized is False
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+        assert response.execution_quantity_reason == (
+            "Risk authorization unavailable: no market data"
+        )
+
+    async def test_old_risk_payload_remains_deserializable_with_safe_defaults(self) -> None:
+        response = RiskStatusResponse(
+            balance=100.0,
+            equity=100.0,
+            max_daily_loss=2.0,
+            max_trades_daily=5,
+        )
+        assert response.model_dump()["recommended_lot_size"] == 0.0
+        assert response.risk_authorized is False
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
 
     async def test_get_execution_state_returns_simulation_state(
         self, sim_service: ApplicationService
