@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldAlert, AlertOctagon, Lock, Unlock, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, AlertOctagon, Lock, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { RiskStatusResponse } from '../types/api';
 
 interface RiskPanelProps {
@@ -16,7 +16,14 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
   const currentTrades = risk?.daily_trades_count ?? 0;
   const riskAllowed = risk?.risk_allowed;
   const rejectionReason = risk?.rejection_reason || risk?.risk_message || 'Risk telemetry unavailable';
-  const riskStatus = stale || !risk
+  const observationStale = stale || risk?.observation_status === 'STALE';
+  const observationUnavailable = !risk
+    || risk.observation_status === 'NOT_OBSERVED'
+    || risk.observation_status === 'UNAVAILABLE'
+    || risk.observation_status === 'CONTEXT_MISMATCH';
+  const riskStatus = observationStale
+    ? 'Stale'
+    : observationUnavailable
     ? 'Unavailable'
     : risk.risk_authorized
       ? 'Authorized'
@@ -26,29 +33,32 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
     && risk.authorized_risk_percent !== null
       ? `${risk.currency} ${risk.authorized_risk_amount.toFixed(2)} (${risk.authorized_risk_percent.toFixed(2)}%)`
       : 'Unavailable';
-  const executionQuantity = !stale
+  const executionQuantity = risk?.observation_fresh
     && risk?.execution_quantity_available
     && risk.execution_quantity_value !== null
     && risk.execution_quantity_unit !== null
       ? `${risk.execution_quantity_value.toFixed(4)} ${risk.execution_quantity_unit.replace(/_/g, ' ').toLowerCase()}`
-      : `Unavailable${risk?.execution_quantity_reason ? ` — ${risk.execution_quantity_reason}` : ''}`;
+      : `Unavailable — ${observationStale ? 'risk observation is stale' : risk?.execution_quantity_reason || 'risk observation unavailable'}`;
+  const observationMetadata = risk?.observation_timestamp
+    ? `${risk.observation_status.toLowerCase()} · ${risk.observation_age_seconds?.toFixed(1) ?? '—'}s old · ${risk.observation_timestamp}`
+    : risk?.observation_reason || 'No durable-cycle risk observation';
 
   // Calculate percentage of daily loss limit consumed
   const lossProgress = Math.min(100, Math.max(0, (currentLoss / (maxLoss || 1)) * 100));
   const remainingAllowance = Math.max(0, maxLoss - currentLoss);
 
   const getRiskBanner = () => {
-    if (stale) {
+    if (observationStale) {
       return {
         text: 'RISK STATE STALE',
-        sub: 'The latest refresh failed; displayed limits must not be treated as current approval',
+        sub: 'The durable-cycle observation is stale; no quantity is currently executable',
         bg: 'var(--quant-amber-subtle)', border: 'rgba(255, 171, 0, 0.3)', color: 'var(--quant-amber)', icon: AlertTriangle,
       };
     }
-    if (!risk || brokerConnected === undefined) {
+    if (observationUnavailable || brokerConnected === undefined) {
       return {
-        text: 'RISK STATE UNKNOWN',
-        sub: 'Current broker and risk telemetry are required before trading status can be shown',
+        text: 'RISK OBSERVATION UNAVAILABLE',
+        sub: risk?.observation_reason || 'The durable cycle has not published authoritative risk state',
         bg: 'var(--bg-app)', border: 'var(--border-medium)', color: 'var(--text-muted)', icon: AlertTriangle,
       };
     }
@@ -82,7 +92,7 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
         icon: AlertTriangle,
       };
     }
-    if (!riskAllowed) {
+    if (!risk.observation_fresh || !riskAllowed || !risk.risk_authorized) {
       return {
         text: 'RISK BLOCKED',
         sub: rejectionReason,
@@ -98,7 +108,7 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
       bg: 'var(--quant-green-subtle)',
       border: 'var(--quant-green-border)',
       color: 'var(--quant-green)',
-      icon: Unlock,
+      icon: ShieldCheck,
     };
   };
 
@@ -224,6 +234,9 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
               {executionQuantity}
             </div>
           </div>
+        </div>
+        <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+          OBSERVATION: {observationMetadata}
         </div>
       </div>
     </div>

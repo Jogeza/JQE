@@ -109,6 +109,11 @@ class TestSettingsValidation:
         with pytest.raises(ValidationError):
             Settings(_env_file=None, emergency_stop="DISABLED")
 
+    def test_risk_observation_freshness_must_be_positive(self) -> None:
+        assert Settings(_env_file=None).risk_observation_freshness_seconds == 15
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, risk_observation_freshness_seconds=0)
+
 
 class TestGetSettingsCaching:
     """get_settings() should return one cached, process-wide instance."""

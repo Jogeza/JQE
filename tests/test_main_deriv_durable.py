@@ -20,6 +20,7 @@ from core.exceptions import ExecutionError
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionDecisionCode
+from execution.safety import SQLiteExecutionSafetyStore
 from tests.test_main_durable_executor import _expected_key, _gateway, _pipeline_patches
 
 
@@ -135,6 +136,15 @@ async def test_durable_deriv_demo_is_authorized_with_explicit_context() -> None:
     assert context.daily_state_authoritative is False
     assert intent.idempotency_key == store.get.call_args.args[0]
     gateway.submit_order.assert_not_awaited()
+    risk = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read_risk()
+    assert risk is not None
+    assert risk.evaluation_state.value == "AUTHORIZED"
+    assert risk.account_id == "CR-DEMO"
+    assert risk.execution_quantity_available is False
+    assert risk.execution_quantity_value is None
+    assert "not proven" in risk.execution_quantity_reason
 
 
 @pytest.mark.asyncio
@@ -167,6 +177,13 @@ async def test_durable_mt5_remains_blocked_before_gateway_construction() -> None
         with pytest.raises(Exception, match="simulation and Deriv DEMO only"):
             await main.run()
     get_gateway.assert_not_called()
+    risk = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read_risk()
+    assert risk is not None
+    assert risk.evaluation_state.value == "NOT_EVALUATED"
+    assert risk.execution_quantity_available is False
+    assert risk.execution_quantity_reason == "MT5 execution is disabled"
 
 
 @pytest.mark.asyncio

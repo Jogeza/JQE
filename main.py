@@ -45,6 +45,8 @@ from execution.safety import (
     ExecutionAuthorization,
     ExecutionMode,
     ExecutionSafetySnapshot,
+    RiskAuthorizationSnapshot,
+    RiskEvaluationState,
     SQLiteExecutionSafetyStore,
     utc_now,
 )
@@ -86,6 +88,76 @@ async def run() -> None:
 
     safety_store = None
     if settings.use_durable_executor:
+        safety_store = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=True
+        )
+
+        def publish_risk(
+            evaluation_state: RiskEvaluationState,
+            reason: str,
+            *,
+            account=None,
+            daily_loss: float | None = None,
+            daily_count: int | None = None,
+            max_daily_loss: float | None = None,
+            max_daily_trades: int | None = None,
+            authorized_risk_amount: float | None = None,
+            authorized_risk_percent: float | None = None,
+            quantity=None,
+            quantity_available: bool = False,
+        ) -> None:
+            limits_available = (
+                daily_loss is not None
+                and daily_count is not None
+                and max_daily_loss is not None
+                and max_daily_trades is not None
+            )
+            limits_clear = (
+                limits_available
+                and daily_loss < max_daily_loss
+                and daily_count < max_daily_trades
+            )
+            safety_store.publish_risk(
+                RiskAuthorizationSnapshot(
+                    observed_at=utc_now(),
+                    broker=settings.broker,
+                    environment=settings.environment,
+                    account_id=None if account is None else account.account_id,
+                    evaluation_state=evaluation_state,
+                    balance=None if account is None else account.balance,
+                    equity=(
+                        None
+                        if account is None
+                        else account.balance if account.equity is None else account.equity
+                    ),
+                    currency=None if account is None else account.currency,
+                    max_daily_loss=max_daily_loss,
+                    max_trades_daily=max_daily_trades,
+                    daily_trades_count=daily_count,
+                    daily_loss_percent=daily_loss,
+                    risk_allowed=limits_clear if limits_available else None,
+                    risk_message=("Limits OK" if limits_clear else reason),
+                    rejection_reason=(
+                        "" if evaluation_state is RiskEvaluationState.AUTHORIZED else reason
+                    ),
+                    authorized_risk_amount=authorized_risk_amount,
+                    authorized_risk_percent=authorized_risk_percent,
+                    execution_quantity_available=quantity_available,
+                    execution_quantity_value=(
+                        quantity.value if quantity_available and quantity is not None else None
+                    ),
+                    execution_quantity_unit=(
+                        quantity.unit.value if quantity_available and quantity is not None else None
+                    ),
+                    execution_quantity_reason=reason,
+                )
+            )
+
+        publish_risk(
+            RiskEvaluationState.NOT_EVALUATED,
+            "Durable risk evaluation has not completed",
+        )
+
         if settings.broker == "simulation":
             pass
         elif settings.broker == "deriv":
@@ -113,13 +185,13 @@ async def run() -> None:
                     "Durable Deriv DEMO execution requires an approved symbol"
                 )
         else:
+            publish_risk(
+                RiskEvaluationState.NOT_EVALUATED,
+                "MT5 execution is disabled",
+            )
             raise ConfigurationError(
                 "Durable execution is authorized for simulation and Deriv DEMO only"
             )
-
-        safety_store = SQLiteExecutionSafetyStore(
-            settings.execution_safety_store_path, initialize=True
-        )
 
         def publish_safety(
             authorization: ExecutionAuthorization,
@@ -217,7 +289,21 @@ async def run() -> None:
         )
         logger.info("Risk decision: {}", risk_decision)
 
+        daily_loss, daily_count, max_daily_loss, max_daily_trades = (
+            get_reconciled_daily_state()
+        )
+
         if not risk_decision["approved"]:
+            if settings.use_durable_executor:
+                publish_risk(
+                    RiskEvaluationState.BLOCKED,
+                    risk_decision["reason"],
+                    account=account,
+                    daily_loss=daily_loss,
+                    daily_count=daily_count,
+                    max_daily_loss=max_daily_loss,
+                    max_daily_trades=max_daily_trades,
+                )
             logger.info("Cycle complete — no order submitted ({})", risk_decision["reason"])
             return
 
@@ -237,6 +323,18 @@ async def run() -> None:
         )
 
         if not plan.is_valid():
+            if settings.use_durable_executor:
+                publish_risk(
+                    RiskEvaluationState.AUTHORIZED,
+                    "Executable quantity unavailable: trade plan is incomplete",
+                    account=account,
+                    daily_loss=daily_loss,
+                    daily_count=daily_count,
+                    max_daily_loss=max_daily_loss,
+                    max_daily_trades=max_daily_trades,
+                    authorized_risk_amount=risk_decision["authorized_risk_amount"],
+                    authorized_risk_percent=risk_decision["risk_percent"],
+                )
             logger.info(
                 "Cycle complete — Trade plan invalid: {}",
                 ", ".join(plan.warnings) if plan.warnings else plan.invalidation,
@@ -251,6 +349,21 @@ async def run() -> None:
             entry=float(latest["close"]),
             stop_loss=plan.stop_loss,
         )
+        if settings.use_durable_executor:
+            quantity_available = sizing.quantity is not None and sizing.risk_verifiable
+            publish_risk(
+                RiskEvaluationState.AUTHORIZED,
+                sizing.reason,
+                account=account,
+                daily_loss=daily_loss,
+                daily_count=daily_count,
+                max_daily_loss=max_daily_loss,
+                max_daily_trades=max_daily_trades,
+                authorized_risk_amount=sizing.authorized_risk_amount,
+                authorized_risk_percent=risk_decision["risk_percent"],
+                quantity=sizing.quantity,
+                quantity_available=quantity_available,
+            )
         if not settings.use_durable_executor:
             if sizing.quantity is None or not sizing.risk_verifiable:
                 raise ExecutionError("Execution quantity risk could not be verified")
@@ -280,9 +393,6 @@ async def run() -> None:
         existing_record = records.get(idempotency_key)
         open_positions = PositionSnapshotAdapter.from_positions(
             tuple(await gateway.get_positions())
-        )
-        daily_loss, daily_count, max_daily_loss, max_daily_trades = (
-            get_reconciled_daily_state()
         )
         is_simulation = settings.broker == "simulation"
         execution_environment = settings.environment

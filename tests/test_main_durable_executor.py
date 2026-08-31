@@ -27,7 +27,11 @@ from execution.models import ClaimState, IntentRecord, IntentRecordStatus, Reser
 from execution.persistence import SQLiteIntentRecordStore
 from execution.executor import ExecutionResult, ReconciliationState
 from execution.policy import ExecutionDecision, ExecutionDecisionCode
-from execution.safety import ExecutionAuthorization, SQLiteExecutionSafetyStore
+from execution.safety import (
+    ExecutionAuthorization,
+    RiskEvaluationState,
+    SQLiteExecutionSafetyStore,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -209,6 +213,70 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     assert context.daily_state_authoritative is True
     assert context.emergency_stop is False
     gateway.submit_order.assert_not_awaited()
+    risk = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read_risk()
+    assert risk is not None
+    assert risk.evaluation_state is RiskEvaluationState.AUTHORIZED
+    assert risk.account_id == "SIMULATED"
+    assert risk.authorized_risk_amount == 2.0
+    assert risk.execution_quantity_available is True
+    assert risk.execution_quantity_value == 1.0
+    assert risk.execution_quantity_unit == "SIMULATION_UNITS"
+
+
+@pytest.mark.asyncio
+async def test_durable_blocked_risk_publishes_fresh_no_quantity_observation() -> None:
+    settings.use_durable_executor = True
+    gateway = _gateway()
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+        "main.approve_trade",
+        return_value={
+            "approved": False,
+            "reason": "Confidence too low",
+            "risk_percent": 0.0,
+            "authorized_risk_amount": 0.0,
+        },
+    ), patches[6]:
+        await main.run()
+    risk = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read_risk()
+    assert risk is not None
+    assert risk.evaluation_state is RiskEvaluationState.BLOCKED
+    assert risk.account_id == "SIMULATED"
+    assert risk.execution_quantity_available is False
+    assert risk.execution_quantity_value is None
+    gateway.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_new_cycle_invalidates_previous_authorized_risk_observation() -> None:
+    settings.use_durable_executor = True
+    first_gateway = _gateway()
+    first_patches = _pipeline_patches(first_gateway)
+    with (
+        first_patches[0], first_patches[1], first_patches[2], first_patches[3],
+        first_patches[4], first_patches[5], first_patches[6]
+    ):
+        await main.run()
+    store = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    )
+    assert store.read_risk().execution_quantity_available is True
+
+    failed_gateway = _gateway()
+    failed_gateway.get_candles.return_value = []
+    with patch("main.get_gateway", return_value=failed_gateway):
+        with pytest.raises(Exception, match="Market data unavailable"):
+            await main.run()
+
+    risk = store.read_risk()
+    assert risk is not None
+    assert risk.evaluation_state is RiskEvaluationState.NOT_EVALUATED
+    assert risk.execution_quantity_available is False
+    assert risk.execution_quantity_value is None
 
 
 @pytest.mark.asyncio

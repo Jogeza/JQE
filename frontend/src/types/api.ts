@@ -112,6 +112,12 @@ export interface RiskStatusResponse {
   risk_message: string;
   approved: boolean;
   rejection_reason: string;
+  observation_available: boolean;
+  observation_timestamp: string | null;
+  observation_age_seconds: number | null;
+  observation_fresh: boolean;
+  observation_status: 'FRESH' | 'STALE' | 'NOT_OBSERVED' | 'UNAVAILABLE' | 'CONTEXT_MISMATCH';
+  observation_reason: string;
   risk_authorized: boolean;
   authorized_risk_amount: number | null;
   authorized_risk_percent: number | null;

@@ -35,7 +35,7 @@ from core.data_validator import validate_market_data
 from core.exceptions import MarketDataError
 from core.indicators import calculate_indicators
 from core.regime import detect_regime
-from execution.safety import SQLiteExecutionSafetyStore, utc_now
+from execution.safety import RiskEvaluationState, SQLiteExecutionSafetyStore, utc_now
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
@@ -286,101 +286,132 @@ class ApplicationService:
         symbol: str | None = None,
         timeframe_str: str | None = None,
     ) -> RiskStatusResponse:
-        """Evaluates account limits and trade sizing through the RiskEngine."""
-        target_symbol = symbol if isinstance(symbol, str) and symbol else settings.default_symbol
-        tf_name = timeframe_str if isinstance(timeframe_str, str) and timeframe_str else settings.default_timeframe
-        tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
-
-        gateway = self._get_gateway()
-        async with gateway:
-            account = await gateway.get_account_info()
-            candles = await gateway.get_candles(
-                symbol=target_symbol, timeframe=tf, count=settings.default_candle_count
+        """Read the latest durable-cycle risk observation without authorizing risk."""
+        del symbol, timeframe_str
+        store = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=False
+        )
+        try:
+            snapshot = store.read_risk()
+        except Exception:
+            return RiskStatusResponse(
+                balance=0.0, equity=0.0,
+                max_daily_loss=self.risk_engine.max_daily_loss,
+                max_trades_daily=self.risk_engine.max_trades_daily,
+                risk_allowed=False,
+                risk_message="Risk observation unavailable",
+                rejection_reason="Persisted risk observation could not be trusted",
+                observation_status="UNAVAILABLE",
+                observation_reason="Persisted risk observation could not be trusted",
+                execution_quantity_reason="Risk observation unavailable",
+            )
+        if snapshot is None:
+            return RiskStatusResponse(
+                balance=0.0, equity=0.0,
+                max_daily_loss=self.risk_engine.max_daily_loss,
+                max_trades_daily=self.risk_engine.max_trades_daily,
+                risk_allowed=False,
+                risk_message="Risk observation not yet published",
+                rejection_reason="Risk observation not yet published",
+                observation_status="NOT_OBSERVED",
+                observation_reason="Risk observation not yet published",
+                execution_quantity_reason="Risk observation not yet published",
             )
 
-        limits_ok, limit_msg = self.risk_engine.evaluate_limits()
-
-        approved = False
-        rejection_reason = "No market data"
-        risk_pct = 0.0
-        authorized_risk_amount: float | None = None
-        execution_quantity_value: float | None = None
-        execution_quantity_unit: str | None = None
-        execution_quantity_reason = "Risk authorization unavailable: no market data"
-
-        if candles:
-            df = pd.DataFrame([c.model_dump() for c in candles])
-            if validate_market_data(df):
-                df = calculate_indicators(df)
-                regime = detect_regime(df)
-                decision = generate_trading_signal(
-                    df, symbol=target_symbol, regime=regime, engine=self.strategy_engine,
-                    include_details=True,
-                )
-                risk_decision = self.risk_engine.approve_trade(
-                    {"signal": decision["signal"], "confidence": decision["confidence"]},
-                    df,
-                    balance=account.balance,
-                    enforce_limits=True,
-                )
-                approved = risk_decision.get("approved", False)
-                rejection_reason = risk_decision.get("reason", "")
-                risk_pct = risk_decision.get("risk_percent", 0.0)
-                if approved:
-                    authorized_risk_amount = float(
-                        risk_decision["authorized_risk_amount"]
-                    )
-                    plan = decision.get("trade_plan")
-                    if settings.broker == "mt5":
-                        execution_quantity_reason = "MT5 execution is disabled"
-                    elif (
-                        plan is None
-                        or not plan.is_valid()
-                        or plan.entry is None
-                        or plan.stop_loss is None
-                    ):
-                        execution_quantity_reason = (
-                            "Executable quantity unavailable: trade plan is incomplete"
-                        )
-                    else:
-                        sizing = self.risk_engine.authorize_execution_quantity(
-                            broker=settings.broker,
-                            balance=account.balance,
-                            risk_percent=risk_pct,
-                            entry=plan.entry,
-                            stop_loss=plan.stop_loss,
-                        )
-                        execution_quantity_reason = sizing.reason
-                        if sizing.risk_verifiable and sizing.quantity is not None:
-                            execution_quantity_value = sizing.quantity.value
-                            execution_quantity_unit = sizing.quantity.unit.value
-                else:
-                    execution_quantity_reason = rejection_reason or "Risk blocked"
-
-        return RiskStatusResponse(
-            balance=account.balance,
-            equity=account.equity,
-            currency=account.currency,
-            max_daily_loss=self.risk_engine.max_daily_loss,
-            max_trades_daily=self.risk_engine.max_trades_daily,
-            daily_trades_count=self.risk_engine._daily_trades_count,
-            daily_loss_percent=self.risk_engine._daily_realized_loss_percent,
-            risk_allowed=limits_ok,
-            risk_message=limit_msg,
-            approved=approved,
-            rejection_reason=rejection_reason,
-            risk_authorized=approved,
-            authorized_risk_amount=authorized_risk_amount,
-            authorized_risk_percent=risk_pct if approved else None,
-            execution_quantity_available=(
-                execution_quantity_value is not None
-                and execution_quantity_unit is not None
-            ),
-            execution_quantity_value=execution_quantity_value,
-            execution_quantity_unit=execution_quantity_unit,
-            execution_quantity_reason=execution_quantity_reason,
+        observed_at = snapshot.observed_at.astimezone(datetime.timezone.utc)
+        age_seconds = (utc_now() - observed_at).total_seconds()
+        common = dict(
+            balance=snapshot.balance or 0.0,
+            equity=snapshot.equity or 0.0,
+            currency=snapshot.currency or "USD",
+            max_daily_loss=snapshot.max_daily_loss or 0.0,
+            max_trades_daily=snapshot.max_trades_daily or 0,
+            daily_trades_count=snapshot.daily_trades_count or 0,
+            daily_loss_percent=snapshot.daily_loss_percent or 0.0,
+            risk_message=snapshot.risk_message,
+            rejection_reason=snapshot.rejection_reason,
+            observation_timestamp=observed_at.isoformat(),
+            observation_age_seconds=max(0.0, age_seconds),
             recommended_lot_size=0.0,
-            risk_percent=risk_pct,
+        )
+        if age_seconds < 0:
+            return RiskStatusResponse(
+                **common,
+                risk_allowed=False,
+                approved=False,
+                observation_status="UNAVAILABLE",
+                observation_reason="Observation timestamp is in the future",
+                execution_quantity_reason="Risk observation unavailable",
+            )
+        expected_account_id = None
+        if settings.broker == "simulation":
+            expected_account_id = "SIMULATED"
+        elif settings.broker == "deriv" and settings.deriv_options_account_id:
+            expected_account_id = settings.deriv_options_account_id.strip() or None
+        context_matches = (
+            snapshot.broker == settings.broker
+            and snapshot.environment == settings.environment
+            and expected_account_id is not None
+            and snapshot.account_id == expected_account_id
+        )
+        if snapshot.evaluation_state in (
+            RiskEvaluationState.AUTHORIZED, RiskEvaluationState.BLOCKED
+        ) and not context_matches:
+            return RiskStatusResponse(
+                balance=0.0,
+                equity=0.0,
+                max_daily_loss=self.risk_engine.max_daily_loss,
+                max_trades_daily=self.risk_engine.max_trades_daily,
+                risk_allowed=False,
+                approved=False,
+                observation_timestamp=observed_at.isoformat(),
+                observation_age_seconds=max(0.0, age_seconds),
+                observation_status="CONTEXT_MISMATCH",
+                observation_reason="Risk observation does not match the active execution context",
+                rejection_reason="Risk observation context mismatch",
+                execution_quantity_reason="Risk observation unavailable",
+            )
+        if age_seconds > settings.risk_observation_freshness_seconds:
+            return RiskStatusResponse(
+                **common,
+                risk_allowed=False,
+                approved=False,
+                observation_available=True,
+                observation_status="STALE",
+                observation_reason="Risk observation exceeded the freshness threshold",
+                risk_authorized=(snapshot.evaluation_state is RiskEvaluationState.AUTHORIZED),
+                authorized_risk_amount=snapshot.authorized_risk_amount,
+                authorized_risk_percent=snapshot.authorized_risk_percent,
+                execution_quantity_reason="Risk observation is stale",
+                risk_percent=snapshot.authorized_risk_percent or 0.0,
+            )
+        if snapshot.evaluation_state in (
+            RiskEvaluationState.NOT_EVALUATED, RiskEvaluationState.UNKNOWN
+        ):
+            return RiskStatusResponse(
+                **common,
+                risk_allowed=False,
+                approved=False,
+                observation_status="UNAVAILABLE",
+                observation_reason=snapshot.execution_quantity_reason,
+                execution_quantity_reason=snapshot.execution_quantity_reason,
+            )
+        return RiskStatusResponse(
+            **common,
+            risk_allowed=bool(snapshot.risk_allowed),
+            approved=snapshot.evaluation_state is RiskEvaluationState.AUTHORIZED,
+            observation_available=True,
+            observation_fresh=True,
+            observation_status="FRESH",
+            observation_reason="Authoritative durable-cycle observation is fresh",
+            risk_authorized=(snapshot.evaluation_state is RiskEvaluationState.AUTHORIZED),
+            authorized_risk_amount=snapshot.authorized_risk_amount,
+            authorized_risk_percent=snapshot.authorized_risk_percent,
+            execution_quantity_available=snapshot.execution_quantity_available,
+            execution_quantity_value=snapshot.execution_quantity_value,
+            execution_quantity_unit=snapshot.execution_quantity_unit,
+            execution_quantity_reason=snapshot.execution_quantity_reason,
+            risk_percent=snapshot.authorized_risk_percent or 0.0,
         )
 
     def get_execution_safety(self) -> ExecutionSafetyResponse:

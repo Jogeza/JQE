@@ -126,6 +126,12 @@ class RiskStatusResponse(BaseModel):
     risk_message: str = "Limits OK"
     approved: bool = False
     rejection_reason: str = ""
+    observation_available: bool = False
+    observation_timestamp: str | None = None
+    observation_age_seconds: float | None = None
+    observation_fresh: bool = False
+    observation_status: Literal["FRESH", "STALE", "NOT_OBSERVED", "UNAVAILABLE", "CONTEXT_MISMATCH"] = "NOT_OBSERVED"
+    observation_reason: str = "Risk observation has not been published"
     risk_authorized: bool = False
     authorized_risk_amount: float | None = None
     authorized_risk_percent: float | None = None

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -38,8 +37,49 @@ from execution.safety import (
     ExecutionAuthorization,
     ExecutionMode,
     ExecutionSafetySnapshot,
+    RiskAuthorizationSnapshot,
+    RiskEvaluationState,
     SQLiteExecutionSafetyStore,
 )
+
+
+def _risk_snapshot(
+    observed_at: datetime,
+    *,
+    broker: str = "simulation",
+    state: RiskEvaluationState = RiskEvaluationState.AUTHORIZED,
+    quantity_available: bool = True,
+    reason: str = "Simulation assumes one account-currency unit per price-unit move",
+    account_id: str | None = None,
+) -> RiskAuthorizationSnapshot:
+    authorized = state is RiskEvaluationState.AUTHORIZED
+    if account_id is None and state in (
+        RiskEvaluationState.AUTHORIZED, RiskEvaluationState.BLOCKED
+    ):
+        account_id = "SIMULATED" if broker == "simulation" else "CR-DEMO"
+    return RiskAuthorizationSnapshot(
+        observed_at=observed_at,
+        broker=broker,
+        environment="development",
+        account_id=account_id,
+        evaluation_state=state,
+        balance=100.0,
+        equity=100.0,
+        currency="USD",
+        max_daily_loss=2.0,
+        max_trades_daily=5,
+        daily_trades_count=1,
+        daily_loss_percent=0.25,
+        risk_allowed=True,
+        risk_message="Limits OK",
+        rejection_reason="" if authorized else reason,
+        authorized_risk_amount=0.5 if authorized else None,
+        authorized_risk_percent=0.5 if authorized else None,
+        execution_quantity_available=quantity_available,
+        execution_quantity_value=0.5 if quantity_available else None,
+        execution_quantity_unit="SIMULATION_UNITS" if quantity_available else None,
+        execution_quantity_reason=reason,
+    )
 
 
 @pytest.fixture
@@ -154,109 +194,273 @@ class TestApplicationService:
         assert signal_resp.trade_plan is not None
         assert signal_resp.price_decimals == 2
 
-    async def test_get_risk_status_returns_limits_and_balance(
-        self, sim_service: ApplicationService
+    async def test_fresh_simulation_risk_observation_exposes_typed_quantity(
+        self, tmp_path, monkeypatch
     ) -> None:
-        risk_resp = await sim_service.get_risk_status(symbol="XAUUSD")
-        assert isinstance(risk_resp, RiskStatusResponse)
-        assert risk_resp.balance == 100.0
-        assert risk_resp.max_daily_loss > 0
-        assert risk_resp.max_trades_daily > 0
-        assert risk_resp.risk_allowed is True
-        assert risk_resp.model_dump()["recommended_lot_size"] == 0.0
-        assert RiskStatusResponse.model_fields["recommended_lot_size"].deprecated is True
-
-    @pytest.mark.parametrize(
-        ("broker", "quantity_available", "quantity_unit", "reason"),
-        [
-            ("simulation", True, "SIMULATION_UNITS", "Simulation assumes"),
-            ("deriv", False, None, "not proven"),
-            ("mt5", False, None, "disabled"),
-        ],
-    )
-    async def test_risk_observation_separates_cash_risk_from_broker_quantity(
-        self,
-        sim_service: ApplicationService,
-        monkeypatch,
-        broker: str,
-        quantity_available: bool,
-        quantity_unit: str | None,
-        reason: str,
-    ) -> None:
-        monkeypatch.setattr(settings, "broker", broker)
-        plan = SimpleNamespace(
-            entry=100.0, stop_loss=99.0, is_valid=lambda: True
-        )
-        with patch(
-            "api.service.generate_trading_signal",
-            return_value={
-                "signal": "BUY",
-                "confidence": 90,
-                "trade_plan": plan,
-            },
-        ), patch.object(
-            sim_service.risk_engine,
-            "approve_trade",
-            return_value={
-                "approved": True,
-                "reason": "Institutional risk passed",
-                "risk_percent": 0.5,
-                "authorized_risk_amount": 0.5,
-            },
-        ):
-            response = await sim_service.get_risk_status(symbol="XAUUSD")
-
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        monkeypatch.setattr(settings, "risk_observation_freshness_seconds", 15)
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        persisted = _risk_snapshot(now - timedelta(seconds=5))
+        store.publish_risk(persisted)
+        service = ApplicationService()
+        with patch("api.service.utc_now", return_value=now), patch.object(
+            service, "_get_gateway"
+        ) as gateway, patch.object(
+            service.risk_engine, "approve_trade"
+        ) as approve, patch.object(
+            service.risk_engine, "authorize_execution_quantity"
+        ) as authorize:
+            response = await service.get_risk_status()
+        assert response.observation_available is True
+        assert response.observation_fresh is True
+        assert response.observation_status == "FRESH"
+        assert response.observation_age_seconds == 5.0
         assert response.risk_authorized is True
         assert response.authorized_risk_amount == 0.5
-        assert response.authorized_risk_percent == 0.5
-        assert response.execution_quantity_available is quantity_available
-        assert response.execution_quantity_unit == quantity_unit
-        assert response.execution_quantity_value == (0.5 if quantity_available else None)
-        assert reason in (response.execution_quantity_reason or "")
-        assert response.model_dump()["recommended_lot_size"] == 0.0
+        assert response.execution_quantity_available is True
+        assert response.execution_quantity_value == 0.5
+        assert response.execution_quantity_unit == "SIMULATION_UNITS"
+        gateway.assert_not_called()
+        approve.assert_not_called()
+        authorize.assert_not_called()
+        assert store.read_risk() == persisted
 
-    async def test_blocked_risk_never_exposes_quantity(
-        self, sim_service: ApplicationService
+    async def test_stale_observation_cannot_leak_previously_authorized_quantity(
+        self, tmp_path, monkeypatch
     ) -> None:
-        with patch(
-            "api.service.generate_trading_signal",
-            return_value={"signal": "NO_TRADE", "confidence": 0, "trade_plan": None},
-        ), patch.object(
-            sim_service.risk_engine,
-            "approve_trade",
-            return_value={
-                "approved": False,
-                "reason": "No trade signal",
-                "risk_percent": 0.0,
-                "authorized_risk_amount": 0.0,
-            },
-        ), patch.object(
-            sim_service.risk_engine, "authorize_execution_quantity"
-        ) as authorize:
-            response = await sim_service.get_risk_status(symbol="XAUUSD")
-
-        assert response.risk_authorized is False
-        assert response.authorized_risk_amount is None
-        assert response.authorized_risk_percent is None
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        monkeypatch.setattr(settings, "risk_observation_freshness_seconds", 15)
+        SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
+            _risk_snapshot(now - timedelta(seconds=15, microseconds=1))
+        )
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "STALE"
+        assert response.observation_fresh is False
+        assert response.approved is False
+        assert response.risk_allowed is False
+        assert response.risk_authorized is True
         assert response.execution_quantity_available is False
         assert response.execution_quantity_value is None
         assert response.execution_quantity_unit is None
-        assert response.execution_quantity_reason == "No trade signal"
+        assert response.execution_quantity_reason == "Risk observation is stale"
+
+    async def test_exact_freshness_boundary_is_fresh(self, tmp_path, monkeypatch) -> None:
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        monkeypatch.setattr(settings, "risk_observation_freshness_seconds", 15)
+        SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
+            _risk_snapshot(now - timedelta(seconds=15))
+        )
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "FRESH"
+        assert response.execution_quantity_available is True
+
+    async def test_missing_observation_is_unavailable_and_read_only(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        path = tmp_path / "missing.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        service = ApplicationService()
+        with patch.object(service, "_get_gateway") as gateway, patch.object(
+            service.risk_engine, "approve_trade"
+        ) as approve, patch.object(
+            service.risk_engine, "authorize_execution_quantity"
+        ) as authorize:
+            response = await service.get_risk_status()
+        assert response.observation_status == "NOT_OBSERVED"
+        assert response.observation_available is False
+        assert response.execution_quantity_available is False
+        assert path.exists() is False
+        gateway.assert_not_called()
+        approve.assert_not_called()
         authorize.assert_not_called()
 
-    async def test_unavailable_market_state_never_exposes_quantity(
-        self, sim_service: ApplicationService
-    ) -> None:
-        gateway = sim_service._gateway
-        assert gateway is not None
-        gateway.get_candles = AsyncMock(return_value=[])
-        response = await sim_service.get_risk_status(symbol="XAUUSD")
-        assert response.risk_authorized is False
+    async def test_future_timestamp_anomaly_fails_closed(self, tmp_path, monkeypatch) -> None:
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
+            _risk_snapshot(now + timedelta(microseconds=1))
+        )
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "UNAVAILABLE"
+        assert response.observation_fresh is False
         assert response.execution_quantity_available is False
         assert response.execution_quantity_value is None
-        assert response.execution_quantity_reason == (
-            "Risk authorization unavailable: no market data"
+
+    @pytest.mark.parametrize(
+        ("broker", "state", "reason", "expected_status", "risk_authorized"),
+        [
+            ("simulation", RiskEvaluationState.BLOCKED, "No trade signal", "FRESH", False),
+            ("deriv", RiskEvaluationState.AUTHORIZED, "Broker stop-risk conversion is not proven", "FRESH", True),
+            ("mt5", RiskEvaluationState.NOT_EVALUATED, "MT5 execution is disabled", "UNAVAILABLE", False),
+        ],
+    )
+    async def test_broker_specific_unavailable_quantity_observations(
+        self, tmp_path, monkeypatch, broker, state, reason, expected_status, risk_authorized
+    ) -> None:
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / f"{broker}.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        monkeypatch.setattr(settings, "broker", broker)
+        if broker == "deriv":
+            monkeypatch.setattr(settings, "deriv_options_account_id", "CR-DEMO")
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        store.publish_risk(_risk_snapshot(
+            now, broker=broker, state=state, quantity_available=False, reason=reason
+        ))
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == expected_status
+        assert response.risk_authorized is risk_authorized
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+        assert response.execution_quantity_unit is None
+        assert reason in (response.execution_quantity_reason or "")
+
+    @pytest.mark.parametrize(
+        ("configured_broker", "configured_environment", "configured_account"),
+        [
+            ("deriv", "development", "CR-DEMO"),
+            ("simulation", "production", None),
+            ("deriv", "development", "CR-OTHER"),
+        ],
+        ids=["broker", "environment", "account"],
+    )
+    async def test_context_mismatch_is_non_authoritative_and_redacts_quantity(
+        self, tmp_path, monkeypatch,
+        configured_broker, configured_environment, configured_account,
+    ) -> None:
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
+            _risk_snapshot(now)
         )
+        monkeypatch.setattr(settings, "broker", configured_broker)
+        monkeypatch.setattr(settings, "environment", configured_environment)
+        monkeypatch.setattr(settings, "deriv_options_account_id", configured_account)
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "CONTEXT_MISMATCH"
+        assert response.observation_fresh is False
+        assert response.risk_authorized is False
+        assert response.authorized_risk_amount is None
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+        assert response.execution_quantity_unit is None
+
+    async def test_deriv_account_switch_cannot_reuse_fresh_observation(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        monkeypatch.setattr(settings, "broker", "deriv")
+        monkeypatch.setattr(settings, "environment", "development")
+        monkeypatch.setattr(settings, "deriv_options_account_id", "CR-NEW")
+        SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
+            _risk_snapshot(
+                now, broker="deriv", quantity_available=False,
+                reason="Broker stop-risk conversion is not proven",
+                account_id="CR-OLD",
+            )
+        )
+        with patch("api.service.utc_now", return_value=now):
+            response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "CONTEXT_MISMATCH"
+        assert response.execution_quantity_available is False
+
+    async def test_malformed_account_identity_fails_closed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import sqlite3
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        store.publish_risk(_risk_snapshot(datetime.now(timezone.utc)))
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE risk_authorization_snapshot SET account_id='   '"
+            )
+        response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "UNAVAILABLE"
+        assert response.execution_quantity_available is False
+
+    async def test_legacy_snapshot_without_account_identity_is_unavailable(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import sqlite3
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        store.publish_risk(_risk_snapshot(datetime.now(timezone.utc)))
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE risk_authorization_snapshot SET schema_version=1, account_id=NULL"
+            )
+        response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "UNAVAILABLE"
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+
+    async def test_unknown_future_risk_schema_is_unavailable_and_not_rewritten(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import sqlite3
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        store.publish_risk(_risk_snapshot(datetime.now(timezone.utc)))
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE risk_authorization_snapshot SET schema_version=99"
+            )
+        service = ApplicationService()
+        with patch.object(service, "_get_gateway") as gateway, patch.object(
+            service.risk_engine, "approve_trade"
+        ) as approve, patch.object(
+            service.risk_engine, "authorize_execution_quantity"
+        ) as authorize:
+            response = await service.get_risk_status()
+        assert response.observation_status == "UNAVAILABLE"
+        assert response.observation_fresh is False
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
+        assert response.execution_quantity_unit is None
+        gateway.assert_not_called()
+        approve.assert_not_called()
+        authorize.assert_not_called()
+        with sqlite3.connect(path) as connection:
+            persisted_version = connection.execute(
+                "SELECT schema_version FROM risk_authorization_snapshot WHERE singleton_id=1"
+            ).fetchone()[0]
+        assert persisted_version == 99
+
+    async def test_malformed_persisted_risk_observation_fails_closed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import sqlite3
+        path = tmp_path / "safety.sqlite3"
+        monkeypatch.setattr(settings, "execution_safety_store_path", path)
+        store = SQLiteExecutionSafetyStore(path, initialize=True)
+        store.publish_risk(_risk_snapshot(datetime.now(timezone.utc)))
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE risk_authorization_snapshot SET evaluation_state='BROKEN'"
+            )
+        response = await ApplicationService().get_risk_status()
+        assert response.observation_status == "UNAVAILABLE"
+        assert response.execution_quantity_available is False
+        assert response.execution_quantity_value is None
 
     async def test_old_risk_payload_remains_deserializable_with_safe_defaults(self) -> None:
         response = RiskStatusResponse(
@@ -269,6 +473,7 @@ class TestApplicationService:
         assert response.risk_authorized is False
         assert response.execution_quantity_available is False
         assert response.execution_quantity_value is None
+        assert response.observation_status == "NOT_OBSERVED"
 
     async def test_get_execution_state_returns_simulation_state(
         self, sim_service: ApplicationService
@@ -325,7 +530,8 @@ class TestApiEndpointsDirect:
 
     async def test_risk_endpoint(self, sim_service: ApplicationService) -> None:
         resp = await get_risk_status(symbol="XAUUSD", service=sim_service)
-        assert resp.balance > 0
+        assert resp.observation_status == "NOT_OBSERVED"
+        assert resp.execution_quantity_available is False
 
     async def test_execution_endpoint(self, sim_service: ApplicationService) -> None:
         resp = await get_execution_state(service=sim_service)

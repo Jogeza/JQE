@@ -92,6 +92,8 @@ class Settings(BaseSettings):
         intent_store_path: Deterministic SQLite path for durable execution
             intent records. Relative paths resolve from the process working
             directory; production should set an explicit absolute path.
+        risk_observation_freshness_seconds: Maximum age of a durable-cycle
+            risk observation before API consumers must treat it as stale.
     """
 
     model_config = SettingsConfigDict(
@@ -143,6 +145,7 @@ class Settings(BaseSettings):
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)
+    risk_observation_freshness_seconds: int = Field(default=15, gt=0)
     execution_reservation_lease_seconds: int = Field(default=120, gt=0)
 
     @field_validator("log_level", mode="before")

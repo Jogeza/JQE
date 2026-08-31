@@ -182,6 +182,22 @@ when canonical sizing verifies it; Deriv quantity authorization remains
 fail-closed, and MT5 execution remains disabled. `recommended_lot_size` is a
 deprecated API compatibility field that stays at zero and is never executable.
 
+The canonical durable cycle publishes its latest risk result into the existing
+SQLite execution-safety observation store. The API is a read-only consumer and
+is the authority for freshness, using `risk_observation_freshness_seconds`.
+The default is 15 seconds, matching the existing execution-safety observation
+window; the exact threshold boundary remains fresh and older records are stale.
+Fresh observations may expose verified typed Simulation quantity. Stale,
+missing, future-dated, or malformed observations never expose an executable
+quantity; Deriv remains unverified and MT5 remains disabled. The dashboard is
+observational and is not an execution-authorization surface.
+
+Persisted risk authority is additionally bound to the exact active broker,
+environment, and broker-neutral `AccountInfo.account_id`. The durable cycle
+persists the already-observed account identity; the API rejects context
+mismatches without broker access and exposes no quantity. Schema-v1 records
+without account identity fail closed and cannot become current authorization.
+
 ---
 
 ## Non-pytest Files in `tests/`
