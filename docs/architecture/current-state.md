@@ -198,6 +198,26 @@ persists the already-observed account identity; the API rejects context
 mismatches without broker access and exposes no quantity. Schema-v1 records
 without account identity fail closed and cannot become current authorization.
 
+Deriv contract capability is represented by the immutable, schema-versioned
+`DerivContractSpecification`. It separates known broker facts from unknown or
+provisional assumptions and evaluates stop-risk quantity capability entirely
+offline. `DERIV_STAKE` remains an explicit transport unit, but it is not
+currently authorizable: the Multipliers loss equation, multiplier/loss
+relationship, absolute stop semantics, symbol eligibility, currency treatment,
+contract availability, duration requirements, minimum stake, precision, and
+increment lack authoritative evidence. The fixed
+gateway multiplier is explicitly provisional and cannot satisfy capability
+checks. Quantity authorization requires a fully verified evidence source and
+versioned loss model plus a separately validated, applicability-bound
+`DerivLossModelProof`; identifiers alone are metadata, not financial proof. No
+authoritative proof artifact or financial equation currently exists. Partial,
+malformed, or future-schema specifications fail closed, with strict identifier,
+numeric, and schema typing that explicitly rejects Python booleans as integers.
+The authoritative proof registry is therefore empty; self-declared `VERIFIED`
+proof metadata cannot authorize quantity.
+No runtime broker discovery is performed. Simulation sizing is
+unchanged, MT5 remains disabled, and Deriv submission enablement is unchanged.
+
 ---
 
 ## Non-pytest Files in `tests/`

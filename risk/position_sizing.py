@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from broker.deriv_contract_spec import (
+    current_deriv_multiplier_specification,
+    evaluate_deriv_quantity_capability,
+)
 from broker.types import ExecutionQuantity, ExecutionQuantityUnit
 from core.logger import logger
 
@@ -38,6 +42,13 @@ def authorize_execution_quantity(
     if authorized_risk <= 0 or stop_distance <= 0:
         return ExecutionSizingDecision(
             authorized_risk, None, None, False, "Risk amount or stop distance is invalid"
+        )
+    if broker == "deriv":
+        capability = evaluate_deriv_quantity_capability(
+            current_deriv_multiplier_specification()
+        )
+        return ExecutionSizingDecision(
+            authorized_risk, None, None, False, capability.reason
         )
     if broker != "simulation":
         return ExecutionSizingDecision(

@@ -53,6 +53,7 @@ def test_deriv_conversion_is_unprovable_and_fails_closed() -> None:
     )
     assert decision.quantity is None
     assert decision.risk_verifiable is False
+    assert "loss-model proof is not verified" in decision.reason
 
 
 @pytest.mark.asyncio

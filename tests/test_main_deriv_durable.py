@@ -144,7 +144,7 @@ async def test_durable_deriv_demo_is_authorized_with_explicit_context() -> None:
     assert risk.account_id == "CR-DEMO"
     assert risk.execution_quantity_available is False
     assert risk.execution_quantity_value is None
-    assert "not proven" in risk.execution_quantity_reason
+    assert "loss-model proof is not verified" in risk.execution_quantity_reason
 
 
 @pytest.mark.asyncio

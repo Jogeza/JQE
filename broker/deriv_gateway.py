@@ -68,7 +68,9 @@ from core.logger import logger
 
 DEFAULT_ENDPOINT = "wss://ws.derivws.com/websockets/v3"
 _REQUEST_TIMEOUT_SECONDS = 15.0
-_MULTIPLIER = 100  # NOTE: fixed placeholder — see module docstring.
+# Provisional request-shape placeholder only.  It is represented as explicitly
+# unverified by broker.deriv_contract_spec and is never quantity evidence.
+_MULTIPLIER = 100
 
 
 class DerivGateway(BrokerGateway):
