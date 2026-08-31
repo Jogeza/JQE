@@ -218,6 +218,19 @@ proof metadata cannot authorize quantity.
 No runtime broker discovery is performed. Simulation sizing is
 unchanged, MT5 remains disabled, and Deriv submission enablement is unchanged.
 
+The contract proof pipeline is exercised end-to-end only by a JQE-owned
+synthetic Simulation contract. Its deliberately artificial linear equation is
+`loss = SIMULATION_UNITS × price distance`, with conservative downward
+increment rounding. Simulation quantity authorization normalizes finite numeric
+inputs safely and performs flooring and the final strict loss check with exact
+`Decimal` arithmetic. No epsilon or tolerance can authorize an over-budget
+quantity. The verified quantity is converted to the float-based broker-neutral
+DTO only after authorization; that serialized value is not used to re-authorize
+risk. This is test/simulation architecture, not external-broker semantics.
+Simulation proof registration is isolated from Deriv; the Deriv
+authoritative registry remains empty and Deriv quantity remains unavailable
+until independently authoritative evidence is reviewed.
+
 ---
 
 ## Non-pytest Files in `tests/`

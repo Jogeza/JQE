@@ -8,6 +8,7 @@ fixed-lot overexposure.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from broker.deriv_contract_spec import (
     current_deriv_multiplier_specification,
@@ -15,6 +16,13 @@ from broker.deriv_contract_spec import (
 )
 from broker.types import ExecutionQuantity, ExecutionQuantityUnit
 from core.logger import logger
+from risk.simulation_contract import (
+    authoritative_simulation_registry,
+    canonical_simulation_proof,
+    canonical_simulation_specification,
+    evaluate_simulation_capability,
+    floor_synthetic_quantity_exact,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +45,12 @@ def authorize_execution_quantity(
     stop_loss: float,
 ) -> ExecutionSizingDecision:
     """Authorize broker quantity only where repository semantics prove stop risk."""
-    authorized_risk = balance * (risk_percent / 100.0)
-    stop_distance = abs(entry - stop_loss)
+    authorized_risk_decimal = (
+        Decimal(str(balance)) * Decimal(str(risk_percent)) / Decimal("100")
+    )
+    stop_distance_decimal = abs(Decimal(str(entry)) - Decimal(str(stop_loss)))
+    authorized_risk = float(authorized_risk_decimal)
+    stop_distance = float(stop_distance_decimal)
     if authorized_risk <= 0 or stop_distance <= 0:
         return ExecutionSizingDecision(
             authorized_risk, None, None, False, "Risk amount or stop distance is invalid"
@@ -58,8 +70,31 @@ def authorize_execution_quantity(
             False,
             "Broker stop-risk conversion is not proven",
         )
-    value = authorized_risk / stop_distance
-    expected_loss = value * stop_distance
+    specification = canonical_simulation_specification(stop_distance_decimal)
+    capability = evaluate_simulation_capability(
+        specification, canonical_simulation_proof(), authoritative_simulation_registry()
+    )
+    if not capability.stop_risk_authorizable:
+        return ExecutionSizingDecision(authorized_risk, None, None, False, capability.reason)
+    quantity_decimal = floor_synthetic_quantity_exact(
+        authorized_risk_decimal, specification
+    )
+    if quantity_decimal is None:
+        return ExecutionSizingDecision(
+            authorized_risk, None, None, False,
+            "Authorized risk is below the synthetic minimum quantity",
+        )
+    expected_loss_decimal = quantity_decimal * stop_distance_decimal
+    if expected_loss_decimal > authorized_risk_decimal:
+        return ExecutionSizingDecision(
+            authorized_risk, None, None, False,
+            "Synthetic quantity exceeds the exact authorized risk",
+        )
+
+    # ExecutionQuantity and audit fields currently store floats. Conversion is
+    # an output boundary only; it does not participate in authorization.
+    value = float(quantity_decimal)
+    expected_loss = float(expected_loss_decimal)
     return ExecutionSizingDecision(
         authorized_risk_amount=authorized_risk,
         quantity=ExecutionQuantity(
@@ -67,8 +102,8 @@ def authorize_execution_quantity(
             unit=ExecutionQuantityUnit.SIMULATION_UNITS,
         ),
         expected_loss_at_stop=expected_loss,
-        risk_verifiable=expected_loss <= authorized_risk * (1.0 + 1e-12),
-        reason="Simulation assumes one account-currency unit per price-unit move",
+        risk_verifiable=True,
+        reason="JQE synthetic simulation proof verifies linear stop risk",
     )
 
 
