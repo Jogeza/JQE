@@ -17,7 +17,11 @@ from config.settings import settings
 from core.exceptions import RiskViolationError
 from core.logger import logger
 from risk.dynamic_risk import DynamicRisk
-from risk.position_sizing import PositionSizing, calculate_position_size
+from risk.position_sizing import (
+    ExecutionSizingDecision,
+    PositionSizing,
+    authorize_execution_quantity,
+)
 
 # Institutional Default Constants
 MIN_CONFIDENCE = 75
@@ -140,13 +144,13 @@ class RiskEngine:
             enforce_limits: Whether to check stateful daily limits.
 
         Returns:
-            Dictionary with 'approved', 'reason', 'risk_percent', 'lot_size'.
+            Dictionary with approval, risk percent, and authorized cash risk.
         """
         decision: dict[str, Any] = {
             "approved": False,
             "reason": "",
             "risk_percent": 0.0,
-            "lot_size": 0.0,
+            "authorized_risk_amount": 0.0,
         }
 
         # 1. Signal presence check
@@ -192,16 +196,26 @@ class RiskEngine:
         # 5. Dynamic / Institutional risk percent sizing
         risk_percent = self.max_risk_percent
 
-        # 6. Calculate position size
-        lot_size = calculate_position_size(
-            balance=balance,
-            risk_percent=risk_percent,
-            stop_loss=atr,
-        )
-
         decision["approved"] = True
         decision["reason"] = "Institutional risk passed"
         decision["risk_percent"] = risk_percent
-        decision["lot_size"] = lot_size
+        decision["authorized_risk_amount"] = balance * (risk_percent / 100.0)
 
         return decision
+
+    def authorize_execution_quantity(
+        self,
+        *,
+        broker: str,
+        balance: float,
+        risk_percent: float,
+        entry: float,
+        stop_loss: float,
+    ) -> ExecutionSizingDecision:
+        return authorize_execution_quantity(
+            broker=broker,
+            balance=balance,
+            risk_percent=risk_percent,
+            entry=entry,
+            stop_loss=stop_loss,
+        )

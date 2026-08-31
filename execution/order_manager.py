@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from broker.factory import get_gateway
-from broker.types import OrderRequest, OrderSide
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderRequest, OrderSide
 from config import settings
 from core.exceptions import ConfigurationError
 
@@ -106,7 +106,10 @@ class OrderManager:
 
             side=side,
 
-            volume=float(order["lot"]),
+            quantity=ExecutionQuantity(
+                value=float(order["lot"]),
+                unit=ExecutionQuantityUnit.SIMULATION_UNITS,
+            ),
 
             stop_loss=float(order["stop_loss"])
             if order["stop_loss"]

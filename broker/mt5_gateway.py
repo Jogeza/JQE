@@ -244,6 +244,10 @@ class MT5Gateway(BrokerGateway):
     ) -> OrderResult:
 
         self._require_connected()
+        from broker.types import ExecutionQuantityUnit
+        if order.quantity.unit is not ExecutionQuantityUnit.MT5_LOTS:
+            raise ExecutionError("MT5 requires MT5_LOTS")
+        quantity = order.quantity.value
         if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
             if not await asyncio.to_thread(self._verify_connection_identity):
                 self._connected = False
@@ -378,7 +382,7 @@ class MT5Gateway(BrokerGateway):
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": real_symbol,
-            "volume": order.volume,
+            "volume": quantity,
             "type": (
                 mt5.ORDER_TYPE_BUY
                 if order.side is OrderSide.BUY
@@ -418,7 +422,7 @@ class MT5Gateway(BrokerGateway):
                 status=OrderStatus.REJECTED,
                 symbol=order.symbol,
                 side=order.side,
-                volume=order.volume,
+                volume=quantity,
                 raw={
                     "retcode": getattr(
                         result,
@@ -446,7 +450,7 @@ class MT5Gateway(BrokerGateway):
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
-            volume=order.volume,
+            volume=quantity,
             filled_price=float(result_price),
             raw={
                 "retcode": result.retcode,

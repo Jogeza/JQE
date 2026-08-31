@@ -51,6 +51,7 @@ from execution.safety import (
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
     approve_trade,
+    authorize_execution_quantity,
     get_reconciled_daily_state,
     reconcile_daily_history,
 )
@@ -233,8 +234,6 @@ async def run() -> None:
             intelligence=intelligence,
             signal_dict=signal,
             price=latest["close"],
-            account_balance=account.balance,
-            risk_percent=risk_decision["risk_percent"],
         )
 
         if not plan.is_valid():
@@ -245,11 +244,20 @@ async def run() -> None:
             return
 
         side = _SIDE_BY_SIGNAL[plan.signal]
+        sizing = authorize_execution_quantity(
+            broker=settings.broker,
+            balance=account.balance,
+            risk_percent=risk_decision["risk_percent"],
+            entry=float(latest["close"]),
+            stop_loss=plan.stop_loss,
+        )
         if not settings.use_durable_executor:
+            if sizing.quantity is None or not sizing.risk_verifiable:
+                raise ExecutionError("Execution quantity risk could not be verified")
             order = OrderRequest(
                 symbol=plan.symbol,
                 side=side,
-                volume=plan.position_size,
+                quantity=sizing.quantity,
                 stop_loss=plan.stop_loss,
                 take_profit=plan.take_profit,
             )
@@ -261,7 +269,7 @@ async def run() -> None:
         idempotency_key = build_execution_idempotency_key(
             symbol=normalized_symbol,
             side=side.value,
-            volume=plan.position_size,
+            quantity=sizing.quantity,
             entry=float(latest["close"]),
             stop_loss=plan.stop_loss,
             take_profit=plan.take_profit,
@@ -321,7 +329,10 @@ async def run() -> None:
         intent = ExecutionIntent(
             symbol=normalized_symbol,
             side=side,
-            volume=plan.position_size,
+            quantity=sizing.quantity,
+            authorized_risk_amount=sizing.authorized_risk_amount,
+            expected_loss_at_stop=sizing.expected_loss_at_stop,
+            quantity_risk_verified=sizing.risk_verifiable,
             entry=float(latest["close"]),
             stop_loss=plan.stop_loss,
             take_profit=plan.take_profit,

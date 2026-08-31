@@ -7,12 +7,14 @@ import json
 from datetime import datetime
 from typing import Any
 
+from broker.types import ExecutionQuantity
+
 
 def build_execution_idempotency_key(
     *,
     symbol: str,
     side: str,
-    volume: float,
+    quantity: ExecutionQuantity | None,
     entry: float,
     stop_loss: float,
     take_profit: float,
@@ -31,9 +33,10 @@ def build_execution_idempotency_key(
         "stop_loss": format(float(stop_loss), ".17g"),
         "symbol": symbol.strip().upper(),
         "take_profit": format(float(take_profit), ".17g"),
-        "volume": format(float(volume), ".17g"),
+        "quantity_value": format(float(quantity.value), ".17g") if quantity else None,
+        "quantity_unit": quantity.unit.value if quantity else None,
     }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    return f"jqe-sim-{digest}"
+    return f"jqe-v2-{digest}"

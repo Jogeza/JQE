@@ -11,6 +11,8 @@ from broker.types import (
     TIMEFRAME_SECONDS,
     AccountInfo,
     Candle,
+    ExecutionQuantity,
+    ExecutionQuantityUnit,
     OrderRequest,
     OrderResult,
     OrderSide,
@@ -37,27 +39,27 @@ class TestTimeframeSeconds:
 
 class TestOrderRequest:
     def test_valid_order_constructs(self) -> None:
-        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS))
         assert order.order_type is OrderType.MARKET
         assert order.stop_loss is None
 
     def test_zero_volume_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0)
+            ExecutionQuantity(value=0, unit=ExecutionQuantityUnit.MT5_LOTS)
 
     def test_negative_volume_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=-1)
+            ExecutionQuantity(value=-1, unit=ExecutionQuantityUnit.MT5_LOTS)
 
     def test_idempotency_key_defaults_to_none(self) -> None:
-        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS))
         assert order.idempotency_key is None
 
     def test_accepts_explicit_idempotency_key(self) -> None:
         order = OrderRequest(
             symbol="XAUUSD",
             side=OrderSide.BUY,
-            volume=0.1,
+            quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
             idempotency_key="intent-1",
         )
         assert order.idempotency_key == "intent-1"

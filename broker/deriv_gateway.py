@@ -189,12 +189,16 @@ class DerivGateway(BrokerGateway):
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         self._require_connected()
+        from broker.types import ExecutionQuantityUnit
+        if order.quantity.unit is not ExecutionQuantityUnit.DERIV_STAKE:
+            raise ExecutionError("Deriv requires DERIV_STAKE")
+        quantity = order.quantity.value
         contract_type = "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN"
         proposal_request: dict[str, Any] = {
             "proposal": 1,
             "contract_type": contract_type,
             "symbol": order.symbol,
-            "amount": order.volume,
+            "amount": quantity,
             "basis": "stake",
             "currency": self._currency or "USD",
             "multiplier": _MULTIPLIER,
@@ -228,7 +232,7 @@ class DerivGateway(BrokerGateway):
             logger.warning(
                 "DerivGateway order rejected: {} {} {} — {}",
                 order.side,
-                order.volume,
+                quantity,
                 order.symbol,
                 buy_response["error"].get("message"),
             )
@@ -237,7 +241,7 @@ class DerivGateway(BrokerGateway):
                 status=OrderStatus.REJECTED,
                 symbol=order.symbol,
                 side=order.side,
-                volume=order.volume,
+                volume=quantity,
                 raw=buy_response,
             )
 
@@ -255,7 +259,7 @@ class DerivGateway(BrokerGateway):
         logger.info(
             "DerivGateway order filled: {} {} {} contract_id={}",
             order.side,
-            order.volume,
+            quantity,
             order.symbol,
             contract_id,
         )
@@ -264,7 +268,7 @@ class DerivGateway(BrokerGateway):
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
-            volume=order.volume,
+            volume=quantity,
             filled_price=float(buy_price),
             transaction_id=(str(buy["transaction_id"]) if buy.get("transaction_id") is not None else None),
             raw=buy,

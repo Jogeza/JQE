@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from broker.types import OrderRequest, OrderResult, OrderSide, OrderStatus, Position
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderRequest, OrderResult, OrderSide, OrderStatus, Position
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.models import (
     ClaimState,
@@ -23,7 +23,7 @@ from execution.policy import ExecutionContext, ExecutionDecisionCode, ExecutionI
 
 
 def _intent(key: str, symbol: str = "EURUSD") -> ExecutionIntent:
-    return ExecutionIntent(symbol, OrderSide.BUY, 1.0, 100.0, 99.0, 101.0, key, True)
+    return ExecutionIntent(symbol, OrderSide.BUY, ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), 1.0, 1.0, True, 100.0, 99.0, 101.0, key, True)
 
 
 def _context() -> ExecutionContext:
@@ -69,7 +69,7 @@ class CoordinatedGateway:
                 position_id=order_id,
                 symbol=order.symbol,
                 side=order.side,
-                volume=order.volume,
+                volume=order.quantity.value,
                 open_price=100.0,
             )
         )
@@ -78,7 +78,7 @@ class CoordinatedGateway:
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
-            volume=order.volume,
+            volume=order.quantity.value,
         )
 
 

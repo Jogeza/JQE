@@ -236,7 +236,7 @@ class AsyncTradeExecutor:
         order = OrderRequest(
             symbol=intent.symbol.strip(),
             side=intent.side,
-            volume=float(intent.volume),
+            quantity=intent.quantity,
             stop_loss=float(intent.stop_loss),
             take_profit=float(intent.take_profit),
             idempotency_key=intent.idempotency_key,

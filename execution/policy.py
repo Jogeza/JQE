@@ -12,7 +12,7 @@ from enum import Enum
 import math
 from numbers import Real
 
-from broker.types import OrderSide
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide
 
 
 class ExecutionDecisionCode(str, Enum):
@@ -24,7 +24,9 @@ class ExecutionDecisionCode(str, Enum):
     SAFETY_CONTEXT_MISSING = "SAFETY_CONTEXT_MISSING"
     SAFETY_CONTEXT_INVALID = "SAFETY_CONTEXT_INVALID"
     INVALID_DIRECTION = "INVALID_DIRECTION"
-    INVALID_VOLUME = "INVALID_VOLUME"
+    INVALID_EXECUTION_QUANTITY = "INVALID_EXECUTION_QUANTITY"
+    BROKER_QUANTITY_MISMATCH = "BROKER_QUANTITY_MISMATCH"
+    UNVERIFIABLE_BROKER_RISK = "UNVERIFIABLE_BROKER_RISK"
     INVALID_PRICE_LEVELS = "INVALID_PRICE_LEVELS"
     BUY_LEVEL_INVARIANT = "BUY_LEVEL_INVARIANT"
     SELL_LEVEL_INVARIANT = "SELL_LEVEL_INVARIANT"
@@ -46,7 +48,10 @@ class ExecutionIntent:
 
     symbol: str
     side: OrderSide | str
-    volume: float
+    quantity: ExecutionQuantity | None
+    authorized_risk_amount: float | None
+    expected_loss_at_stop: float | None
+    quantity_risk_verified: bool
     entry: float
     stop_loss: float
     take_profit: float
@@ -222,9 +227,33 @@ class ExecutionPolicy:
         if intent.side not in (OrderSide.BUY, OrderSide.SELL):
             return _reject(ExecutionDecisionCode.INVALID_DIRECTION, "Direction must be BUY or SELL")
 
-        # 5. Volume must be a positive finite financial value.
-        if not _is_finite_number(intent.volume) or float(intent.volume) <= 0:
-            return _reject(ExecutionDecisionCode.INVALID_VOLUME, "Volume must be positive and finite")
+        # 5. Broker quantity must have proven units and remain within authorized risk.
+        expected_unit = {
+            "simulation": ExecutionQuantityUnit.SIMULATION_UNITS,
+            "deriv": ExecutionQuantityUnit.DERIV_STAKE,
+            "mt5": ExecutionQuantityUnit.MT5_LOTS,
+        }.get(context.broker)
+        if intent.quantity_risk_verified is not True:
+            return _reject(
+                ExecutionDecisionCode.UNVERIFIABLE_BROKER_RISK,
+                "Broker quantity risk at the configured stop is not verifiable",
+            )
+        if not isinstance(intent.quantity, ExecutionQuantity):
+            return _reject(
+                ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY,
+                "Execution quantity is missing or invalid",
+            )
+        if expected_unit is None or intent.quantity.unit is not expected_unit:
+            return _reject(
+                ExecutionDecisionCode.BROKER_QUANTITY_MISMATCH,
+                "Execution quantity unit does not match the configured broker",
+            )
+        if not _is_finite_number(intent.authorized_risk_amount) or float(intent.authorized_risk_amount) <= 0:
+            return _reject(ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY, "Authorized risk must be positive and finite")
+        if not _is_finite_number(intent.expected_loss_at_stop) or float(intent.expected_loss_at_stop) < 0:
+            return _reject(ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY, "Expected stop loss must be finite and non-negative")
+        if float(intent.expected_loss_at_stop) > float(intent.authorized_risk_amount) * (1.0 + 1e-12):
+            return _reject(ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY, "Expected stop loss exceeds authorized risk")
 
         # 6. Every price must be positive, finite, and obey the directional invariant.
         if not all(

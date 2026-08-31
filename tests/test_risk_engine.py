@@ -40,7 +40,7 @@ class TestRiskEngine:
         )
         assert decision["approved"] is True
         assert decision["risk_percent"] == MAX_RISK_PERCENT
-        assert decision["lot_size"] > 0.0
+        assert decision["authorized_risk_amount"] == pytest.approx(5.0)
 
     def test_reject_low_confidence(self) -> None:
         engine = RiskEngine(min_confidence=80)

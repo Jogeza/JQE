@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from execution.simulator import simulate_trade
-from risk.risk_controller import approve_trade
+from risk.risk_controller import approve_trade, calculate_position_size
 
 
 class BacktestEngine:
@@ -83,7 +83,11 @@ class BacktestEngine:
                 "entry": result.get("entry", entry),
                 "exit": result.get("exit", entry),
                 "confidence": signal.get("confidence", 0),
-                "lot_size": risk.get("lot_size", 0),
+                "lot_size": calculate_position_size(
+                    balance=self.balance,
+                    risk_percent=risk["risk_percent"],
+                    stop_loss=float(market_data.iloc[-1].get("ATR", market_data.iloc[-1].get("ATR_14", 0))),
+                ),
             }
         )
         self.equity_curve.append(self.balance)

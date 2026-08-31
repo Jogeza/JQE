@@ -54,7 +54,8 @@ def test_valid_buy_plan(base_intelligence, base_signal):
     reward = plan.take_profit - plan.entry
     assert plan.risk_reward == pytest.approx(reward / risk)
     
-    assert plan.position_size is not None
+    assert plan.position_size is None
+    assert plan.risk_amount is None
 
 
 def test_valid_sell_plan(base_intelligence, base_signal):

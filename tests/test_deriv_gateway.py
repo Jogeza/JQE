@@ -190,7 +190,7 @@ class TestSubmitOrder:
         )
         await _connect_with_fake(gateway, fake_connection)
         result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
         )
         assert result.status is OrderStatus.FILLED
         assert result.order_id == "999"
@@ -209,7 +209,7 @@ class TestSubmitOrder:
             OrderRequest(
                 symbol="R_100",
                 side=OrderSide.BUY,
-                volume=10.0,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
                 idempotency_key=intent_key,
             )
         )
@@ -229,7 +229,7 @@ class TestSubmitOrder:
         )
         await _connect_with_fake(gateway, fake_connection)
         result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
         )
         assert result.status is OrderStatus.REJECTED
         await gateway.disconnect()
@@ -243,7 +243,7 @@ class TestSubmitOrder:
         await _connect_with_fake(gateway, fake_connection)
         with pytest.raises(ExecutionError, match="Deriv proposal request failed"):
             await gateway.submit_order(
-                OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0)
+                OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
             )
         await gateway.disconnect()
 
@@ -257,7 +257,7 @@ class TestSubmitOrder:
         )
         await _connect_with_fake(gateway, fake_connection)
         with pytest.raises(ExecutionError, match="malformed or outcome is indeterminate"):
-            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0))
+            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"}))
         await gateway.disconnect()
 
     @pytest.mark.parametrize("proposal", [{}, {"id": "prop-1"}, {"ask_price": 10.0}])
@@ -265,7 +265,7 @@ class TestSubmitOrder:
         gateway, fake_connection = _connected_gateway({"proposal": {"proposal": proposal}})
         await _connect_with_fake(gateway, fake_connection)
         with pytest.raises(ExecutionError, match="proposal response was malformed"):
-            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, volume=10.0))
+            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"}))
         await gateway.disconnect()
 
 

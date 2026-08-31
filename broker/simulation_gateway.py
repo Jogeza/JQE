@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 
 from broker.base import BrokerGateway
+from core.exceptions import ExecutionError
 from broker.types import (
     TIMEFRAME_SECONDS,
     AccountInfo,
@@ -135,13 +136,17 @@ class SimulationGateway(BrokerGateway):
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         self._require_connected()
+        from broker.types import ExecutionQuantityUnit
+        if order.quantity.unit is not ExecutionQuantityUnit.SIMULATION_UNITS:
+            raise ExecutionError("Simulation requires SIMULATION_UNITS")
+        quantity = order.quantity.value
         price = self._price_for(order.symbol)
         order_id = f"SIM-{next(self._order_ids)}"
         self._positions[order_id] = Position(
             position_id=order_id,
             symbol=order.symbol,
             side=order.side,
-            volume=order.volume,
+            volume=quantity,
             open_price=price,
             current_price=price,
             profit=0.0,
@@ -152,7 +157,7 @@ class SimulationGateway(BrokerGateway):
         logger.info(
             "SimulationGateway order filled: {} {} {} @ {:.4f}",
             order.side,
-            order.volume,
+            quantity,
             order.symbol,
             price,
         )
@@ -161,7 +166,7 @@ class SimulationGateway(BrokerGateway):
             status=OrderStatus.FILLED,
             symbol=order.symbol,
             side=order.side,
-            volume=order.volume,
+            volume=quantity,
             filled_price=price,
             raw={"simulated": True},
         )

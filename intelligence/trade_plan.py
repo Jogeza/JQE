@@ -139,12 +139,11 @@ class TradePlanBuilder:
             intelligence: The intelligence dictionary (trend, momentum, ATR, etc).
             signal_dict: The signal output (signal, score, reasons, etc).
             price: Current market price (ask for BUY, bid for SELL).
-            account_balance: Account balance to calculate position size.
-            risk_percent: The percentage of the account to risk.
-            
         Returns:
             A populated TradePlan object.
         """
+        # Accepted for DTO compatibility only. Execution sizing is owned by RiskEngine.
+        del account_balance, risk_percent
         atr = intelligence.get("atr", intelligence.get("ATR", intelligence.get("ATR_14")))
         
         # Base intelligence context
@@ -214,17 +213,6 @@ class TradePlanBuilder:
         if actual_rr < self.min_rr:
             return self._reject(base_plan, f"Risk/reward ({round(actual_rr, 2)}) below minimum threshold ({self.min_rr})")
 
-        # 6. Position Sizing
-        pos_size = None
-        risk_amount = None
-        if account_balance and account_balance > 0 and risk > 0:
-            risk_amount = account_balance * (risk_percent / 100.0)
-            # Basic size calculation. Usually requires tick value and contract size to be robust.
-            # Assuming 1 unit distance = 1 base currency for simple demo.
-            pos_size = round(risk_amount / risk, 2)
-            if pos_size < 0.01:
-                pos_size = 0.01
-        
         return TradePlan(
             **base_plan,
             signal=raw_signal,
@@ -236,8 +224,8 @@ class TradePlanBuilder:
             target_rr=self.target_rr,
             take_profit=round(take_profit, 5),
             risk_reward=round(actual_rr, 2),
-            position_size=pos_size,
-            risk_percent=risk_percent if pos_size else None,
-            risk_amount=round(risk_amount, 2) if risk_amount else None,
+            position_size=None,
+            risk_percent=None,
+            risk_amount=None,
             invalidation=invalidation,
         )

@@ -9,6 +9,10 @@ from __future__ import annotations
 from typing import Any
 
 from risk.position_sizing import calculate_position_size as _calc_pos_size
+from risk.position_sizing import (
+    ExecutionSizingDecision,
+    authorize_execution_quantity as _authorize_execution_quantity,
+)
 from risk.risk_engine import (
     MAX_RISK_PERCENT,
     MAX_SPREAD,
@@ -53,6 +57,18 @@ def calculate_position_size(balance: float, risk_percent: float, stop_loss: floa
     Delegates to :func:`~risk.position_sizing.calculate_position_size`.
     """
     return _calc_pos_size(balance=balance, risk_percent=risk_percent, stop_loss=stop_loss)
+
+
+def authorize_execution_quantity(
+    *, broker: str, balance: float, risk_percent: float, entry: float, stop_loss: float
+) -> ExecutionSizingDecision:
+    return _authorize_execution_quantity(
+        broker=broker,
+        balance=balance,
+        risk_percent=risk_percent,
+        entry=entry,
+        stop_loss=stop_loss,
+    )
 
 def reconcile_daily_history(trades: list[Any], balance: float) -> None:
     """Rebuilds daily state statelessly from the broker's closed-trade history.

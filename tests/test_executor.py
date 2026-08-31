@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 import asyncio
 
-from broker.types import OrderRequest, OrderResult, OrderSide, OrderStatus, Position
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderRequest, OrderResult, OrderSide, OrderStatus, Position
 from execution.executor import (
     AsyncTradeExecutor,
     IntentRecord,
@@ -23,7 +23,7 @@ from execution.reconciliation import BrokerReconciliationResult, BrokerReconcili
 
 def _intent(**overrides: object) -> ExecutionIntent:
     return replace(
-        ExecutionIntent("EURUSD", OrderSide.BUY, 1.0, 100.0, 99.0, 101.0, "key-1", True),
+        ExecutionIntent("EURUSD", OrderSide.BUY, ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), 1.0, 1.0, True, 100.0, 99.0, 101.0, "key-1", True),
         **overrides,
     )
 
@@ -33,10 +33,10 @@ def _context() -> ExecutionContext:
         False, 0.0, 3.0, 0, 5, (), 3, frozenset(),
         execution_enabled=True,
         dry_run=False,
-        broker="test",
+        broker="simulation",
         environment="demo",
         account_id="demo-account",
-        approved_brokers=frozenset({"test"}),
+        approved_brokers=frozenset({"simulation"}),
         approved_environments=frozenset({"demo"}),
         approved_accounts=frozenset({"demo-account"}),
         approved_symbols=frozenset({"EURUSD"}),

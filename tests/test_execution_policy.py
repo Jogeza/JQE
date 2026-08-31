@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from broker.types import OrderSide
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide
 from execution.policy import (
     ExecutionContext,
     ExecutionDecisionCode,
@@ -21,7 +21,10 @@ def _intent(**overrides: object) -> ExecutionIntent:
     base = ExecutionIntent(
         symbol="XAUUSD",
         side=OrderSide.BUY,
-        volume=0.25,
+        quantity=ExecutionQuantity(value=0.25, unit=ExecutionQuantityUnit.MT5_LOTS),
+        authorized_risk_amount=10.0,
+        expected_loss_at_stop=2.5,
+        quantity_risk_verified=True,
         entry=2000.0,
         stop_loss=1990.0,
         take_profit=2020.0,
@@ -73,7 +76,7 @@ class TestPrecedenceAndApproval:
 
     def test_emergency_stop_has_precedence_over_every_other_failure(self) -> None:
         decision = ExecutionPolicy.evaluate(
-            _intent(risk_approved=False, side="HOLD", volume=0),
+            _intent(risk_approved=False, side="HOLD", quantity=None),
             _context(emergency_stop=True, daily_loss_percent=99.0),
         )
         assert decision.allowed is False
@@ -165,7 +168,10 @@ class TestIntentValidation:
         values = {
             "symbol": "XAUUSD",
             "side": OrderSide.BUY,
-            "volume": 0.25,
+            "quantity": ExecutionQuantity(value=0.25, unit=ExecutionQuantityUnit.MT5_LOTS),
+            "authorized_risk_amount": 10.0,
+            "expected_loss_at_stop": 2.5,
+            "quantity_risk_verified": True,
             "entry": 2000.0,
             "stop_loss": 1990.0,
             "take_profit": 2020.0,
@@ -180,12 +186,18 @@ class TestIntentValidation:
     def test_invalid_direction_rejects(self, side: object) -> None:
         assert _code(_intent(side=side), _context()) is ExecutionDecisionCode.INVALID_DIRECTION
 
-    @pytest.mark.parametrize(
-        "volume",
-        [0.0, -0.01, float("nan"), float("inf"), float("-inf"), True, None, "0.25"],
-    )
-    def test_invalid_volume_rejects(self, volume: object) -> None:
-        assert _code(_intent(volume=volume), _context()) is ExecutionDecisionCode.INVALID_VOLUME
+    def test_missing_quantity_rejects(self) -> None:
+        assert _code(_intent(quantity=None), _context()) is ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY
+
+    def test_unverified_quantity_rejects(self) -> None:
+        assert _code(_intent(quantity_risk_verified=False), _context()) is ExecutionDecisionCode.UNVERIFIABLE_BROKER_RISK
+
+    def test_broker_unit_mismatch_rejects(self) -> None:
+        quantity = ExecutionQuantity(value=0.25, unit=ExecutionQuantityUnit.DERIV_STAKE)
+        assert _code(_intent(quantity=quantity), _context()) is ExecutionDecisionCode.BROKER_QUANTITY_MISMATCH
+
+    def test_expected_loss_cannot_exceed_authorized_risk(self) -> None:
+        assert _code(_intent(expected_loss_at_stop=10.01), _context()) is ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY
 
     @pytest.mark.parametrize("field", ["entry", "stop_loss", "take_profit"])
     @pytest.mark.parametrize(
@@ -389,14 +401,14 @@ class TestCompleteRejectionPrecedence:
                 ExecutionDecisionCode.SAFETY_CONTEXT_MISSING,
             ),
             (
-                _intent(side="HOLD", volume=0),
+                _intent(side="HOLD", quantity=None),
                 _context(),
                 ExecutionDecisionCode.INVALID_DIRECTION,
             ),
             (
-                _intent(volume=0, entry=0),
+                _intent(quantity=None, entry=0),
                 _context(),
-                ExecutionDecisionCode.INVALID_VOLUME,
+                ExecutionDecisionCode.INVALID_EXECUTION_QUANTITY,
             ),
             (
                 _intent(entry=0),

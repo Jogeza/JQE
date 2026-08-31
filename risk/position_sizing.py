@@ -7,7 +7,58 @@ fixed-lot overexposure.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit
 from core.logger import logger
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionSizingDecision:
+    """Auditable result of translating authorized cash risk into execution units."""
+
+    authorized_risk_amount: float
+    quantity: ExecutionQuantity | None
+    expected_loss_at_stop: float | None
+    risk_verifiable: bool
+    reason: str
+
+
+def authorize_execution_quantity(
+    *,
+    broker: str,
+    balance: float,
+    risk_percent: float,
+    entry: float,
+    stop_loss: float,
+) -> ExecutionSizingDecision:
+    """Authorize broker quantity only where repository semantics prove stop risk."""
+    authorized_risk = balance * (risk_percent / 100.0)
+    stop_distance = abs(entry - stop_loss)
+    if authorized_risk <= 0 or stop_distance <= 0:
+        return ExecutionSizingDecision(
+            authorized_risk, None, None, False, "Risk amount or stop distance is invalid"
+        )
+    if broker != "simulation":
+        return ExecutionSizingDecision(
+            authorized_risk,
+            None,
+            None,
+            False,
+            "Broker stop-risk conversion is not proven",
+        )
+    value = authorized_risk / stop_distance
+    expected_loss = value * stop_distance
+    return ExecutionSizingDecision(
+        authorized_risk_amount=authorized_risk,
+        quantity=ExecutionQuantity(
+            value=value,
+            unit=ExecutionQuantityUnit.SIMULATION_UNITS,
+        ),
+        expected_loss_at_stop=expected_loss,
+        risk_verifiable=expected_loss <= authorized_risk * (1.0 + 1e-12),
+        reason="Simulation assumes one account-currency unit per price-unit move",
+    )
 
 
 class PositionSizing:

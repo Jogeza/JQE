@@ -50,19 +50,19 @@ class TestApproveTrade:
             {"signal": "BUY", "confidence": 90}, _market_data(atr=2.0, spread=5.0)
         )
         assert decision["approved"] is True
-        assert decision["lot_size"] > 0
+        assert decision["authorized_risk_amount"] > 0
 
     def test_uses_provided_balance_for_position_sizing(self) -> None:
         small = approve_trade({"signal": "BUY", "confidence": 90}, _market_data(), balance=100)
         large = approve_trade({"signal": "BUY", "confidence": 90}, _market_data(), balance=100_000)
-        assert large["lot_size"] > small["lot_size"]
+        assert large["authorized_risk_amount"] > small["authorized_risk_amount"]
 
     def test_defaults_to_placeholder_balance_when_not_given(self) -> None:
         # Backward compatibility: omitting balance must not raise, and
         # should match calling with the documented default explicitly.
         implicit = approve_trade({"signal": "BUY", "confidence": 90}, _market_data())
         explicit = approve_trade({"signal": "BUY", "confidence": 90}, _market_data(), balance=50)
-        assert implicit["lot_size"] == explicit["lot_size"]
+        assert implicit["authorized_risk_amount"] == explicit["authorized_risk_amount"]
 
 
 class TestCalculatePositionSize:

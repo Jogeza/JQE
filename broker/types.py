@@ -68,6 +68,23 @@ class OrderType(str, Enum):
     MARKET = "MARKET"
 
 
+class ExecutionQuantityUnit(str, Enum):
+    """Explicit financial unit carried by a broker-bound order quantity."""
+
+    SIMULATION_UNITS = "SIMULATION_UNITS"
+    DERIV_STAKE = "DERIV_STAKE"
+    MT5_LOTS = "MT5_LOTS"
+
+
+class ExecutionQuantity(BaseModel):
+    """A positive finite broker-bound quantity with non-ambiguous units."""
+
+    model_config = {"frozen": True}
+
+    value: float = Field(gt=0, allow_inf_nan=False)
+    unit: ExecutionQuantityUnit
+
+
 class OrderStatus(str, Enum):
     """Outcome of a submitted order."""
 
@@ -130,10 +147,8 @@ class OrderRequest(BaseModel):
             caller uses (each gateway resolves it to the broker's
             native symbol internally).
         side: Direction of the order.
-        volume: Position size. Units are broker-specific (MT5 lots,
-            Deriv stake amount, ...) — callers targeting multiple
-            brokers must account for this until a unified sizing
-            concept exists (tracked for the Risk Engine milestone).
+        quantity: Explicit value and financial unit. Gateways reject units
+            that do not match their broker contract.
         order_type: Execution type. Only ``MARKET`` is currently
             supported.
         stop_loss: Absolute stop-loss price, if any.
@@ -145,11 +160,16 @@ class OrderRequest(BaseModel):
 
     symbol: str
     side: OrderSide
-    volume: float = Field(gt=0)
+    quantity: ExecutionQuantity
     order_type: OrderType = OrderType.MARKET
     stop_loss: float | None = None
     take_profit: float | None = None
     idempotency_key: str | None = None
+
+    @property
+    def volume(self) -> float:
+        """Numeric broker value for read-only compatibility and logging."""
+        return self.quantity.value
 
 
 class OrderResult(BaseModel):

@@ -10,6 +10,8 @@ import pytest
 
 import main
 from broker.types import (
+    ExecutionQuantity,
+    ExecutionQuantityUnit,
     AccountInfo,
     OrderResult,
     OrderSide,
@@ -111,7 +113,7 @@ def _pipeline_patches(gateway: MagicMock):
             "signal": "BUY", "confidence": 90, "intelligence": {"atr": 1.0},
         }),
         patch("main.approve_trade", return_value={
-            "approved": True, "reason": "ok", "risk_percent": 0.5, "lot_size": 1.0,
+            "approved": True, "reason": "ok", "risk_percent": 0.02, "authorized_risk_amount": 2.0,
         }),
         patch("main.TradePlanBuilder.build", return_value=_plan()),
     )
@@ -121,7 +123,7 @@ def _expected_key() -> str:
     return build_execution_idempotency_key(
         symbol="XAUUSD",
         side="BUY",
-        volume=1.0,
+        quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS),
         entry=101.0,
         stop_loss=99.0,
         take_profit=105.0,
@@ -358,12 +360,13 @@ async def test_store_initialization_failure_prevents_broker_submission() -> None
 
 def test_idempotency_key_is_deterministic_and_sensitive_to_intent() -> None:
     values = dict(
-        symbol=" xauusd ", side="buy", volume=1.0, entry=101.0, stop_loss=99.0,
+        symbol=" xauusd ", side="buy", quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), entry=101.0, stop_loss=99.0,
         take_profit=105.0, signal_time=pd.Timestamp("2026-08-29T12:00:00Z"),
     )
     first = build_execution_idempotency_key(**values)
     assert first == build_execution_idempotency_key(**values)
-    assert first != build_execution_idempotency_key(**{**values, "volume": 2.0})
+    assert first != build_execution_idempotency_key(**{**values, "quantity": ExecutionQuantity(value=2.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS)})
+    assert first != build_execution_idempotency_key(**{**values, "quantity": ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.DERIV_STAKE)})
 
 
 @pytest.mark.asyncio

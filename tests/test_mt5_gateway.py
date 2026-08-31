@@ -221,7 +221,7 @@ class TestSubmitOrder:
         gateway._market_data = MagicMock()
         gateway._market_data.resolve_symbol.return_value = None
         with pytest.raises(ExecutionError):
-            await gateway.submit_order(OrderRequest(symbol="NOPE", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="NOPE", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -236,7 +236,7 @@ class TestSubmitOrder:
         mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=555, price=2000.5)
 
         result = await gateway.submit_order(
-            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"})
         )
         assert result.status is OrderStatus.FILLED
         assert result.order_id == "555"
@@ -256,7 +256,7 @@ class TestSubmitOrder:
         mock_mt5.order_send.return_value = MagicMock(retcode=10004, order=None, price=None)
 
         result = await gateway.submit_order(
-            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1)
+            OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"})
         )
         assert result.status is OrderStatus.REJECTED
 
@@ -273,7 +273,7 @@ class TestSubmitOrder:
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
         mock_mt5.order_send.return_value = None
         with pytest.raises(ExecutionError, match="outcome is indeterminate"):
-            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
     @patch("broker.mt5_gateway.mt5")
     async def test_strict_gateway_rechecks_readiness_before_submission(
@@ -284,7 +284,7 @@ class TestSubmitOrder:
         mock_mt5.account_info.return_value = None
         mock_mt5.terminal_info.return_value = None
         with pytest.raises(BrokerConnectionError, match="pre-submit readiness"):
-            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
         mock_mt5.order_send.assert_not_called()
 
     @patch("broker.mt5_gateway.mt5")
@@ -298,7 +298,7 @@ class TestSubmitOrder:
         mock_mt5.symbol_select.return_value = False
 
         with pytest.raises(MarketDataError, match="Unable to select MT5 symbol"):
-            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -312,7 +312,7 @@ class TestSubmitOrder:
         mock_mt5.symbol_info.return_value = None
 
         with pytest.raises(MarketDataError, match="Unable to retrieve symbol info"):
-            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -327,7 +327,7 @@ class TestSubmitOrder:
         mock_mt5.symbol_info_tick.return_value = None
 
         with pytest.raises(MarketDataError, match="No tick data available"):
-            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, volume=0.1))
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -350,7 +350,7 @@ class TestSubmitOrder:
             OrderRequest(
                 symbol="XAUUSD",
                 side=OrderSide.BUY,
-                volume=0.1,
+                quantity={"value": 0.1, "unit": "MT5_LOTS"},
                 stop_loss=1998.0,
                 take_profit=2002.0,
             )
