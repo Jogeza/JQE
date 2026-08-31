@@ -218,6 +218,31 @@ proof metadata cannot authorize quantity.
 No runtime broker discovery is performed. Simulation sizing is
 unchanged, MT5 remains disabled, and Deriv submission enablement is unchanged.
 
+Deriv source provenance is represented by a separate, immutable offline
+evidence package. It records versioned source identity, publisher, recording
+date, a deterministic `sha256:<hex>` content identity, explicitly typed claims,
+claim applicability, and `UNREVIEWED`, `REVIEWED`, or `REJECTED` review state.
+The repository contains no production Deriv evidence artifacts or invented
+broker claims; examples exist only as unmistakable offline test fixtures.
+Evidence processing constructs no gateway and performs no network discovery.
+
+The authority chain has intentionally separate gates:
+
+```text
+source material
+  → evidence artifact
+  → reviewed claims
+  → independent proof review
+  → authoritative proof registry
+  → quantity capability
+  → execution quantity
+```
+
+Artifact presence, claim matching, and evidence review do not construct a
+`DerivLossModelProof`, populate its authoritative registry, or enable quantity.
+The current Deriv state is therefore: evidence may be recorded offline, proof
+is absent, capability is false, and quantity remains unavailable.
+
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
 `loss = SIMULATION_UNITS × price distance`, with conservative downward
