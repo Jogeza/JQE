@@ -57,6 +57,9 @@ class Settings(BaseSettings):
             demo app ID (``"1089"``, used throughout their own docs) —
             register your own for anything beyond development.
         deriv_endpoint: Deriv WebSocket endpoint URL.
+        deriv_expected_environment: Expected Deriv account environment
+            (``"demo"`` or ``"real"``). Used by the demo authentication
+            harness (``tools/deriv_demo_auth.py``) as a pre-flight check.
         default_symbol: Instrument symbol used when none is explicitly
             supplied to the trading pipeline.
         default_timeframe: MT5 timeframe name (e.g. ``"M5"``, ``"H1"``)
@@ -119,8 +122,6 @@ class Settings(BaseSettings):
     deriv_endpoint: str = "wss://ws.derivws.com/websockets/v3"
     deriv_options_account_id: str | None = None
     deriv_expected_environment: Literal["demo", "real"] | None = None
-    deriv_demo_execution_enabled: bool = False
-    deriv_approved_symbols: frozenset[str] = frozenset()
 
     default_symbol: str = "XAUUSD"
     default_timeframe: str = "M5"

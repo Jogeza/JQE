@@ -137,3 +137,52 @@ class TestGetSettingsCaching:
         get_settings.cache_clear()
         second = get_settings()
         assert first is not second
+
+
+class TestObsoleteDerivSelectors:
+    """Obsolete Deriv execution selector env vars must be inert.
+
+    ``deriv_demo_execution_enabled`` and ``deriv_approved_symbols`` were
+    removed because they had zero production consumers. The pydantic-settings
+    ``extra='ignore'`` policy means any env var that no longer maps to a
+    field is silently discarded — no validation error, no effect on runtime.
+    The application execution boundary (``main.py``: broker != 'simulation'
+    raises) remains independent of these settings.
+    """
+
+    def test_obsolete_demo_execution_env_var_is_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """JQE_DERIV_DEMO_EXECUTION_ENABLED no longer maps to any field."""
+        monkeypatch.setenv("JQE_DERIV_DEMO_EXECUTION_ENABLED", "true")
+        settings = Settings(_env_file=None)
+        assert not hasattr(settings, "deriv_demo_execution_enabled")
+
+    def test_obsolete_approved_symbols_env_var_is_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """JQE_DERIV_APPROVED_SYMBOLS no longer maps to any field."""
+        monkeypatch.setenv("JQE_DERIV_APPROVED_SYMBOLS", "XAUUSD,EURUSD")
+        settings = Settings(_env_file=None)
+        assert not hasattr(settings, "deriv_approved_symbols")
+
+    def test_execution_boundary_is_simulation_only_regardless_of_deriv_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The broker guard in main.py is independent of Deriv configuration.
+
+        Even with a Deriv API token and options account configured, the
+        settings framework alone cannot enable live execution — that is
+        enforced unconditionally by the ``settings.broker != 'simulation'``
+        check at the top of ``main.run()``.
+        """
+        monkeypatch.setenv("JQE_BROKER", "simulation")
+        monkeypatch.setenv("JQE_DERIV_API_TOKEN", "fake-token")
+        monkeypatch.setenv("JQE_DERIV_OPTIONS_ACCOUNT_ID", "DOT12345")
+        monkeypatch.setenv("JQE_DERIV_EXPECTED_ENVIRONMENT", "demo")
+        # Obsolete vars are present but must be inert.
+        monkeypatch.setenv("JQE_DERIV_DEMO_EXECUTION_ENABLED", "true")
+        monkeypatch.setenv("JQE_DERIV_APPROVED_SYMBOLS", "XAUUSD")
+        settings = Settings(_env_file=None)
+        # Broker is still simulation — execution boundary holds.
+        assert settings.broker == "simulation"
