@@ -232,8 +232,9 @@ The authority chain has intentionally separate gates:
 source material
   → evidence artifact
   → evidence claims
-  → evidence review decision
-  → independent proof review
+  → advisory evidence-review decision
+  → non-authoritative proof-review assessment
+  → separate authoritative proof-registration process
   → authoritative proof registry
   → quantity capability
   → execution quantity
@@ -249,6 +250,17 @@ so changed evidence invalidates an earlier decision. The current Deriv state is
 therefore: evidence provenance and advisory review decisions are supported,
 authoritative proof is absent, capability is false, and quantity remains
 unavailable.
+
+`READY_FOR_AUTHORITATIVE_PROOF_REVIEW` is also advisory. It means only that a
+content-bound, currently valid `APPROVED_FOR_PROOF_REVIEW` package appears
+internally consistent and applicable enough to enter a separate authority-
+granting review process. The assessment revalidates the underlying advisory
+decision against current evidence and becomes invalid if artifact hashes,
+claim identities, decision identity, or applicability change. It neither
+constructs nor registers `DerivLossModelProof`. Production therefore supports
+evidence provenance, advisory review, and non-authoritative proof-review
+assessment while authoritative proof remains absent, capability false, and
+quantity unavailable.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
