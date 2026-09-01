@@ -231,7 +231,8 @@ The authority chain has intentionally separate gates:
 ```text
 source material
   → evidence artifact
-  → reviewed claims
+  → evidence claims
+  → evidence review decision
   → independent proof review
   → authoritative proof registry
   → quantity capability
@@ -240,8 +241,14 @@ source material
 
 Artifact presence, claim matching, and evidence review do not construct a
 `DerivLossModelProof`, populate its authoritative registry, or enable quantity.
-The current Deriv state is therefore: evidence may be recorded offline, proof
-is absent, capability is false, and quantity remains unavailable.
+An `APPROVED_FOR_PROOF_REVIEW` decision means only that an exact, content-bound
+offline evidence set may proceed to a separate proof-review step; it is not
+proof approval or financial verification. Decisions are bound to artifact IDs,
+SHA-256 content identities, claim IDs, review states, and applicability scope,
+so changed evidence invalidates an earlier decision. The current Deriv state is
+therefore: evidence provenance and advisory review decisions are supported,
+authoritative proof is absent, capability is false, and quantity remains
+unavailable.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is

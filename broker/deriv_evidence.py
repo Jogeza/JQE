@@ -56,11 +56,19 @@ class DerivEvidenceApplicability:
     symbol: str | None = None
     account_currency: str | None = None
     environment: str | None = None
+    quantity_basis: str | None = None
+    stop_loss_semantic_id: str | None = None
+    multiplier_semantics_id: str | None = None
+    symbol_capability_scope: str | None = None
 
     def __post_init__(self) -> None:
         if _required_text("broker", self.broker).lower() != "deriv":
             raise ValueError("broker must identify Deriv")
-        for name in ("contract_family", "symbol", "account_currency", "environment"):
+        for name in (
+            "contract_family", "symbol", "account_currency", "environment",
+            "quantity_basis", "stop_loss_semantic_id", "multiplier_semantics_id",
+            "symbol_capability_scope",
+        ):
             _optional_text(name, getattr(self, name))
 
 
