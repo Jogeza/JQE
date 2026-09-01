@@ -43,6 +43,11 @@ Thumbs.db
 # Local market data
 data/storage/symbols/
 
+# Local durable execution state
+state/*.sqlite3
+state/*.sqlite3-shm
+state/*.sqlite3-wal
+
 # Python cache
 __pycache__/
 *.py[cod]

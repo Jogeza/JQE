@@ -13,13 +13,23 @@ from risk.risk_controller import _default_engine
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
-def _reset_risk_engine():
+def _reset_risk_engine(tmp_path):
     """Ensure tests start with clean limits."""
+    original_paths = (
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+    )
+    settings.intent_store_path = tmp_path / "intents.sqlite3"
+    settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     _default_engine.reset_daily_stats()
     _default_engine.max_trades_daily = 3
     _default_engine.max_daily_loss = 2.0
     yield
     _default_engine.reset_daily_stats()
+    (
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+    ) = original_paths
 
 
 @pytest.fixture
