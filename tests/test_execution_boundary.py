@@ -23,7 +23,6 @@ APPLICATION_ROOTS = (
 )
 ALLOWED_DIRECT_SUBMIT_MODULES = frozenset(
     {
-        "main.py",                 # Explicitly Simulation-only direct compatibility path.
         "execution/executor.py",  # Canonical durable application submission boundary.
     }
 )
@@ -72,6 +71,10 @@ def test_guard_detects_an_unauthorized_direct_submit_order_call(tmp_path: Path) 
 def test_guard_accepts_current_explicit_boundaries() -> None:
     for relative_path in ALLOWED_DIRECT_SUBMIT_MODULES:
         assert _direct_submit_order_calls(REPOSITORY_ROOT / relative_path)
+
+
+def test_main_has_no_direct_submission_bypass() -> None:
+    assert _direct_submit_order_calls(REPOSITORY_ROOT / "main.py") == ()
 
 
 def test_legacy_order_manager_submission_boundary_is_removed() -> None:

@@ -15,8 +15,37 @@ import pandas as pd
 import pytest
 
 import main
-from broker.types import AccountInfo, OrderResult, OrderSide, OrderStatus
+from broker.types import (
+    AccountInfo,
+    OrderResult,
+    OrderSide,
+    OrderStatus,
+    TradeHistoryCompleteness,
+    TradeHistorySnapshot,
+)
+from config import EmergencyStopState, settings
 from core.exceptions import MarketDataError
+
+
+@pytest.fixture(autouse=True)
+def _durable_simulation_settings(tmp_path):
+    original = (
+        settings.broker,
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+        settings.emergency_stop,
+    )
+    settings.broker = "simulation"
+    settings.intent_store_path = tmp_path / "intents.sqlite3"
+    settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
+    settings.emergency_stop = EmergencyStopState.CLEAR
+    yield
+    (
+        settings.broker,
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+        settings.emergency_stop,
+    ) = original
 
 
 def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
@@ -26,9 +55,18 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
     gateway.__aexit__ = AsyncMock(return_value=None)
     gateway.get_candles = AsyncMock(return_value=candles)
     gateway.get_account_info = AsyncMock(
-        return_value=AccountInfo(account_id="TEST", balance=balance, currency="USD")
+        return_value=AccountInfo(account_id="SIMULATED", balance=balance, currency="USD")
     )
     gateway.get_trade_history = AsyncMock(return_value=[])
+    async def complete_history(*, start, end, count):
+        return TradeHistorySnapshot(
+            trades=[],
+            completeness=TradeHistoryCompleteness.COMPLETE,
+            coverage_start=start,
+            coverage_end=end,
+        )
+    gateway.get_trade_history_snapshot = AsyncMock(side_effect=complete_history)
+    gateway.get_positions = AsyncMock(return_value=[])
     gateway.submit_order = AsyncMock(
         return_value=OrderResult(
             order_id="TEST-1",
@@ -46,10 +84,10 @@ def _valid_candle() -> MagicMock:
     candle = MagicMock()
     candle.model_dump.return_value = {
         "time": pd.Timestamp.now(),
-        "open": 1.0,
-        "high": 1.0,
-        "low": 1.0,
-        "close": 1.0,
+        "open": 100.0,
+        "high": 102.0,
+        "low": 99.0,
+        "close": 101.0,
         "volume": 1.0,
         "ATR_14": 1.0,
     }
@@ -120,12 +158,13 @@ class TestRunSignalRiskExecution:
             "approved": True,
             "reason": "ok",
             "risk_percent": 0.5,
+            "authorized_risk_amount": 5.0,
             "lot_size": 0.05,
         }
 
         await main.run()
 
-        gateway.get_account_info.assert_awaited_once()
+        assert gateway.get_account_info.await_count == 2
         gateway.submit_order.assert_awaited_once()
         submitted_order = gateway.submit_order.call_args[0][0]
         assert submitted_order.symbol == "XAUUSD"

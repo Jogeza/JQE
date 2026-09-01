@@ -12,7 +12,29 @@ import pandas as pd
 import main
 from broker.simulation_gateway import SimulationGateway
 from broker.types import Candle, OrderSide, OrderStatus, Timeframe
-from config import settings
+from config import EmergencyStopState, settings
+
+
+@pytest.fixture(autouse=True)
+def _isolated_execution_state(tmp_path):
+    original = (
+        settings.broker,
+        settings.default_candle_count,
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+        settings.emergency_stop,
+    )
+    settings.intent_store_path = tmp_path / "intents.sqlite3"
+    settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
+    settings.emergency_stop = EmergencyStopState.CLEAR
+    yield
+    (
+        settings.broker,
+        settings.default_candle_count,
+        settings.intent_store_path,
+        settings.execution_safety_store_path,
+        settings.emergency_stop,
+    ) = original
 
 
 def _generate_uptrend_candles(count: int) -> list[Candle]:

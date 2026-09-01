@@ -38,14 +38,12 @@ from execution.safety import (
 def _restore_execution_settings(tmp_path):
     original = (
         settings.broker,
-        settings.use_durable_executor,
         settings.intent_store_path,
         settings.environment,
         settings.emergency_stop,
         settings.execution_safety_store_path,
     )
     settings.broker = "simulation"
-    settings.use_durable_executor = False
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.environment = "development"
     settings.emergency_stop = EmergencyStopState.CLEAR
@@ -53,7 +51,6 @@ def _restore_execution_settings(tmp_path):
     yield
     (
         settings.broker,
-        settings.use_durable_executor,
         settings.intent_store_path,
         settings.environment,
         settings.emergency_stop,
@@ -158,23 +155,26 @@ def _persist_record(
 
 
 @pytest.mark.asyncio
-async def test_default_setting_preserves_direct_submission_path() -> None:
-    assert Settings(_env_file=None).use_durable_executor is False
+async def test_obsolete_durable_switch_cannot_restore_direct_submission_path() -> None:
+    assert not hasattr(Settings(_env_file=None), "use_durable_executor")
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
+    executor = MagicMock()
+    executor.submit = AsyncMock(return_value=SimpleNamespace(
+        state="accepted", decision=SimpleNamespace(allowed=True, code=ExecutionDecisionCode.ALLOWED)
+    ))
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
-        "main.AsyncTradeExecutor"
-    ) as executor:
+        "main.AsyncTradeExecutor", return_value=executor
+    ):
         await main.run()
-    gateway.submit_order.assert_awaited_once()
-    executor.assert_not_called()
+    gateway.submit_order.assert_not_awaited()
+    executor.submit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("broker", ["deriv", "mt5"])
 async def test_direct_real_broker_is_rejected_before_gateway_creation(broker: str) -> None:
     settings.broker = broker
-    settings.use_durable_executor = False
     with patch("main.get_gateway") as get_gateway:
         with pytest.raises(ConfigurationError, match="simulation only"):
             await main.run()
@@ -183,7 +183,6 @@ async def test_direct_real_broker_is_rejected_before_gateway_creation(broker: st
 
 @pytest.mark.asyncio
 async def test_enabled_simulation_uses_durable_executor_with_explicit_authorization() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
     store.list_unresolved.return_value = ()
@@ -227,7 +226,6 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
 
 @pytest.mark.asyncio
 async def test_durable_blocked_risk_publishes_fresh_no_quantity_observation() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
@@ -253,7 +251,6 @@ async def test_durable_blocked_risk_publishes_fresh_no_quantity_observation() ->
 
 @pytest.mark.asyncio
 async def test_failed_new_cycle_invalidates_previous_authorized_risk_observation() -> None:
-    settings.use_durable_executor = True
     first_gateway = _gateway()
     first_patches = _pipeline_patches(first_gateway)
     with (
@@ -287,7 +284,6 @@ async def test_failed_new_cycle_invalidates_previous_authorized_risk_observation
 async def test_non_clear_emergency_stop_blocks_durable_simulation_submission(
     stop_state: EmergencyStopState,
 ) -> None:
-    settings.use_durable_executor = True
     settings.emergency_stop = stop_state
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
@@ -308,7 +304,6 @@ async def test_non_clear_emergency_stop_blocks_durable_simulation_submission(
 
 @pytest.mark.asyncio
 async def test_pre_submit_safety_publication_failure_prevents_submission() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     safety_store = MagicMock()
     safety_store.publish.side_effect = [None, OSError("safety publication failed")]
@@ -323,7 +318,6 @@ async def test_pre_submit_safety_publication_failure_prevents_submission() -> No
 
 @pytest.mark.asyncio
 async def test_terminal_safety_publication_failure_leaves_submission_in_progress() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     real_store = SQLiteExecutionSafetyStore(
         settings.execution_safety_store_path, initialize=True
@@ -366,7 +360,6 @@ async def test_terminal_safety_publication_failure_leaves_submission_in_progress
 async def test_unproven_daily_history_blocks_durable_submission(
     snapshot: TradeHistorySnapshot,
 ) -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     gateway.get_trade_history_snapshot.return_value = snapshot
     gateway.get_trade_history_snapshot.side_effect = None
@@ -384,7 +377,6 @@ async def test_unproven_daily_history_blocks_durable_submission(
 
 @pytest.mark.asyncio
 async def test_unavailable_daily_history_fails_closed_before_submission() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     gateway.get_trade_history_snapshot.side_effect = RuntimeError("history unavailable")
     patches = _pipeline_patches(gateway)
@@ -395,27 +387,19 @@ async def test_unavailable_daily_history_fails_closed_before_submission() -> Non
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "broker,message",
-    [
-        ("deriv", "Deriv DEMO execution is not enabled"),
-        ("mt5", "simulation and Deriv DEMO only"),
-    ],
-)
+@pytest.mark.parametrize("broker", ["deriv", "mt5"])
 async def test_unauthorized_durable_execution_fails_before_gateway_creation(
-    broker: str, message: str
+    broker: str,
 ) -> None:
-    settings.use_durable_executor = True
     settings.broker = broker
     with patch("main.get_gateway") as get_gateway:
-        with pytest.raises(Exception, match=message):
+        with pytest.raises(Exception, match="simulation only"):
             await main.run()
     get_gateway.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_store_initialization_failure_prevents_broker_submission() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patch(
@@ -439,7 +423,6 @@ def test_idempotency_key_is_deterministic_and_sensitive_to_intent() -> None:
 
 @pytest.mark.asyncio
 async def test_complete_durable_path_preserves_key_and_blocks_duplicate() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
@@ -457,7 +440,6 @@ async def test_complete_durable_path_preserves_key_and_blocks_duplicate() -> Non
 
 @pytest.mark.asyncio
 async def test_allowed_policy_is_published_before_durable_submission() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
@@ -473,7 +455,6 @@ async def test_allowed_policy_is_published_before_durable_submission() -> None:
 
 @pytest.mark.asyncio
 async def test_held_execution_reservation_is_published_as_blocked() -> None:
-    settings.use_durable_executor = True
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     assert store.acquire_reservation(
         "SIMULATED", "other-process", 120, "other-key"
@@ -494,7 +475,6 @@ async def test_held_execution_reservation_is_published_as_blocked() -> None:
 
 @pytest.mark.asyncio
 async def test_reconciliation_exit_before_pre_submit_remains_not_evaluated() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
     store.list_unresolved.return_value = ()
@@ -523,7 +503,6 @@ async def test_reconciliation_exit_before_pre_submit_remains_not_evaluated() -> 
 
 @pytest.mark.asyncio
 async def test_durable_claim_failure_after_pre_submit_publishes_unknown() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
     store.recovery_mode = False
@@ -566,7 +545,6 @@ async def test_durable_claim_failure_after_pre_submit_publishes_unknown() -> Non
 async def test_terminal_broker_results_publish_fail_closed_state(
     broker_result, expected_authorization, expected_reason
 ) -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     gateway.submit_order.return_value = broker_result
     patches = _pipeline_patches(gateway)
@@ -583,7 +561,6 @@ async def test_terminal_broker_results_publish_fail_closed_state(
 
 @pytest.mark.asyncio
 async def test_durable_terminal_persistence_failure_publishes_unknown() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
     store.recovery_mode = False
@@ -610,7 +587,6 @@ async def test_durable_terminal_persistence_failure_publishes_unknown() -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     gateway.submit_order.side_effect = TimeoutError("outcome unknown")
     patches = _pipeline_patches(gateway)
@@ -640,7 +616,6 @@ async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None
 
 @pytest.mark.asyncio
 async def test_broker_open_same_symbol_position_blocks_durable_submission() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     gateway.get_positions.return_value = [
         Position(
@@ -665,7 +640,6 @@ async def test_broker_open_same_symbol_position_blocks_durable_submission() -> N
 async def test_terminal_record_survives_restart_without_resubmission(
     status: IntentRecordStatus, order_id: str | None
 ) -> None:
-    settings.use_durable_executor = True
     _persist_record(status, order_id=order_id)
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
@@ -685,7 +659,6 @@ async def test_terminal_record_survives_restart_without_resubmission(
 async def test_unresolved_record_blocks_startup_without_reconciliation(
     prior_status: IntentRecordStatus,
 ) -> None:
-    settings.use_durable_executor = True
     _persist_record(prior_status, order_id="SIM-prior")
     gateway = _gateway()
     gateway.get_positions.return_value = [
@@ -720,7 +693,6 @@ async def test_unresolved_record_blocks_startup_without_reconciliation(
 async def test_unresolved_record_without_evidence_remains_unchanged(
     prior_status: IntentRecordStatus,
 ) -> None:
-    settings.use_durable_executor = True
     _persist_record(prior_status)
     gateway = _gateway()
     gateway.get_positions.return_value = [
@@ -744,7 +716,6 @@ async def test_unresolved_record_without_evidence_remains_unchanged(
 
 @pytest.mark.asyncio
 async def test_recovery_store_read_failure_fails_closed() -> None:
-    settings.use_durable_executor = True
     gateway = _gateway()
     store = MagicMock()
     store.list_unresolved.return_value = ()
@@ -761,7 +732,6 @@ async def test_recovery_store_read_failure_fails_closed() -> None:
 
 @pytest.mark.asyncio
 async def test_unresolved_record_blocks_before_reconciliation_gateway_calls() -> None:
-    settings.use_durable_executor = True
     _persist_record(IntentRecordStatus.UNKNOWN)
     gateway = _gateway()
     gateway.get_positions.side_effect = [[], RuntimeError("reconciliation unavailable")]
@@ -783,7 +753,6 @@ async def test_unresolved_record_blocks_before_reconciliation_gateway_calls() ->
 async def test_unrelated_terminal_records_do_not_block_new_durable_intent(
     status: IntentRecordStatus,
 ) -> None:
-    settings.use_durable_executor = True
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     assert store.try_claim(IntentRecord("terminal-old", status)) is ClaimState.CLAIMED
     gateway = _gateway()
@@ -795,7 +764,6 @@ async def test_unrelated_terminal_records_do_not_block_new_durable_intent(
 
 @pytest.mark.asyncio
 async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order() -> None:
-    settings.use_durable_executor = True
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     records = (
         IntentRecord("pending-first", IntentRecordStatus.PENDING),
@@ -817,7 +785,6 @@ async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order
 
 @pytest.mark.asyncio
 async def test_startup_continues_after_all_unresolved_intents_are_proven_accepted() -> None:
-    settings.use_durable_executor = True
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     record = IntentRecord(
         idempotency_key=_expected_key(),

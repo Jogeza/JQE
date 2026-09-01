@@ -94,7 +94,10 @@ def test_settings() -> Settings:
 
 
 @pytest.fixture
-def sim_service(test_settings: Settings) -> ApplicationService:
+def sim_service(test_settings: Settings, tmp_path, monkeypatch) -> ApplicationService:
+    monkeypatch.setattr(
+        settings, "execution_safety_store_path", tmp_path / "execution-safety.sqlite3"
+    )
     gateway = SimulationGateway(starting_balance=100.0)
     return ApplicationService(gateway=gateway)
 

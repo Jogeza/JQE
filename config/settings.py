@@ -141,7 +141,6 @@ class Settings(BaseSettings):
 
     cache_dir: Path = Path("cache")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
-    use_durable_executor: bool = False
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)

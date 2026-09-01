@@ -62,6 +62,13 @@ class TestSettingsEnvOverrides:
         settings = Settings(_env_file=None)
         assert settings.default_symbol == "GBPUSD"
 
+    def test_obsolete_durable_executor_switch_is_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("JQE_USE_DURABLE_EXECUTOR", "false")
+        settings = Settings(_env_file=None)
+        assert not hasattr(settings, "use_durable_executor")
+
     def test_log_level_is_normalized_to_uppercase(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("JQE_LOG_LEVEL", "debug")
         settings = Settings(_env_file=None)
