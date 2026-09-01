@@ -231,11 +231,11 @@ The authority chain has intentionally separate gates:
 ```text
 source material
   → evidence artifact
-  → evidence claims
+  → advisory financial-semantic claim
   → advisory evidence-review decision
   → non-authoritative proof-review assessment
-  → non-authoritative candidate proof material
-  → independent verification decision
+  → non-authoritative candidate with exact financial semantics
+  → independent semantic verification decision
   → registration eligibility validation
   → explicit registry admission validation
   → immutable isolated registry admission record/state
@@ -335,6 +335,36 @@ units, contract count, or volume. `stop_risk_authorizable` remains false and
 Deriv quantity remains `None`. The next checkpoint is broker-neutral
 risk-budget-to-quantity derivation only after authoritative financial loss
 semantics are proven; production readiness is not implied.
+
+Financial-semantics governance now defines a strict immutable declarative
+contract for a future authoritative Deriv loss model. The contract uses a
+closed equation-family enum, ordered named operands, closed financial units,
+roles and Decimal domain bounds, an explicit output meaning and currency
+binding, exact applicability, and an explicit Decimal-compatible rounding
+policy. It contains no executable expression, evaluator, script, AST, dynamic
+import, or code-generation facility.
+
+The complete semantic value object and its deterministic canonical SHA-256
+identity travel through the advisory decision, proof assessment, candidate,
+independent verification, admission request, immutable registry entry, and
+proof-consumption request. Semantic-aware candidate material hashes must equal
+the canonical semantic hash. Changing an equation identity, operand meaning or
+order, unit, output, currency, domain, rounding, quantity basis, stop or
+multiplier semantics, contract family, symbol, or environment changes authority
+identity and invalidates stale verification.
+
+The only modeled equation family is exercised by a deliberately synthetic,
+offline, test-only governance fixture. It is not Deriv evidence, is never put
+in canonical production state, and is not executed. No production Deriv
+financial equation has been independently proven. The canonical registry
+therefore remains empty, production proof and monetary loss remain unavailable,
+and the loss evaluator remains fail-closed. There is still no sizing, quantity,
+risk authorization, execution authorization, gateway access, or broker
+submission authority.
+
+Only after independently reviewed production evidence defines and verifies an
+exact semantic specification should JQE implement its corresponding closed,
+typed financial equation evaluator. Quantity sizing is not the next boundary.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is

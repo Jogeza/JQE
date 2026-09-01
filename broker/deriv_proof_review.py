@@ -14,6 +14,7 @@ from broker.deriv_evidence_review import (
     DerivEvidenceReviewDecision,
     validate_deriv_evidence_review,
 )
+from broker.deriv_financial_semantics import DerivFinancialSemanticsSpecification
 
 
 DERIV_PROOF_REVIEW_SCHEMA_VERSION = 1
@@ -59,6 +60,7 @@ class DerivProofReviewAssessment:
     reviewed_at: datetime
     applicability: DerivEvidenceApplicability
     rationale: str | None = None
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int:
@@ -69,6 +71,15 @@ class DerivProofReviewAssessment:
             _required_text(name, getattr(self, name))
         if self.rationale is not None:
             _required_text("rationale", self.rationale)
+        if self.financial_semantics is not None and not isinstance(
+            self.financial_semantics, DerivFinancialSemanticsSpecification
+        ):
+            raise ValueError("financial_semantics is invalid")
+        if (
+            self.financial_semantics is not None
+            and self.financial_semantics.applicability != self.applicability
+        ):
+            raise ValueError("financial semantics applicability is inconsistent")
         if type(self.artifact_ids) is not tuple or any(
             type(value) is not str or not value.strip() for value in self.artifact_ids
         ):
@@ -147,6 +158,8 @@ def validate_deriv_proof_review_assessment(
         reasons.add(DerivProofReviewReason.CLAIM_SET_MISMATCH)
     if assessment.applicability != review_decision.applicability:
         reasons.add(DerivProofReviewReason.APPLICABILITY_MISMATCH)
+    if assessment.financial_semantics != review_decision.financial_semantics:
+        reasons.add(DerivProofReviewReason.EVIDENCE_IDENTITY_MISMATCH)
 
     decision_validation = validate_deriv_evidence_review(
         review_decision, evidence_registry

@@ -18,6 +18,7 @@ from broker.deriv_evidence_review import (
     DerivEvidenceDecisionState,
     DerivEvidenceReviewDecision,
 )
+from broker.deriv_financial_semantics import DerivFinancialSemanticsSpecification
 from broker.deriv_proof_review import (
     DerivProofReviewAssessment,
     DerivProofReviewState,
@@ -96,6 +97,7 @@ class DerivAuthoritativeProofCandidate:
     artifact_content_hashes: tuple[str, ...]
     claim_ids: tuple[str, ...]
     applicability: DerivEvidenceApplicability
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version)
@@ -123,6 +125,14 @@ class DerivAuthoritativeProofCandidate:
         if not self.claim_ids:
             raise ValueError("candidate requires at least one claim")
         _validate_applicability(self.applicability)
+        if self.financial_semantics is not None and (
+            not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
+            or self.financial_semantics.applicability != self.applicability
+            or self.financial_semantics.semantic_id != self.loss_model_id
+            or self.financial_semantics.semantic_version != self.loss_model_version
+            or self.financial_semantics.material_hash != self.candidate_material_hash
+        ):
+            raise ValueError("candidate financial semantics are inconsistent")
 
 
 class DerivIndependentVerificationState(str, Enum):
@@ -159,6 +169,7 @@ class DerivIndependentVerificationDecision:
     verifier_id: str
     verified_at: datetime
     rationale: str | None = None
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version)
@@ -211,6 +222,14 @@ class DerivIndependentVerificationDecision:
         if self.reason_codes != expected_reasons[self.state]:
             raise ValueError("reason_codes do not match verification state")
         _validate_timestamp("verified_at", self.verified_at)
+        if self.financial_semantics is not None and (
+            not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
+            or self.financial_semantics.applicability != self.applicability
+            or self.financial_semantics.semantic_id != self.loss_model_id
+            or self.financial_semantics.semantic_version != self.loss_model_version
+            or self.financial_semantics.material_hash != self.candidate_material_hash
+        ):
+            raise ValueError("verification financial semantics are inconsistent")
 
 
 class DerivGovernanceRevocationTarget(str, Enum):
@@ -276,6 +295,15 @@ class DerivProofRegistrationReason(str, Enum):
     CANDIDATE_REVOKED = "CANDIDATE_REVOKED"
     INDEPENDENT_VERIFICATION_REVOKED = "INDEPENDENT_VERIFICATION_REVOKED"
     REVOCATION_RECORD_CONFLICT = "REVOCATION_RECORD_CONFLICT"
+    FINANCIAL_SEMANTICS_MISSING = "FINANCIAL_SEMANTICS_MISSING"
+    SEMANTIC_ID_MISMATCH = "SEMANTIC_ID_MISMATCH"
+    SEMANTIC_VERSION_MISMATCH = "SEMANTIC_VERSION_MISMATCH"
+    EQUATION_IDENTITY_MISMATCH = "EQUATION_IDENTITY_MISMATCH"
+    OPERAND_SCHEMA_MISMATCH = "OPERAND_SCHEMA_MISMATCH"
+    UNIT_SCHEMA_MISMATCH = "UNIT_SCHEMA_MISMATCH"
+    OUTPUT_SEMANTIC_MISMATCH = "OUTPUT_SEMANTIC_MISMATCH"
+    DOMAIN_MISMATCH = "DOMAIN_MISMATCH"
+    ROUNDING_POLICY_MISMATCH = "ROUNDING_POLICY_MISMATCH"
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +331,58 @@ class DerivProofRegistrationEligibility:
     @property
     def eligible(self) -> bool:
         return self.state is DerivProofRegistrationEligibilityState.ELIGIBLE_FOR_REGISTRATION
+
+
+def _semantic_mismatch_reasons(left, right) -> set[DerivProofRegistrationReason]:
+    if left == right:
+        return set()
+    if left is None or right is None:
+        return {DerivProofRegistrationReason.FINANCIAL_SEMANTICS_MISSING}
+    reasons: set[DerivProofRegistrationReason] = set()
+    if left.semantic_id != right.semantic_id:
+        reasons.add(DerivProofRegistrationReason.SEMANTIC_ID_MISMATCH)
+    if left.semantic_version != right.semantic_version:
+        reasons.add(DerivProofRegistrationReason.SEMANTIC_VERSION_MISMATCH)
+    if (
+        left.equation_family != right.equation_family
+        or left.equation_identity_hash != right.equation_identity_hash
+    ):
+        reasons.add(DerivProofRegistrationReason.EQUATION_IDENTITY_MISMATCH)
+    if tuple(
+        (item.operand_id, item.semantic_id, item.role, item.position, item.required)
+        for item in left.operands
+    ) != tuple(
+        (item.operand_id, item.semantic_id, item.role, item.position, item.required)
+        for item in right.operands
+    ):
+        reasons.add(DerivProofRegistrationReason.OPERAND_SCHEMA_MISMATCH)
+    if tuple(item.unit for item in left.operands) != tuple(
+        item.unit for item in right.operands
+    ) or left.output.unit != right.output.unit:
+        reasons.add(DerivProofRegistrationReason.UNIT_SCHEMA_MISMATCH)
+    if (
+        left.output.semantic != right.output.semantic
+        or left.output.currency_binding != right.output.currency_binding
+        or left.output.explicit_currency != right.output.explicit_currency
+        or left.output.signed != right.output.signed
+        or left.output.zero_allowed != right.output.zero_allowed
+    ):
+        reasons.add(DerivProofRegistrationReason.OUTPUT_SEMANTIC_MISMATCH)
+    if (
+        tuple(
+            (item.domain, item.lower_bound, item.upper_bound, item.zero_allowed)
+            for item in left.operands
+        )
+        != tuple(
+            (item.domain, item.lower_bound, item.upper_bound, item.zero_allowed)
+            for item in right.operands
+        )
+        or left.domain_constraint_ids != right.domain_constraint_ids
+    ):
+        reasons.add(DerivProofRegistrationReason.DOMAIN_MISMATCH)
+    if left.rounding != right.rounding:
+        reasons.add(DerivProofRegistrationReason.ROUNDING_POLICY_MISMATCH)
+    return reasons or {DerivProofRegistrationReason.CANDIDATE_IDENTITY_MISMATCH}
 
 
 def validate_deriv_proof_registration_eligibility(
@@ -361,6 +441,11 @@ def validate_deriv_proof_registration_eligibility(
         reasons.add(DerivProofRegistrationReason.CLAIM_SET_MISMATCH)
     if candidate.applicability != source_assessment.applicability:
         reasons.add(DerivProofRegistrationReason.APPLICABILITY_MISMATCH)
+    reasons.update(
+        _semantic_mismatch_reasons(
+            candidate.financial_semantics, source_assessment.financial_semantics
+        )
+    )
 
     if verification is None:
         reasons.add(DerivProofRegistrationReason.INDEPENDENT_VERIFICATION_MISSING)
@@ -387,6 +472,12 @@ def validate_deriv_proof_registration_eligibility(
             )
         if verification.applicability != candidate.applicability:
             reasons.add(DerivProofRegistrationReason.APPLICABILITY_MISMATCH)
+        semantic_reasons = _semantic_mismatch_reasons(
+            candidate.financial_semantics, verification.financial_semantics
+        )
+        if semantic_reasons:
+            reasons.update(semantic_reasons)
+            reasons.add(DerivProofRegistrationReason.INDEPENDENT_VERIFICATION_MISMATCH)
 
     revocation_ids = tuple(record.revocation_id for record in revocations)
     if len(revocation_ids) != len(set(revocation_ids)):

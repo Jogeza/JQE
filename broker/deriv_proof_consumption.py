@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from broker.deriv_evidence import DerivEvidenceApplicability
+from broker.deriv_financial_semantics import DerivFinancialSemanticsSpecification
 from broker.deriv_proof_registration import (
     DerivGovernanceRevocationReason,
     DerivGovernanceRevocationTarget,
@@ -82,6 +83,7 @@ class DerivProofConsumptionRequest:
     loss_model_id: str
     loss_model_version: int
     evidence_source_id: str
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int:
@@ -111,6 +113,11 @@ class DerivProofConsumptionRequest:
             raise ValueError("artifact IDs and hashes must be positionally aligned")
         _validate_identity_tuple("claim_ids", self.claim_ids)
         _validate_applicability(self.applicability)
+        if self.financial_semantics is not None and (
+            not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
+            or self.financial_semantics.applicability != self.applicability
+        ):
+            raise ValueError("financial semantics are inconsistent")
 
 
 class DerivProofConsumptionState(str, Enum):
@@ -326,6 +333,7 @@ def validate_authoritative_proof_for_capability(
         or request.loss_model_id != entry.loss_model_id
         or request.loss_model_version != entry.loss_model_version
         or request.evidence_source_id != entry.evidence_source_id
+        or request.financial_semantics != entry.financial_semantics
     ):
         reasons.add(DerivProofConsumptionReason.LINEAGE_MISMATCH)
     if reasons:

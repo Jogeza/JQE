@@ -27,6 +27,7 @@ from broker.deriv_proof_registration import (
     validate_deriv_proof_registration_eligibility,
 )
 from broker.deriv_proof_review import DerivProofReviewAssessment
+from broker.deriv_financial_semantics import DerivFinancialSemanticsSpecification
 
 
 DERIV_PROOF_REGISTRY_SCHEMA_VERSION = 1
@@ -106,6 +107,7 @@ class DerivProofAdmissionRequest:
     evidence_source_id: str
     admitted_by: str
     admitted_at: datetime
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         _validate_schema(self.schema_version)
@@ -134,6 +136,11 @@ class DerivProofAdmissionRequest:
         _validate_identity_tuple("claim_ids", self.claim_ids)
         _validate_applicability(self.applicability)
         _validate_timestamp("admitted_at", self.admitted_at)
+        if self.financial_semantics is not None and (
+            not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
+            or self.financial_semantics.applicability != self.applicability
+        ):
+            raise ValueError("financial semantics are inconsistent")
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +166,7 @@ class DerivProofRegistryEntry:
     eligibility_reason_codes: frozenset[DerivProofRegistrationReason]
     admitted_by: str
     admitted_at: datetime
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         request = DerivProofAdmissionRequest(
@@ -179,6 +187,7 @@ class DerivProofRegistryEntry:
             evidence_source_id=self.evidence_source_id,
             admitted_by=self.admitted_by,
             admitted_at=self.admitted_at,
+            financial_semantics=self.financial_semantics,
         )
         del request
         if (
@@ -205,6 +214,7 @@ class DerivProofRegistryEntry:
             self.loss_model_id,
             self.loss_model_version,
             self.evidence_source_id,
+            self.financial_semantics,
         )
 
 
@@ -316,6 +326,7 @@ def _request_authority_identity(request: DerivProofAdmissionRequest) -> tuple[An
         request.loss_model_id,
         request.loss_model_version,
         request.evidence_source_id,
+        request.financial_semantics,
     )
 
 
@@ -420,6 +431,13 @@ def admit_deriv_proof_registry_entry(
         or request.evidence_source_id != candidate.evidence_source_id
     ):
         reasons.add(DerivProofAdmissionReason.LOSS_MODEL_IDENTITY_MISMATCH)
+    if (
+        request.financial_semantics != candidate.financial_semantics
+        or candidate.financial_semantics != verification.financial_semantics
+        or candidate.financial_semantics != source_assessment.financial_semantics
+        or candidate.financial_semantics != review_decision.financial_semantics
+    ):
+        reasons.add(DerivProofAdmissionReason.LOSS_MODEL_IDENTITY_MISMATCH)
     reasons.update(_validate_revocations(request, verification, revocations))
 
     existing = registry.get_historical(request.proof_id)
@@ -475,6 +493,7 @@ def admit_deriv_proof_registry_entry(
         eligibility_reason_codes=eligibility.reason_codes,
         admitted_by=request.admitted_by,
         admitted_at=request.admitted_at,
+        financial_semantics=request.financial_semantics,
     )
     new_registry = DerivProofRegistryState(
         tuple(sorted(registry.entries + (entry,), key=lambda item: item.proof_id))

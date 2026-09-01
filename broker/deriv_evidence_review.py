@@ -13,6 +13,7 @@ from broker.deriv_evidence import (
     DerivEvidenceRegistry,
     DerivEvidenceReviewState,
 )
+from broker.deriv_financial_semantics import DerivFinancialSemanticsSpecification
 
 
 DERIV_EVIDENCE_REVIEW_SCHEMA_VERSION = 1
@@ -58,6 +59,7 @@ class DerivEvidenceReviewDecision:
     reviewed_at: datetime
     applicability: DerivEvidenceApplicability
     rationale: str | None = None
+    financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int:
@@ -68,6 +70,15 @@ class DerivEvidenceReviewDecision:
         _required_text("reviewer_id", self.reviewer_id)
         if self.rationale is not None:
             _required_text("rationale", self.rationale)
+        if self.financial_semantics is not None and not isinstance(
+            self.financial_semantics, DerivFinancialSemanticsSpecification
+        ):
+            raise ValueError("financial_semantics is invalid")
+        if (
+            self.financial_semantics is not None
+            and self.financial_semantics.applicability != self.applicability
+        ):
+            raise ValueError("financial semantics applicability is inconsistent")
         if type(self.artifact_ids) is not tuple or any(
             type(value) is not str or not value.strip() for value in self.artifact_ids
         ):
@@ -177,6 +188,12 @@ def validate_deriv_evidence_review(
         previous_value = claims_by_subject.setdefault(identity, claim.value)
         if previous_value != claim.value:
             reasons.add(DerivEvidenceReviewReason.DUPLICATE_OR_CONFLICTING_CLAIM)
+    if decision.financial_semantics is not None and not any(
+        claim.claim_type.name == "LOSS_MODEL_DESCRIPTION_IDENTITY"
+        and claim.value == decision.financial_semantics.material_hash
+        for claim in selected_claims
+    ):
+        reasons.add(DerivEvidenceReviewReason.MISSING_REQUIRED_CLAIM)
 
     structural_failure = bool(
         reasons
