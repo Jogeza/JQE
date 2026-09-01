@@ -166,6 +166,43 @@ export interface ExecutionStateResponse {
   currency: string;
 }
 
+export interface RecoveryQuantity {
+  value: number;
+  unit: string;
+}
+
+export interface RecoveryIntentDiagnostic {
+  idempotency_key: string;
+  intent_state: 'PENDING' | 'UNKNOWN';
+  broker: string | null;
+  account_id: string | null;
+  symbol: string | null;
+  side: string | null;
+  quantity: RecoveryQuantity | null;
+  entry: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  authorized_risk_amount: number | null;
+  expected_loss_at_stop: number | null;
+  order_id: string | null;
+  transaction_id: string | null;
+  created_at: string;
+  updated_at: string;
+  reconstruction_valid: boolean;
+  recovery_outcome: string;
+  reconciliation_classification: string;
+  blocking_reason: string;
+  execution_blocked: boolean;
+}
+
+export interface RecoveryDiagnosticsResponse {
+  status: 'CLEAR' | 'BLOCKED' | 'UNKNOWN';
+  unresolved_intent_count: number;
+  execution_blocked: boolean;
+  reason: string;
+  intents: RecoveryIntentDiagnostic[];
+}
+
 export interface PerformanceSummaryResponse {
   total_trades: number;
   winning_trades: number;

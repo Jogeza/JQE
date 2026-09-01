@@ -19,6 +19,7 @@ import {
   RiskStatusResponse,
   ExecutionStateResponse,
   PerformanceSummaryResponse,
+  RecoveryDiagnosticsResponse,
   ResourceState,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
     risk: ResourceState<RiskStatusResponse>;
     execution: ResourceState<ExecutionStateResponse>;
     performance: ResourceState<PerformanceSummaryResponse>;
+    recovery: ResourceState<RecoveryDiagnosticsResponse>;
   };
   const emptyResource = <T,>(): ResourceState<T> => ({
     data: null, loading: true, error: null, lastUpdated: null, stale: false,
@@ -44,7 +46,7 @@ export const App: React.FC = () => {
   const [resources, setResources] = useState<Resources>({
     system: emptyResource(), market: emptyResource(), candles: emptyResource(),
     strategy: emptyResource(), risk: emptyResource(), execution: emptyResource(),
-    performance: emptyResource(),
+    performance: emptyResource(), recovery: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const requestIdRef = useRef(0);
@@ -77,10 +79,11 @@ export const App: React.FC = () => {
         jqeApi.getRiskStatus(selectedSymbol, selectedTimeframe, controller.signal),
         jqeApi.getExecutionState(controller.signal),
         jqeApi.getPerformanceSummary(controller.signal),
+        jqeApi.getRecoveryDiagnostics(controller.signal),
       ]);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
 
-      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'performance'];
+      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'performance', 'recovery'];
       const updatedAt = new Date();
       setResources(previous => {
         const next = { ...previous };
@@ -133,6 +136,7 @@ export const App: React.FC = () => {
   const riskData = resources.risk.data;
   const executionData = resources.execution.data;
   const performanceData = resources.performance.data;
+  const recoveryData = resources.recovery.data;
   const loading = Object.values(resources).some(resource => resource.loading);
   const failedResources = Object.entries(resources).filter(([, resource]) => resource.error);
   const apiError = failedResources.length
@@ -151,6 +155,9 @@ export const App: React.FC = () => {
             riskData={riskData}
             executionData={executionData}
             performanceData={performanceData}
+            recoveryData={recoveryData}
+            recoveryUnavailable={resources.recovery.error !== null}
+            recoveryStale={resources.recovery.stale}
             loading={loading}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedTimeframe}

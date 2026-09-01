@@ -8,6 +8,7 @@ Encapsulates all domain coordination so the API router remains a thin HTTP layer
 from __future__ import annotations
 
 import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -18,6 +19,9 @@ from api.dto import (
     ConfidenceBreakdownDTO,
     ExecutionStateResponse,
     ExecutionSafetyResponse,
+    RecoveryDiagnosticsResponse,
+    RecoveryIntentDiagnosticDTO,
+    RecoveryQuantityDTO,
     MarketSummaryResponse,
     PerformanceSummaryResponse,
     PositionDTO,
@@ -36,6 +40,7 @@ from core.exceptions import MarketDataError
 from core.indicators import calculate_indicators
 from core.regime import detect_regime
 from execution.safety import RiskEvaluationState, SQLiteExecutionSafetyStore, utc_now
+from execution.persistence import SQLiteIntentRecordStore
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
@@ -458,6 +463,94 @@ class ApplicationService:
             unresolved_intent_blocked=snapshot.unresolved_intent_blocked,
             execution_authorization=snapshot.execution_authorization.value,
             reason_codes=list(snapshot.reason_codes),
+        )
+
+    def get_recovery_diagnostics(self) -> RecoveryDiagnosticsResponse:
+        """Read durable recovery diagnostics without broker or reconciliation access."""
+        path = Path(settings.intent_store_path).expanduser().resolve()
+        if not path.is_file():
+            return RecoveryDiagnosticsResponse(
+                status="UNKNOWN",
+                execution_blocked=True,
+                reason="Durable recovery state is unavailable",
+            )
+        try:
+            store = SQLiteIntentRecordStore(path, initialize=False)
+            inspections = store.list_unresolved_inspections()
+        except Exception:
+            return RecoveryDiagnosticsResponse(
+                status="UNKNOWN",
+                execution_blocked=True,
+                reason="Durable recovery state could not be read",
+            )
+        expected_account = (
+            "SIMULATED"
+            if settings.broker == "simulation"
+            else settings.deriv_options_account_id.strip()
+            if settings.broker == "deriv"
+            else ""
+        )
+        diagnostics: list[RecoveryIntentDiagnosticDTO] = []
+        for item in inspections:
+            scope_matches = (
+                bool(item.broker)
+                and item.broker.strip().lower() == settings.broker.strip().lower()
+                and bool(item.account_id)
+                and item.account_id.strip() == expected_account
+            )
+            if not item.reconstruction_valid:
+                outcome = "MALFORMED_RECORD"
+                classification = "NOT_ATTEMPTED"
+                reason = "Persisted intent payload invalid"
+            elif not scope_matches:
+                outcome = "SCOPE_MISMATCH"
+                classification = "NOT_ATTEMPTED"
+                reason = "Persisted broker/account scope does not match active scope"
+            else:
+                outcome = item.recovery_outcome or "NOT_OBSERVED"
+                classification = item.reconciliation_state or "NOT_OBSERVED"
+                reason = item.recovery_reason or "Startup recovery diagnostic not yet published"
+            quantity = (
+                RecoveryQuantityDTO(value=item.quantity_value, unit=item.quantity_unit)
+                if item.quantity_value is not None and item.quantity_unit is not None
+                else None
+            )
+            diagnostics.append(
+                RecoveryIntentDiagnosticDTO(
+                    idempotency_key=item.idempotency_key,
+                    intent_state=item.status.value,
+                    broker=item.broker,
+                    account_id=item.account_id,
+                    symbol=item.symbol,
+                    side=item.side,
+                    quantity=quantity,
+                    entry=item.entry,
+                    stop_loss=item.stop_loss,
+                    take_profit=item.take_profit,
+                    authorized_risk_amount=item.authorized_risk_amount,
+                    expected_loss_at_stop=item.expected_loss_at_stop,
+                    order_id=item.order_id,
+                    transaction_id=item.transaction_id,
+                    created_at=item.created_at,
+                    updated_at=item.updated_at,
+                    reconstruction_valid=item.reconstruction_valid,
+                    recovery_outcome=outcome,
+                    reconciliation_classification=classification,
+                    blocking_reason=reason,
+                )
+            )
+        if not diagnostics:
+            return RecoveryDiagnosticsResponse(
+                status="CLEAR",
+                execution_blocked=False,
+                reason="No unresolved durable execution intents",
+            )
+        return RecoveryDiagnosticsResponse(
+            status="BLOCKED",
+            unresolved_intent_count=len(diagnostics),
+            execution_blocked=True,
+            reason="Execution blocked by unresolved durable intent state",
+            intents=diagnostics,
         )
 
     async def get_execution_state(self) -> ExecutionStateResponse:

@@ -211,6 +211,49 @@ class ExecutionSafetyResponse(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
+class RecoveryQuantityDTO(BaseModel):
+    """Typed broker quantity preserved for operator diagnostics."""
+
+    value: float
+    unit: str
+
+
+class RecoveryIntentDiagnosticDTO(BaseModel):
+    """Allowlisted read-only view of one unresolved durable intent."""
+
+    idempotency_key: str
+    intent_state: Literal["PENDING", "UNKNOWN"]
+    broker: str | None = None
+    account_id: str | None = None
+    symbol: str | None = None
+    side: str | None = None
+    quantity: RecoveryQuantityDTO | None = None
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    authorized_risk_amount: float | None = None
+    expected_loss_at_stop: float | None = None
+    order_id: str | None = None
+    transaction_id: str | None = None
+    created_at: str
+    updated_at: str
+    reconstruction_valid: bool
+    recovery_outcome: str
+    reconciliation_classification: str
+    blocking_reason: str
+    execution_blocked: bool = True
+
+
+class RecoveryDiagnosticsResponse(BaseModel):
+    """Fail-closed read-only durable recovery status."""
+
+    status: Literal["CLEAR", "BLOCKED", "UNKNOWN"]
+    unresolved_intent_count: int = 0
+    execution_blocked: bool
+    reason: str
+    intents: list[RecoveryIntentDiagnosticDTO] = Field(default_factory=list)
+
+
 class PerformanceSummaryResponse(BaseModel):
     """Quantitative performance analytics derived from trade history."""
 

@@ -11,6 +11,7 @@ from api.dto import (
     CandlesResponse,
     ExecutionStateResponse,
     ExecutionSafetyResponse,
+    RecoveryDiagnosticsResponse,
     MarketSummaryResponse,
     PerformanceSummaryResponse,
     RiskStatusResponse,
@@ -101,6 +102,14 @@ def get_execution_safety(
 ) -> ExecutionSafetyResponse:
     """Returns the latest canonical cross-process safety observation."""
     return service.get_execution_safety()
+
+
+@router.get("/execution/recovery", response_model=RecoveryDiagnosticsResponse)
+def get_recovery_diagnostics(
+    service: ApplicationService = Depends(get_service),
+) -> RecoveryDiagnosticsResponse:
+    """Returns read-only durable startup recovery diagnostics."""
+    return service.get_recovery_diagnostics()
 
 
 @router.get("/performance", response_model=PerformanceSummaryResponse)

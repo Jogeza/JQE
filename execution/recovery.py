@@ -74,20 +74,42 @@ class StartupRecoveryService:
     async def recover(self) -> StartupRecoverySummary:
         results: list[StartupRecoveryResult] = []
         for record in self._records.list_unresolved():
-            results.append(await self._recover_record(record))
+            result, reconciliation_state = await self._recover_record(record)
+            try:
+                published = self._records.record_recovery_diagnostic(
+                    record.idempotency_key,
+                    recovery_outcome=result.outcome.value,
+                    reconciliation_state=reconciliation_state,
+                    recovery_reason=result.reason,
+                )
+            except Exception:
+                published = False
+            if not published:
+                result = self._result(
+                    record,
+                    StartupRecoveryOutcome.PERSISTENCE_ERROR,
+                    "Recovery diagnostic could not be persisted",
+                )
+            results.append(result)
         return StartupRecoverySummary(tuple(results))
 
-    async def _recover_record(self, record: IntentRecord) -> StartupRecoveryResult:
+    async def _recover_record(
+        self, record: IntentRecord
+    ) -> tuple[StartupRecoveryResult, str | None]:
         try:
             intent = record.to_execution_intent()
         except Exception as exc:
-            return self._result(record, StartupRecoveryOutcome.MALFORMED_RECORD, exc)
+            return self._result(
+                record,
+                StartupRecoveryOutcome.MALFORMED_RECORD,
+                "Persisted intent payload is invalid",
+            ), None
         if intent is None:
             return self._result(
                 record,
                 StartupRecoveryOutcome.MALFORMED_RECORD,
                 "Canonical execution intent payload is incomplete",
-            )
+            ), None
         if (
             not record.broker
             or record.broker.strip().lower() != self._broker
@@ -98,7 +120,7 @@ class StartupRecoveryService:
                 record,
                 StartupRecoveryOutcome.SCOPE_MISMATCH,
                 "Persisted broker/account scope does not match startup scope",
-            )
+            ), None
         try:
             evidence = await self._reconciler.reconcile(
                 order_id=record.order_id,
@@ -108,29 +130,31 @@ class StartupRecoveryService:
             )
         except Exception as exc:
             return self._remain_unresolved(
-                record, StartupRecoveryOutcome.RECONCILIATION_ERROR, exc
-            )
+                record,
+                StartupRecoveryOutcome.RECONCILIATION_ERROR,
+                "Recovery reconciliation failed",
+            ), "ERROR"
         if evidence.state is BrokerReconciliationState.UNAVAILABLE:
             return self._remain_unresolved(
                 record, StartupRecoveryOutcome.RECONCILIATION_UNAVAILABLE, evidence.reason
-            )
+            ), evidence.state.value
         if evidence.state is BrokerReconciliationState.CONFIRMED_MATCH:
             return self._persist(
                 record,
                 IntentRecordStatus.ACCEPTED,
                 StartupRecoveryOutcome.RESOLVED_ACCEPTED,
                 evidence,
-            )
+            ), evidence.state.value
         if evidence.state is BrokerReconciliationState.CONFIRMED_ABSENCE:
             return self._persist(
                 record,
                 IntentRecordStatus.REJECTED,
                 StartupRecoveryOutcome.RESOLVED_REJECTED,
                 evidence,
-            )
+            ), evidence.state.value
         return self._remain_unresolved(
             record, StartupRecoveryOutcome.REMAINS_UNKNOWN, evidence.reason
-        )
+        ), evidence.state.value
 
     def _remain_unresolved(
         self,

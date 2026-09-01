@@ -37,6 +37,10 @@ class IntentRecordInspection:
     expected_loss_at_stop: float | None = None
     broker: str | None = None
     account_id: str | None = None
+    reconstruction_valid: bool = False
+    recovery_outcome: str | None = None
+    reconciliation_state: str | None = None
+    recovery_reason: str | None = None
 
 
 _ALLOWED_TRANSITIONS: dict[IntentRecordStatus, frozenset[IntentRecordStatus]] = {
@@ -65,13 +69,15 @@ class SQLiteIntentRecordStore:
         *,
         recovery_mode: bool = False,
         clock: Callable[[], datetime] | None = None,
+        initialize: bool = True,
     ) -> None:
         resolved = Path(path).expanduser().resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self._path = str(resolved)
         self.recovery_mode = recovery_mode
         self._clock = clock or (lambda: datetime.now(timezone.utc))
-        self._initialize()
+        if initialize:
+            self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._path, timeout=5.0)
@@ -104,6 +110,9 @@ class SQLiteIntentRecordStore:
                     expected_loss_at_stop REAL,
                     broker TEXT,
                     account_id TEXT
+                    , recovery_outcome TEXT
+                    , reconciliation_state TEXT
+                    , recovery_reason TEXT
                 )
                 """
             )
@@ -121,6 +130,9 @@ class SQLiteIntentRecordStore:
                 ("expected_loss_at_stop", "REAL"),
                 ("broker", "TEXT"),
                 ("account_id", "TEXT"),
+                ("recovery_outcome", "TEXT"),
+                ("reconciliation_state", "TEXT"),
+                ("recovery_reason", "TEXT"),
             )
             for col_name, col_type in new_columns:
                 if col_name not in columns:
@@ -282,7 +294,46 @@ class SQLiteIntentRecordStore:
             expected_loss_at_stop=record.expected_loss_at_stop,
             broker=record.broker,
             account_id=record.account_id,
+            reconstruction_valid=record.to_execution_intent() is not None,
+            recovery_outcome=row["recovery_outcome"],
+            reconciliation_state=row["reconciliation_state"],
+            recovery_reason=row["recovery_reason"],
         )
+
+    def list_unresolved_inspections(self) -> tuple[IntentRecordInspection, ...]:
+        """Return read-only diagnostics for unresolved rows in creation order."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT idempotency_key FROM intent_records "
+                "WHERE state IN (?, ?) ORDER BY created_at ASC, idempotency_key ASC",
+                (IntentRecordStatus.PENDING.value, IntentRecordStatus.UNKNOWN.value),
+            ).fetchall()
+        inspections = tuple(self.inspect(row["idempotency_key"]) for row in rows)
+        return tuple(item for item in inspections if item is not None)
+
+    def record_recovery_diagnostic(
+        self,
+        idempotency_key: str,
+        *,
+        recovery_outcome: str,
+        reconciliation_state: str | None,
+        recovery_reason: str,
+    ) -> bool:
+        """Persist recovery-produced metadata; never changes execution state."""
+        self._validate_key(idempotency_key)
+        with self._connect() as connection:
+            updated = connection.execute(
+                "UPDATE intent_records SET recovery_outcome = ?, "
+                "reconciliation_state = ?, recovery_reason = ? "
+                "WHERE idempotency_key = ?",
+                (
+                    recovery_outcome,
+                    reconciliation_state,
+                    recovery_reason,
+                    idempotency_key,
+                ),
+            ).rowcount
+        return updated == 1
 
     def backup_to(self, destination: str | Path) -> None:
         """Create a consistent SQLite backup without mutating this store."""

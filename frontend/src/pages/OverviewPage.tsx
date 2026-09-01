@@ -7,6 +7,7 @@ import { RecentTradesTable } from '../components/RecentTradesTable';
 import { MarketChart } from '../components/MarketChart';
 import { StrategySignalPanel } from '../components/StrategySignalPanel';
 import { PerformanceSection } from '../components/PerformanceSection';
+import { RecoveryPanel } from '../components/RecoveryPanel';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -15,6 +16,7 @@ import {
   RiskStatusResponse,
   ExecutionStateResponse,
   PerformanceSummaryResponse,
+  RecoveryDiagnosticsResponse,
 } from '../types/api';
 import { formatMoney } from '../utils/format';
 
@@ -26,6 +28,9 @@ interface OverviewPageProps {
   riskData: RiskStatusResponse | null;
   executionData: ExecutionStateResponse | null;
   performanceData: PerformanceSummaryResponse | null;
+  recoveryData: RecoveryDiagnosticsResponse | null;
+  recoveryUnavailable: boolean;
+  recoveryStale: boolean;
   loading: boolean;
   selectedSymbol: string;
   selectedTimeframe: string;
@@ -39,6 +44,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   riskData,
   executionData,
   performanceData,
+  recoveryData,
+  recoveryUnavailable,
+  recoveryStale,
   loading,
   selectedSymbol,
   selectedTimeframe,
@@ -139,6 +147,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
 
         {/* Right Column: Engine & Risk Telemetry */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <RecoveryPanel
+            recovery={recoveryData}
+            loading={loading && !recoveryData}
+            unavailable={recoveryUnavailable}
+            stale={recoveryStale}
+          />
+
           <EngineStatusPanel
             systemStatus={systemStatus}
             signal={signalData}
