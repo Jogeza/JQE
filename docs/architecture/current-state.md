@@ -241,6 +241,7 @@ source material
   → immutable isolated registry admission record/state
   → exact active authoritative proof lookup
   → capability proof-consumption validation
+  → authoritative financial loss-model evaluation
   → STOP
 ```
 
@@ -311,6 +312,29 @@ proof availability is unavailable, no production authoritative proof exists,
 `stop_risk_authorizable` remains false, and Deriv quantity remains unavailable.
 No execution boundary has moved. The next checkpoint is authoritative
 financial loss-model evaluation, not broker execution.
+
+Authoritative financial loss-model evaluation is now a separate pure,
+proof-gated boundary. It re-runs proof-consumption validation from the original
+immutable registry, request, and revocation state, then requires exact
+applicability, model identity/version, candidate material hash, and evidence
+source identity. A caller-constructed `PROOF_AVAILABLE` result is not a bearer
+token and cannot bypass revalidation.
+
+The currently admitted metadata identifies a proposed loss model but does not
+define its financial operands, units, equation, numeric domain, output unit, or
+rounding. JQE therefore does not infer a Multipliers formula from legacy code
+or the Simulation model. A complete isolated proof chain reaches the controlled
+`LOSS_MODEL_UNSUPPORTED` state and produces no monetary result. Production
+financial loss evaluation remains unavailable because the canonical registry
+is empty and production proof availability remains unavailable.
+
+Financial evaluation is not position sizing, risk authorization, execution
+authorization, or broker submission. It accepts no account balance, risk
+percentage, daily budget, or portfolio exposure and derives no stake, lots,
+units, contract count, or volume. `stop_risk_authorizable` remains false and
+Deriv quantity remains `None`. The next checkpoint is broker-neutral
+risk-budget-to-quantity derivation only after authoritative financial loss
+semantics are proven; production readiness is not implied.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is

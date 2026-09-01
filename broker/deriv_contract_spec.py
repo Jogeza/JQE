@@ -15,6 +15,10 @@ from broker.deriv_proof_consumption import (
     DerivProofConsumptionResult,
     DerivProofConsumptionState,
 )
+from broker.deriv_loss_model import (
+    DerivLossEvaluationResult,
+    DerivLossEvaluationState,
+)
 
 
 DERIV_CONTRACT_SPEC_SCHEMA_VERSION = 1
@@ -171,11 +175,19 @@ class DerivQuantityCapability:
     proof_consumption_state: DerivProofConsumptionState = (
         DerivProofConsumptionState.PROOF_UNAVAILABLE
     )
+    loss_evaluation_state: DerivLossEvaluationState = (
+        DerivLossEvaluationState.PROOF_UNAVAILABLE
+    )
 
     @property
     def authoritative_loss_model_proof_available(self) -> bool:
         """Proof availability only; never financial-risk authorization."""
         return self.proof_consumption_state is DerivProofConsumptionState.PROOF_AVAILABLE
+
+    @property
+    def authoritative_loss_model_evaluated(self) -> bool:
+        """Financial evaluation only; never risk or quantity authorization."""
+        return self.loss_evaluation_state is DerivLossEvaluationState.LOSS_EVALUATED
 
     @property
     def reason(self) -> str:
@@ -189,6 +201,7 @@ class DerivQuantityCapability:
 def evaluate_deriv_quantity_capability(
     specification: DerivContractSpecification,
     proof_consumption: DerivProofConsumptionResult | None = None,
+    loss_evaluation: DerivLossEvaluationResult | None = None,
 ) -> DerivQuantityCapability:
     """Purely assess whether offline facts can prove stop-risk authorization."""
     missing: list[str] = []
@@ -196,6 +209,11 @@ def evaluate_deriv_quantity_capability(
         proof_consumption.state
         if isinstance(proof_consumption, DerivProofConsumptionResult)
         else DerivProofConsumptionState.PROOF_UNAVAILABLE
+    )
+    loss_evaluation_state = (
+        loss_evaluation.state
+        if isinstance(loss_evaluation, DerivLossEvaluationResult)
+        else DerivLossEvaluationState.PROOF_UNAVAILABLE
     )
     if specification.schema_version != DERIV_CONTRACT_SPEC_SCHEMA_VERSION:
         missing.append("unsupported specification schema")
@@ -264,6 +282,7 @@ def evaluate_deriv_quantity_capability(
         not missing,
         tuple(missing),
         proof_consumption_state,
+        loss_evaluation_state,
     )
 
 
