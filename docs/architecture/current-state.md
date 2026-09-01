@@ -210,7 +210,8 @@ gateway multiplier is explicitly provisional and cannot satisfy capability
 checks. Quantity authorization requires a fully verified evidence source and
 versioned loss model plus a separately validated, applicability-bound
 `DerivLossModelProof`; identifiers alone are metadata, not financial proof. No
-authoritative proof artifact or financial equation currently exists. Partial,
+production authoritative proof artifact or independently verified production
+financial equation currently exists. Partial,
 malformed, or future-schema specifications fail closed, with strict identifier,
 numeric, and schema typing that explicitly rejects Python booleans as integers.
 The authoritative proof registry is therefore empty; self-declared `VERIFIED`
@@ -239,9 +240,12 @@ source material
   → registration eligibility validation
   → explicit registry admission validation
   → immutable isolated registry admission record/state
+  → durable proof/revocation snapshot persistence
+  → canonical typed reconstruction after restart
   → exact active authoritative proof lookup
   → capability proof-consumption validation
-  → authoritative financial loss-model evaluation
+  → proof-bound financial evaluation
+  → offline `DerivExecutionTerms`
   → STOP
 ```
 
@@ -279,9 +283,10 @@ READY advisory chain, an exact VERIFIED independent decision, no identity or
 scope mismatch, and no applicable revocation. `ELIGIBLE_FOR_REGISTRATION`
 means only that these governance prerequisites are consistent; it neither
 constructs `DerivLossModelProof` nor admits anything to the authoritative
-registry. Registry admission remains a future, separate process. The canonical
-Deriv proof registry therefore still has zero entries, capability remains
-false, and quantity remains unavailable.
+registry. Registry admission is a separate modeled process, and no production
+candidate has passed it. The canonical production Deriv proof registry
+therefore still has zero entries, capability remains false, and quantity
+remains unavailable.
 
 Registry admission is now modeled as a separate pure state transformation over
 an explicitly supplied immutable registry state. An admission request repeats
@@ -303,6 +308,18 @@ mismatch, or conflict. It does not read global state, calculate monetary loss,
 calculate quantity, authorize risk or execution, create orders, or contact a
 broker.
 
+The immutable registry and its revocation state can now be persisted together
+by `SQLiteDerivProofStore`. The store uses a versioned, canonical JSON snapshot,
+SHA-256 payload integrity, WAL, `synchronous=FULL`, and an atomic transaction.
+Loading never treats database rows as authority: it reconstructs and validates
+the canonical registry, financial semantics, applicability, validity windows,
+and revocation objects before returning them. Missing, malformed, unknown, or
+tampered durable state fails closed rather than becoming an empty registry.
+Persistence preserves exact proof, admission, candidate, artifact, claim,
+model/version, environment, currency, symbol, contract, freshness, and
+revocation identity across process restart. It does not admit proofs or grant
+authority.
+
 Capability evaluation may expose the resulting
 `authoritative_loss_model_proof_available` intermediate fact, but that fact is
 distinct from financial risk authorization. Even an active test-only proof
@@ -310,8 +327,7 @@ does not make `stop_risk_authorizable` true and cannot produce Deriv quantity.
 The canonical production registry remains empty (zero entries), production
 proof availability is unavailable, no production authoritative proof exists,
 `stop_risk_authorizable` remains false, and Deriv quantity remains unavailable.
-No execution boundary has moved. The next checkpoint is authoritative
-financial loss-model evaluation, not broker execution.
+No broker execution boundary has moved.
 
 Authoritative financial loss-model evaluation is now a separate pure,
 proof-gated boundary. It re-runs proof-consumption validation from the original
@@ -320,21 +336,19 @@ applicability, model identity/version, candidate material hash, and evidence
 source identity. A caller-constructed `PROOF_AVAILABLE` result is not a bearer
 token and cannot bypass revalidation.
 
-The currently admitted metadata identifies a proposed loss model but does not
+Production metadata identifies a proposed loss model but does not
 define its financial operands, units, equation, numeric domain, output unit, or
 rounding. JQE therefore does not infer a Multipliers formula from legacy code
-or the Simulation model. A complete isolated proof chain reaches the controlled
-`LOSS_MODEL_UNSUPPORTED` state and produces no monetary result. Production
-financial loss evaluation remains unavailable because the canonical registry
-is empty and production proof availability remains unavailable.
+or the Simulation model. Production financial loss evaluation remains
+unsupported because the canonical production registry is empty and no reviewed
+production propositions exist.
 
-Financial evaluation is not position sizing, risk authorization, execution
+Financial evaluation is not position sizing, application execution
 authorization, or broker submission. It accepts no account balance, risk
 percentage, daily budget, or portfolio exposure and derives no stake, lots,
-units, contract count, or volume. `stop_risk_authorizable` remains false and
-Deriv quantity remains `None`. The next checkpoint is broker-neutral
-risk-budget-to-quantity derivation only after authoritative financial loss
-semantics are proven; production readiness is not implied.
+units, contract count, or volume from production evidence. Production
+`stop_risk_authorizable` remains false and Deriv quantity remains `None`;
+production readiness is not implied.
 
 Financial-semantics governance now defines a strict immutable declarative
 contract for a future authoritative Deriv loss model. The contract uses a
@@ -343,6 +357,25 @@ roles and Decimal domain bounds, an explicit output meaning and currency
 binding, exact applicability, and an explicit Decimal-compatible rounding
 policy. It contains no executable expression, evaluator, script, AST, dynamic
 import, or code-generation facility.
+
+The proof-bound financial terms model separately represents `DERIV_STAKE`, an
+authoritatively constrained Decimal multiplier, monetary `stop_loss_amount`,
+monetary `take_profit_amount`, and proof-bound `maximum_loss`. Terms retain the
+environment, account currency, underlying symbol, contract type, proof ID,
+semantic material hash, loss-model identity/version, and exact applicability.
+Materialization requires `maximum_loss <= authorized_risk_amount`; it does not
+reinterpret broker-neutral absolute market stop or take-profit prices as Deriv
+contract monetary limits.
+
+`OfflineDerivExecutionTermsService` is the current consumer boundary. For every
+explicit request it reloads the durable registry and revocations, performs
+exact lookup, runs proof consumption at the caller-supplied timezone-aware
+evaluation time, and delegates to the existing financial evaluator. Only an
+explicitly synthetic offline fixture currently reaches typed
+`DerivExecutionTerms`. Production/unverified evidence without supported
+financial propositions returns `MODEL_UNSUPPORTED` and no terms. The service
+is not imported by `broker/deriv_gateway.py` or `main.py`, makes no broker or
+credential access, and grants no application execution authorization.
 
 The complete semantic value object and its deterministic canonical SHA-256
 identity travel through the advisory decision, proof assessment, candidate,
@@ -364,9 +397,43 @@ submission authority.
 
 Only after independently reviewed production evidence defines and verifies an
 exact semantic specification should JQE implement its corresponding closed,
-typed financial equation evaluator. Quantity sizing is not the next boundary.
+typed production financial equation evaluator. The synthetic offline evaluator
+does not satisfy that requirement or authorize quantity.
 
-External Deriv evidence intake is now modeled as a separate, pure governance
+The manual external Deriv evidence handoff path is modeled as a pure
+pre-intake governance specification:
+
+```text
+manual external Deriv evidence
+  → production evidence handoff package
+  → package identity / structural validation
+  → evidence-category coverage validation
+  → ELIGIBLE_FOR_EVIDENCE_INTAKE
+  → STOP (Hard Boundary)
+```
+
+This handoff stage evaluates external artifact completeness and structural
+integrity before any evidence record is constructed. It validates that all
+required semantic categories (equation identity, operand semantics, quantity
+basis, multiplier semantics, stop-loss mechanics, output loss definition,
+account currency treatment, contract family specification, rounding policy,
+and domain constraints) are present, intact, and mutually consistent. Package
+and artifact hashes, deterministic package identity, exact scope coherence,
+and duplicate/conflicting identities are checked. Only an eligible package can
+be converted into evidence-intake candidates. Handoff eligibility does not
+verify broker truth, register a proof, authorize execution, or create financial
+terms.
+
+Current readiness remains deliberately split:
+
+- Simulation: **GREEN**
+- Evidence handoff boundary: **GREEN**
+- Durable proof registry: **GREEN**
+- Offline proof-store consumer: **GREEN**
+- Deriv connection readiness: **AMBER**
+- Deriv execution readiness: **RED**
+
+External Deriv evidence intake is then modeled as a separate, pure governance
 path:
 
 ```text
@@ -377,8 +444,20 @@ externally supplied Deriv evidence
   → independent evidence-source verification
   → exact source-bound advisory semantic claims
   → semantic-review readiness
-  → STOP
+  → STOP (Hard Boundary)
 ```
+
+Downstream authority layers remain isolated and staged:
+
+```text
+semantic review
+  → independent semantic verification
+  → proof registration
+  → proof consumption
+  → loss evaluation
+```
+
+No stage automatically enters or activates the next authority layer.
 
 The intake layer never fetches evidence. It has no HTTP, WebSocket, gateway,
 credential, environment, filesystem, database, or implicit wall-clock access.
@@ -399,19 +478,31 @@ revocations disable new readiness while preserving history.
 
 No genuine production Deriv evidence has been admitted. The controlled
 production state is `PRODUCTION_EVIDENCE_NOT_AVAILABLE`; synthetic evidence is
-test-only, the canonical proof registry remains empty, proof availability and
-loss evaluation remain unavailable, `stop_risk_authorizable` remains false,
-and Deriv quantity remains `None`.
+test-only, the canonical proof registry remains empty (count = 0), production
+proof availability is `PROOF_UNAVAILABLE`, loss evaluation remains unavailable,
+`stop_risk_authorizable` remains false, and Deriv quantity remains `None`.
 
 The operational handoff requires genuine externally captured material supplied
-manually, potentially including official contract/proposal schemas, exact
-contract-family broker responses, stop behavior, multiplier semantics,
-settlement/loss behavior, currency treatment, domain limits, and rounding
-behavior. These categories are intake requirements, not a claim that any set is
-sufficient. After supply, JQE must validate provenance and integrity, extract
-exact advisory claims, review the semantic specification independently, and
-only then consider proof registration. Quantity sizing must not precede that
-evidence-driven authority work.
+manually by a human operator. The required evidence categories defined by the
+current semantic specification are:
+1. `EQUATION_IDENTITY`: Exact mathematical loss equation identity and algorithm definition.
+2. `OPERAND_SEMANTICS`: Roles, positions, domains, and bounds for all operands.
+3. `QUANTITY_BASIS_SEMANTICS`: Stake vs lots vs units definition and quantity treatment.
+4. `MULTIPLIER_SEMANTICS`: Exact multiplier-to-loss scaling mechanics.
+5. `STOP_LOSS_SEMANTICS`: Exact documented stop-loss mechanics and units, without treating a market price as a monetary contract limit.
+6. `OUTPUT_LOSS_SEMANTICS`: Monetary loss sign and zero-boundary policy.
+7. `ACCOUNT_CURRENCY_TREATMENT`: Account currency mapping and denomination rules.
+8. `CONTRACT_FAMILY_SPECIFICATION`: Contract family definition (e.g., MULTUP).
+9. `FINANCIAL_ROUNDING_POLICY`: Precision, rounding mode, and rounding stage.
+10. `DOMAIN_CONSTRAINTS`: Input domain boundaries (e.g., positive stake, positive barrier).
+
+Additionally, supporting corroborating evidence may include official schema
+documentation, broker proposal captures, `contracts_for` responses, transaction
+settlement records, manual exports, and historical tick captures. Supplying any
+collection of evidence does not guarantee proof admission; sufficiency remains
+strictly subject to independent source verification and subsequent formal
+semantic review. Quantity sizing must not precede that evidence-driven
+authority work.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
