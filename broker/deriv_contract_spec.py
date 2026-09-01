@@ -11,6 +11,11 @@ from enum import Enum
 import math
 from typing import Any
 
+from broker.deriv_proof_consumption import (
+    DerivProofConsumptionResult,
+    DerivProofConsumptionState,
+)
+
 
 DERIV_CONTRACT_SPEC_SCHEMA_VERSION = 1
 DERIV_LOSS_MODEL_PROOF_SCHEMA_VERSION = 1
@@ -163,6 +168,14 @@ class DerivContractSpecification:
 class DerivQuantityCapability:
     stop_risk_authorizable: bool
     missing_requirements: tuple[str, ...]
+    proof_consumption_state: DerivProofConsumptionState = (
+        DerivProofConsumptionState.PROOF_UNAVAILABLE
+    )
+
+    @property
+    def authoritative_loss_model_proof_available(self) -> bool:
+        """Proof availability only; never financial-risk authorization."""
+        return self.proof_consumption_state is DerivProofConsumptionState.PROOF_AVAILABLE
 
     @property
     def reason(self) -> str:
@@ -175,9 +188,15 @@ class DerivQuantityCapability:
 
 def evaluate_deriv_quantity_capability(
     specification: DerivContractSpecification,
+    proof_consumption: DerivProofConsumptionResult | None = None,
 ) -> DerivQuantityCapability:
     """Purely assess whether offline facts can prove stop-risk authorization."""
     missing: list[str] = []
+    proof_consumption_state = (
+        proof_consumption.state
+        if isinstance(proof_consumption, DerivProofConsumptionResult)
+        else DerivProofConsumptionState.PROOF_UNAVAILABLE
+    )
     if specification.schema_version != DERIV_CONTRACT_SPEC_SCHEMA_VERSION:
         missing.append("unsupported specification schema")
     if specification.broker != "deriv":
@@ -239,7 +258,13 @@ def evaluate_deriv_quantity_capability(
         missing.append("authoritative proof registration")
     if specification.verification_state is not DerivSpecificationVerification.VERIFIED:
         missing.append("fully verified specification state")
-    return DerivQuantityCapability(not missing, tuple(missing))
+    # Active registry proof is deliberately separate from financial proof
+    # evaluation.  Even PROOF_AVAILABLE cannot remove any requirement here.
+    return DerivQuantityCapability(
+        not missing,
+        tuple(missing),
+        proof_consumption_state,
+    )
 
 
 def current_deriv_multiplier_specification() -> DerivContractSpecification:

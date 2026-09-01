@@ -239,6 +239,8 @@ source material
   → registration eligibility validation
   → explicit registry admission validation
   → immutable isolated registry admission record/state
+  → exact active authoritative proof lookup
+  → capability proof-consumption validation
   → STOP
 ```
 
@@ -292,11 +294,23 @@ only active, absent, revoked, or conflicting registry state and cannot
 authorize risk or calculate quantity. Revocation leaves the historical entry
 intact while making it inactive for lookup.
 
-This isolated registry state is not the canonical capability registry and is
-not consumed by `evaluate_deriv_quantity_capability()`. The canonical Deriv
-proof registry remains empty, no production proof exists, capability remains
-false, and quantity remains unavailable. Authoritative proof consumption by
-capability evaluation is a separate future boundary.
+Proof consumption is now modeled as a separate pure validator over an
+explicitly supplied immutable registry, exact applicability request, complete
+admitted lineage, and immutable revocation records. It performs exact active
+lookup and fails closed for revocation, supersession, malformed state, lineage
+mismatch, or conflict. It does not read global state, calculate monetary loss,
+calculate quantity, authorize risk or execution, create orders, or contact a
+broker.
+
+Capability evaluation may expose the resulting
+`authoritative_loss_model_proof_available` intermediate fact, but that fact is
+distinct from financial risk authorization. Even an active test-only proof
+does not make `stop_risk_authorizable` true and cannot produce Deriv quantity.
+The canonical production registry remains empty (zero entries), production
+proof availability is unavailable, no production authoritative proof exists,
+`stop_risk_authorizable` remains false, and Deriv quantity remains unavailable.
+No execution boundary has moved. The next checkpoint is authoritative
+financial loss-model evaluation, not broker execution.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
