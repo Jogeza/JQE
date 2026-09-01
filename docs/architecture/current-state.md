@@ -237,10 +237,9 @@ source material
   → non-authoritative candidate proof material
   → independent verification decision
   → registration eligibility validation
-  → separate authoritative registry admission process
-  → authoritative proof registry
-  → quantity capability
-  → execution quantity
+  → explicit registry admission validation
+  → immutable isolated registry admission record/state
+  → STOP
 ```
 
 Artifact presence, claim matching, and evidence review do not construct a
@@ -280,6 +279,24 @@ constructs `DerivLossModelProof` nor admits anything to the authoritative
 registry. Registry admission remains a future, separate process. The canonical
 Deriv proof registry therefore still has zero entries, capability remains
 false, and quantity remains unavailable.
+
+Registry admission is now modeled as a separate pure state transformation over
+an explicitly supplied immutable registry state. An admission request repeats
+the complete candidate, verification, advisory-chain, evidence, loss-model,
+and applicability identities. Admission re-runs registration eligibility and
+therefore cannot trust a caller-constructed successful enum. Exact duplicate
+proof identity and lineage are idempotent; reuse of a proof identity with
+different material, applicability, verification, advisory lineage, or model
+version fails closed without overwriting history. Exact-scope lookup reports
+only active, absent, revoked, or conflicting registry state and cannot
+authorize risk or calculate quantity. Revocation leaves the historical entry
+intact while making it inactive for lookup.
+
+This isolated registry state is not the canonical capability registry and is
+not consumed by `evaluate_deriv_quantity_capability()`. The canonical Deriv
+proof registry remains empty, no production proof exists, capability remains
+false, and quantity remains unavailable. Authoritative proof consumption by
+capability evaluation is a separate future boundary.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is

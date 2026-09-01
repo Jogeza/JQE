@@ -40,6 +40,16 @@ from broker.deriv_proof_registration import (
     DerivProofRegistrationReason,
     validate_deriv_proof_registration_eligibility,
 )
+from broker.deriv_proof_registry import (
+    DerivProofAdmissionReason,
+    DerivProofAdmissionRequest,
+    DerivProofAdmissionState,
+    DerivProofLookupReason,
+    DerivProofLookupState,
+    DerivProofRegistryState,
+    admit_deriv_proof_registry_entry,
+    lookup_deriv_proof_registry,
+)
 from broker.deriv_proof_review import (
     DerivProofReviewAssessment,
     DerivProofReviewReason,
@@ -243,6 +253,77 @@ def _validate(candidate=None, verification=..., chain=None, artifact=None, revoc
         assessment,
         decision,
         registry,
+        revocations,
+    )
+
+
+def _admission_request(**changes):
+    values = {
+        "schema_version": 1,
+        "admission_id": "offline:test-fixture:admission-M1",
+        "proof_id": "offline:test-fixture:proof-R1",
+        "candidate_id": _CANDIDATE_ID,
+        "candidate_material_hash": _MATERIAL_HASH,
+        "verification_decision_id": _VERIFICATION_ID,
+        "source_assessment_id": _ASSESSMENT_ID,
+        "review_decision_id": _DECISION_ID,
+        "artifact_ids": (_ARTIFACT_ID,),
+        "artifact_content_hashes": (_HASH_H1,),
+        "claim_ids": (_CLAIM_ID,),
+        "applicability": _SCOPE_P1,
+        "loss_model_id": "offline:test-fixture:loss-model",
+        "loss_model_version": 1,
+        "evidence_source_id": "offline:test-fixture:source-identity",
+        "admitted_by": "offline:test-fixture:registry-reviewer",
+        "admitted_at": datetime(2026, 9, 1, tzinfo=timezone.utc),
+    }
+    values.update(changes)
+    return DerivProofAdmissionRequest(**values)
+
+
+def _admission_bundle(
+    *, candidate=None, verification=None, chain=None, artifact=None, revocations=()
+):
+    source_artifact, decision, assessment = chain or _advisory_chain()
+    evidence_registry = DerivEvidenceRegistry().register(artifact or source_artifact)
+    candidate = candidate or _candidate()
+    verification = verification or _verification()
+    eligibility = validate_deriv_proof_registration_eligibility(
+        candidate,
+        verification,
+        assessment,
+        decision,
+        evidence_registry,
+        revocations,
+    )
+    return (
+        eligibility,
+        candidate,
+        verification,
+        assessment,
+        decision,
+        evidence_registry,
+    )
+
+
+def _admit(
+    registry=None,
+    request=None,
+    bundle=None,
+    eligibility=None,
+    revocations=(),
+):
+    bundle = bundle or _admission_bundle(revocations=revocations)
+    current_eligibility, candidate, verification, assessment, decision, evidence = bundle
+    return admit_deriv_proof_registry_entry(
+        registry or DerivProofRegistryState(),
+        request or _admission_request(),
+        current_eligibility if eligibility is None else eligibility,
+        candidate,
+        verification,
+        assessment,
+        decision,
+        evidence,
         revocations,
     )
 
@@ -553,5 +634,308 @@ def test_governance_constructs_no_gateway_or_network_connection() -> None:
         "broker.deriv_gateway.websockets.connect"
     ) as connect:
         assert _validate().eligible
+    gateway.assert_not_called()
+    connect.assert_not_called()
+
+
+def test_valid_exact_admission_creates_new_isolated_immutable_state() -> None:
+    original = DerivProofRegistryState()
+    outcome = _admit(registry=original)
+    assert outcome.result.state is DerivProofAdmissionState.ADMITTED
+    assert outcome.result.reason_codes == frozenset(
+        {DerivProofAdmissionReason.ADMISSION_ACCEPTED}
+    )
+    assert original.entries == ()
+    assert len(outcome.registry.entries) == 1
+    assert outcome.result.entry is outcome.registry.entries[0]
+
+
+def test_exact_repeated_admission_is_idempotent() -> None:
+    first = _admit()
+    second = _admit(registry=first.registry)
+    assert second.result.state is DerivProofAdmissionState.ALREADY_ADMITTED
+    assert second.result.reason_codes == frozenset(
+        {DerivProofAdmissionReason.EXACT_DUPLICATE}
+    )
+    assert second.registry is first.registry
+    assert len(second.registry.entries) == 1
+
+
+@pytest.mark.parametrize(
+    "field,value,reason",
+    [
+        ("candidate_material_hash", "sha256:" + "7" * 64, DerivProofAdmissionReason.MATERIAL_HASH_MISMATCH),
+        ("applicability", replace(_SCOPE_P1, symbol="OFFLINE_TEST_SYMBOL_P2"), DerivProofAdmissionReason.APPLICABILITY_MISMATCH),
+        ("verification_decision_id", "offline:test-fixture:verification-V2", DerivProofAdmissionReason.VERIFICATION_MISMATCH),
+        ("source_assessment_id", "offline:test-fixture:assessment-P2", DerivProofAdmissionReason.ADVISORY_CHAIN_MISMATCH),
+        ("artifact_content_hashes", ("sha256:" + "8" * 64,), DerivProofAdmissionReason.EVIDENCE_IDENTITY_MISMATCH),
+        ("loss_model_version", 2, DerivProofAdmissionReason.LOSS_MODEL_IDENTITY_MISMATCH),
+    ],
+)
+def test_same_proof_id_with_changed_authority_material_is_rejected(
+    field, value, reason
+) -> None:
+    first = _admit()
+    outcome = _admit(
+        registry=first.registry,
+        request=_admission_request(**{field: value}),
+    )
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert reason in outcome.result.reason_codes
+    assert DerivProofAdmissionReason.PROOF_ID_CONFLICT in outcome.result.reason_codes
+    assert outcome.registry is first.registry
+
+
+def test_same_proof_id_with_different_verified_lineage_is_rejected() -> None:
+    first = _admit()
+    verification_v2 = _verification(
+        verification_decision_id="offline:test-fixture:verification-V2"
+    )
+    bundle_v2 = _admission_bundle(verification=verification_v2)
+    outcome = _admit(
+        registry=first.registry,
+        request=_admission_request(
+            verification_decision_id=verification_v2.verification_decision_id
+        ),
+        bundle=bundle_v2,
+    )
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.PROOF_ID_CONFLICT in outcome.result.reason_codes
+
+
+def test_same_proof_id_with_different_advisory_lineage_is_rejected() -> None:
+    first = _admit()
+    artifact, decision, assessment = _advisory_chain()
+    assessment_p2 = replace(
+        assessment, assessment_id="offline:test-fixture:assessment-P2"
+    )
+    candidate_p2 = _candidate(source_assessment_id=assessment_p2.assessment_id)
+    verification_p2 = _verification(source_assessment_id=assessment_p2.assessment_id)
+    bundle_p2 = _admission_bundle(
+        chain=(artifact, decision, assessment_p2),
+        candidate=candidate_p2,
+        verification=verification_p2,
+    )
+    outcome = _admit(
+        registry=first.registry,
+        request=_admission_request(source_assessment_id=assessment_p2.assessment_id),
+        bundle=bundle_p2,
+    )
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.PROOF_ID_CONFLICT in outcome.result.reason_codes
+
+
+def test_forged_eligible_enum_cannot_bypass_full_chain_revalidation() -> None:
+    artifact, decision, assessment = _advisory_chain()
+    stale_artifact = replace(artifact, content_hash="sha256:" + "9" * 64)
+    candidate = _candidate()
+    verification = _verification()
+    stale_registry = DerivEvidenceRegistry().register(stale_artifact)
+    stale_bundle = (
+        validate_deriv_proof_registration_eligibility(
+            candidate, verification, assessment, decision, stale_registry
+        ),
+        candidate,
+        verification,
+        assessment,
+        decision,
+        stale_registry,
+    )
+    forged = DerivProofRegistrationEligibility(
+        DerivProofRegistrationEligibilityState.ELIGIBLE_FOR_REGISTRATION,
+        frozenset({DerivProofRegistrationReason.REGISTRATION_CHAIN_COMPLETE}),
+    )
+    outcome = _admit(bundle=stale_bundle, eligibility=forged)
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.ELIGIBILITY_STALE in outcome.result.reason_codes
+    assert outcome.registry.entries == ()
+
+
+def test_explicitly_ineligible_result_cannot_be_admitted() -> None:
+    ineligible = DerivProofRegistrationEligibility(
+        DerivProofRegistrationEligibilityState.INELIGIBLE,
+        frozenset({DerivProofRegistrationReason.CANDIDATE_REVOKED}),
+    )
+    outcome = _admit(eligibility=ineligible)
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.ELIGIBILITY_INVALID in outcome.result.reason_codes
+    assert DerivProofAdmissionReason.ELIGIBILITY_STALE in outcome.result.reason_codes
+
+
+def test_artifact_hash_changed_after_eligibility_is_rejected() -> None:
+    eligibility, candidate, verification, assessment, decision, _ = _admission_bundle()
+    stale_evidence = DerivEvidenceRegistry().register(
+        _artifact(content_hash="sha256:" + "a" * 64)
+    )
+    stale_bundle = (
+        eligibility,
+        candidate,
+        verification,
+        assessment,
+        decision,
+        stale_evidence,
+    )
+    outcome = _admit(bundle=stale_bundle, eligibility=eligibility)
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.ELIGIBILITY_STALE in outcome.result.reason_codes
+
+
+def test_claim_changed_after_eligibility_is_rejected() -> None:
+    eligibility, candidate, verification, assessment, decision, _ = _admission_bundle()
+    artifact = _artifact()
+    changed_claim = replace(
+        artifact.claims[0], claim_id="offline:test-fixture:replacement-claim"
+    )
+    stale_evidence = DerivEvidenceRegistry().register(
+        replace(artifact, claims=(changed_claim,))
+    )
+    stale_bundle = (
+        eligibility,
+        candidate,
+        verification,
+        assessment,
+        decision,
+        stale_evidence,
+    )
+    outcome = _admit(bundle=stale_bundle, eligibility=eligibility)
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert DerivProofAdmissionReason.ELIGIBILITY_STALE in outcome.result.reason_codes
+
+
+@pytest.mark.parametrize(
+    "target_kind,target_id,reason,expected",
+    [
+        (DerivGovernanceRevocationTarget.CANDIDATE, _CANDIDATE_ID, DerivGovernanceRevocationReason.REVOKED, DerivProofAdmissionReason.CANDIDATE_REVOKED),
+        (DerivGovernanceRevocationTarget.INDEPENDENT_VERIFICATION, _VERIFICATION_ID, DerivGovernanceRevocationReason.REVOKED, DerivProofAdmissionReason.VERIFICATION_REVOKED),
+        (DerivGovernanceRevocationTarget.INDEPENDENT_VERIFICATION, _VERIFICATION_ID, DerivGovernanceRevocationReason.SUPERSEDED, DerivProofAdmissionReason.VERIFICATION_SUPERSEDED),
+        (DerivGovernanceRevocationTarget.REGISTERED_PROOF, "offline:test-fixture:proof-R1", DerivGovernanceRevocationReason.REVOKED, DerivProofAdmissionReason.PROOF_REVOKED),
+    ],
+)
+def test_revocation_or_supersession_prevents_admission(
+    target_kind, target_id, reason, expected
+) -> None:
+    record = _revocation(target_kind, target_id, reason)
+    bundle = _admission_bundle(revocations=(record,))
+    outcome = _admit(bundle=bundle, revocations=(record,))
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert expected in outcome.result.reason_codes
+    assert outcome.registry.entries == ()
+
+
+def test_conflicting_revocation_records_prevent_admission() -> None:
+    record = _revocation(
+        DerivGovernanceRevocationTarget.CANDIDATE,
+        "offline:test-fixture:unrelated-candidate",
+    )
+    bundle = _admission_bundle(revocations=(record, record))
+    outcome = _admit(bundle=bundle, revocations=(record, record))
+    assert outcome.result.state is DerivProofAdmissionState.REJECTED
+    assert (
+        DerivProofAdmissionReason.REVOCATION_RECORD_CONFLICT
+        in outcome.result.reason_codes
+    )
+
+
+def test_registered_proof_revocation_retains_history_but_disables_active_lookup() -> None:
+    admitted = _admit()
+    record = _revocation(
+        DerivGovernanceRevocationTarget.REGISTERED_PROOF,
+        "offline:test-fixture:proof-R1",
+    )
+    lookup = lookup_deriv_proof_registry(admitted.registry, _SCOPE_P1, (record,))
+    assert lookup.state is DerivProofLookupState.REVOKED_ENTRY
+    assert lookup.reason_codes == frozenset({DerivProofLookupReason.ENTRY_REVOKED})
+    assert lookup.entry is admitted.registry.entries[0]
+    assert admitted.registry.get_historical("offline:test-fixture:proof-R1") is lookup.entry
+    assert len(admitted.registry.entries) == 1
+
+
+def test_lookup_requires_exact_applicability_without_widening() -> None:
+    admitted = _admit()
+    exact = lookup_deriv_proof_registry(admitted.registry, _SCOPE_P1)
+    other = lookup_deriv_proof_registry(
+        admitted.registry,
+        replace(_SCOPE_P1, symbol="OFFLINE_TEST_SYMBOL_P2"),
+    )
+    assert exact.state is DerivProofLookupState.ACTIVE_ENTRY_FOUND
+    assert exact.reason_codes == frozenset(
+        {DerivProofLookupReason.EXACT_ACTIVE_ENTRY}
+    )
+    assert other.state is DerivProofLookupState.NO_ENTRY
+    assert other.entry is None
+
+
+def test_lookup_fails_closed_for_multiple_exact_entries() -> None:
+    admitted = _admit()
+    first = admitted.registry.entries[0]
+    second = replace(
+        first,
+        proof_id="offline:test-fixture:proof-R2",
+        admission_id="offline:test-fixture:admission-M2",
+        candidate_id="offline:test-fixture:candidate-C2",
+    )
+    state = DerivProofRegistryState(tuple(sorted((first, second), key=lambda x: x.proof_id)))
+    lookup = lookup_deriv_proof_registry(state, _SCOPE_P1)
+    assert lookup.state is DerivProofLookupState.CONFLICTING_STATE
+    assert DerivProofLookupReason.MULTIPLE_EXACT_ENTRIES in lookup.reason_codes
+
+
+def test_registry_models_are_immutable_and_deterministically_ordered() -> None:
+    admitted = _admit()
+    with pytest.raises(FrozenInstanceError):
+        admitted.registry.entries = ()
+    with pytest.raises(FrozenInstanceError):
+        admitted.registry.entries[0].proof_id = "changed"
+    with pytest.raises(ValueError, match="deterministic"):
+        first = admitted.registry.entries[0]
+        DerivProofRegistryState(
+            (
+                replace(first, proof_id="z", admission_id="z", candidate_id="z"),
+                replace(first, proof_id="a", admission_id="a", candidate_id="a"),
+            )
+        )
+
+
+def test_registry_state_rejects_duplicate_stable_identities() -> None:
+    entry = _admit().registry.entries[0]
+    with pytest.raises(ValueError, match="duplicate proof ID"):
+        DerivProofRegistryState((entry, entry))
+
+
+@pytest.mark.parametrize("schema", [True, 1.0, "1", None, 2])
+def test_admission_request_schema_is_strict(schema) -> None:
+    with pytest.raises(ValueError, match="schema_version|unsupported"):
+        _admission_request(schema_version=schema)
+
+
+def test_admission_request_rejects_malformed_identity_and_hash() -> None:
+    with pytest.raises(ValueError, match="nonblank"):
+        _admission_request(proof_id="   ")
+    with pytest.raises(ValueError, match="sha256"):
+        _admission_request(candidate_material_hash="sha256:bad")
+
+
+def test_isolated_registry_never_mutates_canonical_authority_or_quantity() -> None:
+    admitted = _admit()
+    assert len(admitted.registry.entries) == 1
+    assert len(_AUTHORIZED_LOSS_MODEL_PROOFS) == 0
+    capability = evaluate_deriv_quantity_capability(
+        current_deriv_multiplier_specification()
+    )
+    sizing = authorize_execution_quantity(
+        broker="deriv", balance=10_000, risk_percent=0.5, entry=100, stop_loss=92
+    )
+    assert capability.stop_risk_authorizable is False
+    assert sizing.quantity is None
+    assert sizing.risk_verifiable is False
+
+
+def test_registry_admission_and_lookup_construct_no_gateway_or_network() -> None:
+    with patch("broker.deriv_gateway.DerivGateway") as gateway, patch(
+        "broker.deriv_gateway.websockets.connect"
+    ) as connect:
+        admitted = _admit()
+        lookup = lookup_deriv_proof_registry(admitted.registry, _SCOPE_P1)
+        assert lookup.state is DerivProofLookupState.ACTIVE_ENTRY_FOUND
     gateway.assert_not_called()
     connect.assert_not_called()
