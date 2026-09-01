@@ -701,7 +701,7 @@ async def test_unresolved_record_blocks_startup_without_reconciliation(
             await main.run()
 
     gateway.submit_order.assert_not_awaited()
-    gateway.__aenter__.assert_not_awaited()
+    gateway.__aenter__.assert_awaited_once()
     recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
     assert recovered is not None
     assert recovered.status is prior_status
@@ -736,7 +736,7 @@ async def test_unresolved_record_without_evidence_remains_unchanged(
             await main.run()
 
     gateway.submit_order.assert_not_awaited()
-    gateway.__aenter__.assert_not_awaited()
+    gateway.__aenter__.assert_awaited_once()
     recovered = SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key())
     assert recovered is not None
     assert recovered.status is prior_status
@@ -812,4 +812,46 @@ async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order
         with pytest.raises(ExecutionError, match="unresolved persisted intents"):
             await main.run()
     gateway.submit_order.assert_not_awaited()
-    gateway.__aenter__.assert_not_awaited()
+    gateway.__aenter__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_continues_after_all_unresolved_intents_are_proven_accepted() -> None:
+    settings.use_durable_executor = True
+    store = SQLiteIntentRecordStore(settings.intent_store_path)
+    record = IntentRecord(
+        idempotency_key=_expected_key(),
+        status=IntentRecordStatus.UNKNOWN,
+        order_id="SIM-prior",
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        quantity=ExecutionQuantity(
+            value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS
+        ),
+        entry=101.0,
+        stop_loss=99.0,
+        take_profit=105.0,
+        authorized_risk_amount=2.0,
+        expected_loss_at_stop=2.0,
+        broker="simulation",
+        account_id="SIMULATED",
+    )
+    assert store.try_claim(record) is ClaimState.CLAIMED
+    gateway = _gateway()
+    gateway.get_positions.return_value = [
+        Position(
+            position_id="SIM-prior",
+            symbol="XAUUSD",
+            side=OrderSide.BUY,
+            volume=1.0,
+            open_price=101.0,
+        )
+    ]
+    patches = _pipeline_patches(gateway)
+
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+        await main.run()
+
+    assert store.get(_expected_key()).status is IntentRecordStatus.ACCEPTED
+    gateway.get_candles.assert_awaited_once()
+    gateway.submit_order.assert_not_awaited()

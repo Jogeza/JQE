@@ -39,6 +39,7 @@ from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
 from execution.reconciliation import DerivReconciliationAdapter, SimulationReconciliationAdapter
+from execution.recovery import StartupRecoveryService
 from execution.safety import (
     DailyStateAuthority,
     EmergencyStopState,
@@ -230,21 +231,39 @@ async def run() -> None:
             if settings.broker == "simulation"
             else DerivReconciliationAdapter(gateway)
         )
-        unresolved_records = records.list_unresolved()
-        if unresolved_records:
-            assert safety_store is not None
-            publish_safety(
-                ExecutionAuthorization.BLOCKED,
-                ("UNRESOLVED_DURABLE_INTENT",),
-                unresolved_count=len(unresolved_records),
-            )
-            raise ExecutionError(
-                "New durable execution blocked: unresolved persisted intents "
-                "cannot be safely reconstructed from the current schema",
-                unresolved_count=len(unresolved_records),
-            )
 
     async with gateway:
+        if settings.use_durable_executor:
+            assert records is not None
+            assert reconciler is not None
+            recovery_account_id = (
+                "SIMULATED"
+                if settings.broker == "simulation"
+                else settings.deriv_options_account_id.strip()
+            )
+            recovery = await StartupRecoveryService(
+                records,
+                reconciler,
+                broker=settings.broker,
+                account_id=recovery_account_id,
+            ).recover()
+            unresolved_records = records.list_unresolved()
+            if unresolved_records:
+                assert safety_store is not None
+                publish_safety(
+                    ExecutionAuthorization.BLOCKED,
+                    ("UNRESOLVED_DURABLE_INTENT",),
+                    unresolved_count=len(unresolved_records),
+                )
+                raise ExecutionError(
+                    "New durable execution blocked after startup recovery: "
+                    "unresolved persisted intents remain",
+                    unresolved_count=len(unresolved_records),
+                    recovery_outcomes=tuple(
+                        result.outcome.value for result in recovery.results
+                    ),
+                )
+
         candles = await gateway.get_candles(
             symbol=settings.default_symbol,
             timeframe=timeframe,
