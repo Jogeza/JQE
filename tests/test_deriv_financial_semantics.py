@@ -1,6 +1,7 @@
 """Governance-only tests for synthetic Deriv financial semantics."""
 
 from dataclasses import FrozenInstanceError, replace
+from datetime import datetime, timezone
 from decimal import Decimal
 import importlib.util
 from pathlib import Path
@@ -51,7 +52,7 @@ def _semantics(**changes):
         replace(
             _fixtures._SCOPE_P1,
             account_currency="OFFLINE_TEST_CURRENCY",
-            environment="offline-test-only",
+            environment="demo",
         ),
     )
     operands = (
@@ -180,22 +181,25 @@ def test_synthetic_semantics_propagate_through_registry_and_consumption() -> Non
     entry = admitted.registry.entries[0]
     assert entry.financial_semantics == semantics
     consumption_request = DerivProofConsumptionRequest(
-        1,
-        entry.proof_id,
-        entry.admission_id,
-        entry.candidate_id,
-        entry.candidate_material_hash,
-        entry.verification_decision_id,
-        entry.source_assessment_id,
-        entry.review_decision_id,
-        entry.artifact_ids,
-        entry.artifact_content_hashes,
-        entry.claim_ids,
-        entry.applicability,
-        entry.loss_model_id,
-        entry.loss_model_version,
-        entry.evidence_source_id,
-        semantics,
+        schema_version=1,
+        proof_id=entry.proof_id,
+        admission_id=entry.admission_id,
+        candidate_id=entry.candidate_id,
+        candidate_material_hash=entry.candidate_material_hash,
+        verification_decision_id=entry.verification_decision_id,
+        source_assessment_id=entry.source_assessment_id,
+        review_decision_id=entry.review_decision_id,
+        artifact_ids=entry.artifact_ids,
+        artifact_content_hashes=entry.artifact_content_hashes,
+        claim_ids=entry.claim_ids,
+        applicability=entry.applicability,
+        loss_model_id=entry.loss_model_id,
+        loss_model_version=entry.loss_model_version,
+        evidence_source_id=entry.evidence_source_id,
+        valid_from=entry.valid_from,
+        valid_until=entry.valid_until,
+        evaluated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        financial_semantics=semantics,
     )
     consumed = validate_authoritative_proof_for_capability(
         admitted.registry, consumption_request
@@ -222,8 +226,71 @@ def _tampered_variants(base):
         replace(base, applicability=changed_scope(multiplier_semantics_id="other"), multiplier_semantic_id="other"),
         replace(base, applicability=changed_scope(contract_family="OTHER"), contract_family="OTHER"),
         replace(base, applicability=changed_scope(symbol="OTHER")),
-        replace(base, applicability=changed_scope(environment="other")),
+        replace(base, applicability=changed_scope(environment="real")),
     )
+
+
+def test_take_profit_output_is_distinct_monetary_profit_semantics() -> None:
+    semantics = _semantics(
+        take_profit_output=DerivFinancialOutput(
+            DerivOutputSemantic.SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS,
+            DerivFinancialUnit.ACCOUNT_CURRENCY_AMOUNT,
+            DerivCurrencyBinding.APPLICABILITY_ACCOUNT_CURRENCY,
+            None,
+            False,
+            True,
+        ),
+        take_profit_semantic_id="offline:test-fixture:take-profit-v1",
+    )
+    assert semantics.output.semantic is DerivOutputSemantic.SYNTHETIC_MONETARY_LOSS_FOR_SUPPLIED_INPUTS
+    assert semantics.take_profit_output is not None
+    assert semantics.take_profit_output.semantic is DerivOutputSemantic.SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS
+
+
+def test_allowed_multipliers_require_ordered_positive_decimals() -> None:
+    semantics = _semantics(allowed_multiplier_values=(Decimal("7"), Decimal("11")))
+    assert semantics.allowed_multiplier_values == (Decimal("7"), Decimal("11"))
+    for values in (
+        (Decimal("0"),),
+        (Decimal("NaN"),),
+        (Decimal("11"), Decimal("7")),
+        (Decimal("7"), Decimal("7")),
+        (7,),
+    ):
+        with pytest.raises(ValueError, match="multiplier"):
+            _semantics(allowed_multiplier_values=values)
+
+
+def test_take_profit_and_multiplier_authority_change_material_identity() -> None:
+    base = _semantics()
+    with_multiplier = replace(base, allowed_multiplier_values=(Decimal("7"),))
+    with_take_profit = replace(
+        base,
+        take_profit_output=DerivFinancialOutput(
+            DerivOutputSemantic.SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS,
+            DerivFinancialUnit.ACCOUNT_CURRENCY_AMOUNT,
+            DerivCurrencyBinding.APPLICABILITY_ACCOUNT_CURRENCY,
+            None,
+            False,
+            True,
+        ),
+        take_profit_semantic_id="offline:test-fixture:take-profit-v1",
+    )
+    with_maximum_loss = replace(
+        base,
+        maximum_loss_output=DerivFinancialOutput(
+            DerivOutputSemantic.SYNTHETIC_MAXIMUM_MONETARY_LOSS,
+            DerivFinancialUnit.ACCOUNT_CURRENCY_AMOUNT,
+            DerivCurrencyBinding.APPLICABILITY_ACCOUNT_CURRENCY,
+            None,
+            False,
+            True,
+        ),
+        maximum_loss_semantic_id="offline:test-fixture:maximum-loss-v1",
+    )
+    assert with_multiplier.material_hash != base.material_hash
+    assert with_take_profit.material_hash != base.material_hash
+    assert with_maximum_loss.material_hash != base.material_hash
 
 
 @pytest.mark.parametrize("index", range(16))

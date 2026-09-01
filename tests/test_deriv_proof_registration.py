@@ -66,10 +66,14 @@ _CANDIDATE_ID = "offline:test-fixture:registration-candidate-C1"
 _VERIFICATION_ID = "offline:test-fixture:independent-verification-V1"
 _HASH_H1 = "sha256:" + "1" * 64
 _MATERIAL_HASH = "sha256:" + "2" * 64
+_VALID_FROM = datetime(2026, 9, 1, tzinfo=timezone.utc)
+_VALID_UNTIL = datetime(2026, 12, 1, tzinfo=timezone.utc)
 _SCOPE_P1 = DerivEvidenceApplicability(
     broker="deriv",
     contract_family="OFFLINE_TEST_CONTRACT",
     symbol="OFFLINE_TEST_SYMBOL",
+    account_currency="OFFLINE_TEST_CURRENCY",
+    environment="demo",
     quantity_basis="offline-test-quantity",
     stop_loss_semantic_id="offline:test-fixture:stop-v1",
     multiplier_semantics_id="offline:test-fixture:multiplier-v1",
@@ -179,6 +183,8 @@ def _candidate(**changes):
         "artifact_content_hashes": (_HASH_H1,),
         "claim_ids": (_CLAIM_ID,),
         "applicability": _SCOPE_P1,
+        "valid_from": _VALID_FROM,
+        "valid_until": _VALID_UNTIL,
     }
     values.update(changes)
     return DerivAuthoritativeProofCandidate(**values)
@@ -212,6 +218,8 @@ def _verification(
         "artifact_content_hashes": (_HASH_H1,),
         "claim_ids": (_CLAIM_ID,),
         "applicability": _SCOPE_P1,
+        "valid_from": _VALID_FROM,
+        "valid_until": _VALID_UNTIL,
         "state": state,
         "reason_codes": reasons.get(
             state,
@@ -276,6 +284,8 @@ def _admission_request(**changes):
         "evidence_source_id": "offline:test-fixture:source-identity",
         "admitted_by": "offline:test-fixture:registry-reviewer",
         "admitted_at": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        "valid_from": _VALID_FROM,
+        "valid_until": _VALID_UNTIL,
     }
     values.update(changes)
     return DerivProofAdmissionRequest(**values)
@@ -326,6 +336,25 @@ def _admit(
         evidence,
         revocations,
     )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("environment", None), ("environment", "offline"), ("account_currency", None)],
+)
+def test_financial_authority_requires_environment_and_currency(field, value) -> None:
+    applicability = replace(_SCOPE_P1, **{field: value})
+    with pytest.raises(ValueError, match=field):
+        _candidate(applicability=applicability)
+
+
+@pytest.mark.parametrize(
+    "valid_from,valid_until",
+    [(_VALID_UNTIL, _VALID_FROM), (_VALID_FROM, _VALID_FROM)],
+)
+def test_candidate_requires_ordered_validity_window(valid_from, valid_until) -> None:
+    with pytest.raises(ValueError, match="valid_until"):
+        _candidate(valid_from=valid_from, valid_until=valid_until)
 
 
 def test_exact_current_chain_is_eligible_for_registration_governance() -> None:

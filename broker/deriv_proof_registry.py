@@ -35,6 +35,8 @@ _SHA256_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _REQUIRED_APPLICABILITY_FIELDS = (
     "contract_family",
     "symbol",
+    "account_currency",
+    "environment",
     "quantity_basis",
     "stop_loss_semantic_id",
     "multiplier_semantics_id",
@@ -75,6 +77,8 @@ def _validate_applicability(value: Any) -> None:
         raise ValueError("applicability is invalid")
     for field_name in _REQUIRED_APPLICABILITY_FIELDS:
         _required_text(f"applicability.{field_name}", getattr(value, field_name))
+    if value.environment not in {"demo", "real"}:
+        raise ValueError("applicability.environment must be demo or real")
 
 
 def _validate_timestamp(name: str, value: Any) -> None:
@@ -107,6 +111,8 @@ class DerivProofAdmissionRequest:
     evidence_source_id: str
     admitted_by: str
     admitted_at: datetime
+    valid_from: datetime
+    valid_until: datetime
     financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
@@ -136,6 +142,10 @@ class DerivProofAdmissionRequest:
         _validate_identity_tuple("claim_ids", self.claim_ids)
         _validate_applicability(self.applicability)
         _validate_timestamp("admitted_at", self.admitted_at)
+        _validate_timestamp("valid_from", self.valid_from)
+        _validate_timestamp("valid_until", self.valid_until)
+        if self.valid_until <= self.valid_from:
+            raise ValueError("valid_until must follow valid_from")
         if self.financial_semantics is not None and (
             not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
             or self.financial_semantics.applicability != self.applicability
@@ -166,6 +176,8 @@ class DerivProofRegistryEntry:
     eligibility_reason_codes: frozenset[DerivProofRegistrationReason]
     admitted_by: str
     admitted_at: datetime
+    valid_from: datetime
+    valid_until: datetime
     financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
@@ -187,6 +199,8 @@ class DerivProofRegistryEntry:
             evidence_source_id=self.evidence_source_id,
             admitted_by=self.admitted_by,
             admitted_at=self.admitted_at,
+            valid_from=self.valid_from,
+            valid_until=self.valid_until,
             financial_semantics=self.financial_semantics,
         )
         del request
@@ -214,6 +228,8 @@ class DerivProofRegistryEntry:
             self.loss_model_id,
             self.loss_model_version,
             self.evidence_source_id,
+            self.valid_from,
+            self.valid_until,
             self.financial_semantics,
         )
 
@@ -326,6 +342,8 @@ def _request_authority_identity(request: DerivProofAdmissionRequest) -> tuple[An
         request.loss_model_id,
         request.loss_model_version,
         request.evidence_source_id,
+        request.valid_from,
+        request.valid_until,
         request.financial_semantics,
     )
 
@@ -429,6 +447,8 @@ def admit_deriv_proof_registry_entry(
         request.loss_model_id != candidate.loss_model_id
         or request.loss_model_version != candidate.loss_model_version
         or request.evidence_source_id != candidate.evidence_source_id
+        or request.valid_from != candidate.valid_from
+        or request.valid_until != candidate.valid_until
     ):
         reasons.add(DerivProofAdmissionReason.LOSS_MODEL_IDENTITY_MISMATCH)
     if (
@@ -493,6 +513,8 @@ def admit_deriv_proof_registry_entry(
         eligibility_reason_codes=eligibility.reason_codes,
         admitted_by=request.admitted_by,
         admitted_at=request.admitted_at,
+        valid_from=request.valid_from,
+        valid_until=request.valid_until,
         financial_semantics=request.financial_semantics,
     )
     new_registry = DerivProofRegistryState(

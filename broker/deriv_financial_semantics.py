@@ -55,6 +55,9 @@ class DerivOutputSemantic(str, Enum):
         "SYNTHETIC_MONETARY_LOSS_FOR_SUPPLIED_INPUTS"
     )
     SYNTHETIC_MAXIMUM_MONETARY_LOSS = "SYNTHETIC_MAXIMUM_MONETARY_LOSS"
+    SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS = (
+        "SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS"
+    )
 
 
 class DerivCurrencyBinding(str, Enum):
@@ -188,6 +191,11 @@ class DerivFinancialSemanticsSpecification:
     quantity_basis_semantic_id: str
     stop_semantic_id: str
     multiplier_semantic_id: str
+    take_profit_output: DerivFinancialOutput | None = None
+    take_profit_semantic_id: str | None = None
+    maximum_loss_output: DerivFinancialOutput | None = None
+    maximum_loss_semantic_id: str | None = None
+    allowed_multiplier_values: tuple[Decimal, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int or self.schema_version != 1:
@@ -231,6 +239,41 @@ class DerivFinancialSemanticsSpecification:
             "multiplier_semantic_id",
         ):
             _text(name, getattr(self, name))
+        if self.take_profit_output is not None:
+            if not isinstance(self.take_profit_output, DerivFinancialOutput):
+                raise ValueError("take-profit output is invalid")
+            _text("take_profit_semantic_id", self.take_profit_semantic_id)
+            if (
+                self.take_profit_output.semantic
+                is not DerivOutputSemantic.SYNTHETIC_MONETARY_PROFIT_FOR_SUPPLIED_INPUTS
+                or self.take_profit_output.unit
+                is not DerivFinancialUnit.ACCOUNT_CURRENCY_AMOUNT
+            ):
+                raise ValueError("take-profit output must be a monetary profit semantic")
+        elif self.take_profit_semantic_id is not None:
+            raise ValueError("take-profit semantic requires a take-profit output")
+        if self.maximum_loss_output is not None:
+            if not isinstance(self.maximum_loss_output, DerivFinancialOutput):
+                raise ValueError("maximum-loss output is invalid")
+            _text("maximum_loss_semantic_id", self.maximum_loss_semantic_id)
+            if (
+                self.maximum_loss_output.semantic
+                is not DerivOutputSemantic.SYNTHETIC_MAXIMUM_MONETARY_LOSS
+                or self.maximum_loss_output.unit
+                is not DerivFinancialUnit.ACCOUNT_CURRENCY_AMOUNT
+            ):
+                raise ValueError("maximum-loss output must be a monetary loss semantic")
+        elif self.maximum_loss_semantic_id is not None:
+            raise ValueError("maximum-loss semantic requires a maximum-loss output")
+        if type(self.allowed_multiplier_values) is not tuple or any(
+            type(value) is not Decimal or not value.is_finite() or value <= 0
+            for value in self.allowed_multiplier_values
+        ):
+            raise ValueError("allowed multipliers must be positive finite Decimals")
+        if self.allowed_multiplier_values != tuple(
+            sorted(set(self.allowed_multiplier_values))
+        ):
+            raise ValueError("allowed multipliers must be unique and ordered")
         if (
             self.contract_family != self.applicability.contract_family
             or self.quantity_basis_semantic_id != self.applicability.quantity_basis
@@ -300,6 +343,35 @@ def canonical_financial_semantics_hash(
         "quantity_basis_semantic_id": specification.quantity_basis_semantic_id,
         "stop_semantic_id": specification.stop_semantic_id,
         "multiplier_semantic_id": specification.multiplier_semantic_id,
+        "take_profit_output": (
+            None
+            if specification.take_profit_output is None
+            else {
+                "semantic": specification.take_profit_output.semantic.value,
+                "unit": specification.take_profit_output.unit.value,
+                "currency_binding": specification.take_profit_output.currency_binding.value,
+                "explicit_currency": specification.take_profit_output.explicit_currency,
+                "signed": specification.take_profit_output.signed,
+                "zero_allowed": specification.take_profit_output.zero_allowed,
+            }
+        ),
+        "take_profit_semantic_id": specification.take_profit_semantic_id,
+        "maximum_loss_output": (
+            None
+            if specification.maximum_loss_output is None
+            else {
+                "semantic": specification.maximum_loss_output.semantic.value,
+                "unit": specification.maximum_loss_output.unit.value,
+                "currency_binding": specification.maximum_loss_output.currency_binding.value,
+                "explicit_currency": specification.maximum_loss_output.explicit_currency,
+                "signed": specification.maximum_loss_output.signed,
+                "zero_allowed": specification.maximum_loss_output.zero_allowed,
+            }
+        ),
+        "maximum_loss_semantic_id": specification.maximum_loss_semantic_id,
+        "allowed_multiplier_values": [
+            value.to_eng_string() for value in specification.allowed_multiplier_values
+        ],
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()

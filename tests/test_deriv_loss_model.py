@@ -2,6 +2,7 @@
 
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
+from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
 from unittest.mock import patch
@@ -64,6 +65,9 @@ def _proof_request(entry):
         loss_model_id=entry.loss_model_id,
         loss_model_version=entry.loss_model_version,
         evidence_source_id=entry.evidence_source_id,
+        valid_from=entry.valid_from,
+        valid_until=entry.valid_until,
+        evaluated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
     )
 
 

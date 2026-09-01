@@ -7,6 +7,7 @@ authorization and this module cannot calculate loss, quantity, or orders.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import datetime
 from enum import Enum
 import re
 from typing import Any
@@ -31,6 +32,8 @@ _SHA256_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _REQUIRED_APPLICABILITY_FIELDS = (
     "contract_family",
     "symbol",
+    "account_currency",
+    "environment",
     "quantity_basis",
     "stop_loss_semantic_id",
     "multiplier_semantics_id",
@@ -62,6 +65,13 @@ def _validate_applicability(value: Any) -> None:
         raise ValueError("applicability is invalid")
     for field_name in _REQUIRED_APPLICABILITY_FIELDS:
         _required_text(f"applicability.{field_name}", getattr(value, field_name))
+    if value.environment not in {"demo", "real"}:
+        raise ValueError("applicability.environment must be demo or real")
+
+
+def _validate_timestamp(name: str, value: Any) -> None:
+    if type(value) is not datetime or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be a timezone-aware datetime")
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +93,9 @@ class DerivProofConsumptionRequest:
     loss_model_id: str
     loss_model_version: int
     evidence_source_id: str
+    valid_from: datetime
+    valid_until: datetime
+    evaluated_at: datetime
     financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
@@ -113,6 +126,10 @@ class DerivProofConsumptionRequest:
             raise ValueError("artifact IDs and hashes must be positionally aligned")
         _validate_identity_tuple("claim_ids", self.claim_ids)
         _validate_applicability(self.applicability)
+        for name in ("valid_from", "valid_until", "evaluated_at"):
+            _validate_timestamp(name, getattr(self, name))
+        if self.valid_until <= self.valid_from:
+            raise ValueError("valid_until must follow valid_from")
         if self.financial_semantics is not None and (
             not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
             or self.financial_semantics.applicability != self.applicability
@@ -140,6 +157,8 @@ class DerivProofConsumptionReason(str, Enum):
     REGISTRY_CONFLICT = "REGISTRY_CONFLICT"
     REVOCATION_CONFLICT = "REVOCATION_CONFLICT"
     MALFORMED_REGISTRY_STATE = "MALFORMED_REGISTRY_STATE"
+    PROOF_NOT_YET_EFFECTIVE = "PROOF_NOT_YET_EFFECTIVE"
+    PROOF_EXPIRED = "PROOF_EXPIRED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,9 +352,15 @@ def validate_authoritative_proof_for_capability(
         or request.loss_model_id != entry.loss_model_id
         or request.loss_model_version != entry.loss_model_version
         or request.evidence_source_id != entry.evidence_source_id
+        or request.valid_from != entry.valid_from
+        or request.valid_until != entry.valid_until
         or request.financial_semantics != entry.financial_semantics
     ):
         reasons.add(DerivProofConsumptionReason.LINEAGE_MISMATCH)
+    if request.evaluated_at < entry.valid_from:
+        reasons.add(DerivProofConsumptionReason.PROOF_NOT_YET_EFFECTIVE)
+    if request.evaluated_at > entry.valid_until:
+        reasons.add(DerivProofConsumptionReason.PROOF_EXPIRED)
     if reasons:
         return DerivProofConsumptionResult(
             DerivProofConsumptionState.PROOF_UNAVAILABLE, frozenset(reasons)

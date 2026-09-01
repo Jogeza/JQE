@@ -31,6 +31,8 @@ _SHA256_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _REQUIRED_APPLICABILITY_FIELDS = (
     "contract_family",
     "symbol",
+    "account_currency",
+    "environment",
     "quantity_basis",
     "stop_loss_semantic_id",
     "multiplier_semantics_id",
@@ -70,6 +72,8 @@ def _validate_applicability(value: Any) -> None:
         raise ValueError("applicability is invalid")
     for field_name in _REQUIRED_APPLICABILITY_FIELDS:
         _required_text(f"applicability.{field_name}", getattr(value, field_name))
+    if value.environment not in {"demo", "real"}:
+        raise ValueError("applicability.environment must be demo or real")
 
 
 def _validate_timestamp(name: str, value: Any) -> None:
@@ -97,6 +101,8 @@ class DerivAuthoritativeProofCandidate:
     artifact_content_hashes: tuple[str, ...]
     claim_ids: tuple[str, ...]
     applicability: DerivEvidenceApplicability
+    valid_from: datetime
+    valid_until: datetime
     financial_semantics: DerivFinancialSemanticsSpecification | None = None
 
     def __post_init__(self) -> None:
@@ -125,6 +131,10 @@ class DerivAuthoritativeProofCandidate:
         if not self.claim_ids:
             raise ValueError("candidate requires at least one claim")
         _validate_applicability(self.applicability)
+        _validate_timestamp("valid_from", self.valid_from)
+        _validate_timestamp("valid_until", self.valid_until)
+        if self.valid_until <= self.valid_from:
+            raise ValueError("valid_until must follow valid_from")
         if self.financial_semantics is not None and (
             not isinstance(self.financial_semantics, DerivFinancialSemanticsSpecification)
             or self.financial_semantics.applicability != self.applicability
@@ -164,6 +174,8 @@ class DerivIndependentVerificationDecision:
     artifact_content_hashes: tuple[str, ...]
     claim_ids: tuple[str, ...]
     applicability: DerivEvidenceApplicability
+    valid_from: datetime
+    valid_until: datetime
     state: DerivIndependentVerificationState
     reason_codes: frozenset[DerivIndependentVerificationReason]
     verifier_id: str
@@ -201,6 +213,10 @@ class DerivIndependentVerificationDecision:
         if not self.claim_ids:
             raise ValueError("verification requires at least one claim")
         _validate_applicability(self.applicability)
+        _validate_timestamp("valid_from", self.valid_from)
+        _validate_timestamp("valid_until", self.valid_until)
+        if self.valid_until <= self.valid_from:
+            raise ValueError("valid_until must follow valid_from")
         if not isinstance(self.state, DerivIndependentVerificationState):
             raise ValueError("verification state is invalid")
         if not isinstance(self.reason_codes, frozenset) or any(
@@ -466,6 +482,8 @@ def validate_deriv_proof_registration_eligibility(
             or verification.artifact_content_hashes
             != candidate.artifact_content_hashes
             or verification.claim_ids != candidate.claim_ids
+            or verification.valid_from != candidate.valid_from
+            or verification.valid_until != candidate.valid_until
         ):
             reasons.add(
                 DerivProofRegistrationReason.INDEPENDENT_VERIFICATION_MISMATCH

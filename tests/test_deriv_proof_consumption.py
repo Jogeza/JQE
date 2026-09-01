@@ -1,6 +1,7 @@
 """Offline tests for revocation-aware Deriv proof consumption."""
 
 from dataclasses import FrozenInstanceError, replace
+from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
 from unittest.mock import patch
@@ -56,6 +57,9 @@ def _request(entry=None, **changes):
         "loss_model_id": entry.loss_model_id,
         "loss_model_version": entry.loss_model_version,
         "evidence_source_id": entry.evidence_source_id,
+        "valid_from": entry.valid_from,
+        "valid_until": entry.valid_until,
+        "evaluated_at": datetime(2026, 10, 1, tzinfo=timezone.utc),
     }
     values.update(changes)
     return DerivProofConsumptionRequest(**values)
@@ -90,6 +94,72 @@ def test_exact_applicability_does_not_widen_or_retarget() -> None:
     result = validate_authoritative_proof_for_capability(admitted.registry, request)
     assert result.state is DerivProofConsumptionState.PROOF_UNAVAILABLE
     assert result.reason_codes == frozenset(
+        {DerivProofConsumptionReason.APPLICABILITY_MISMATCH}
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"environment": "real"},
+        {"account_currency": "OTHER_CURRENCY"},
+        {"contract_family": "MULTDOWN"},
+    ],
+)
+def test_financial_scope_isolation_is_exact(changes) -> None:
+    admitted = _admit()
+    request = _request(
+        admitted.registry.entries[0],
+        applicability=replace(_SCOPE_P1, **changes),
+    )
+    result = validate_authoritative_proof_for_capability(admitted.registry, request)
+    assert result.state is DerivProofConsumptionState.PROOF_UNAVAILABLE
+    assert result.reason_codes == frozenset(
+        {DerivProofConsumptionReason.APPLICABILITY_MISMATCH}
+    )
+
+
+@pytest.mark.parametrize(
+    "evaluated_at,expected",
+    [
+        (datetime(2026, 8, 31, tzinfo=timezone.utc), DerivProofConsumptionReason.PROOF_NOT_YET_EFFECTIVE),
+        (datetime(2026, 12, 2, tzinfo=timezone.utc), DerivProofConsumptionReason.PROOF_EXPIRED),
+    ],
+)
+def test_consumption_enforces_validity_window(evaluated_at, expected) -> None:
+    admitted = _admit()
+    result = validate_authoritative_proof_for_capability(
+        admitted.registry,
+        _request(admitted.registry.entries[0], evaluated_at=evaluated_at),
+    )
+    assert result.state is DerivProofConsumptionState.PROOF_UNAVAILABLE
+    assert result.reason_codes == frozenset({expected})
+
+
+def test_consumption_inside_validity_window_remains_available() -> None:
+    admitted = _admit()
+    result = validate_authoritative_proof_for_capability(
+        admitted.registry, _request(admitted.registry.entries[0])
+    )
+    assert result.state is DerivProofConsumptionState.PROOF_AVAILABLE
+
+
+def test_real_proof_matches_real_only_and_never_demo() -> None:
+    admitted = _admit()
+    demo_entry = admitted.registry.entries[0]
+    real_scope = replace(demo_entry.applicability, environment="real")
+    real_entry = replace(demo_entry, applicability=real_scope)
+    registry = DerivProofRegistryState((real_entry,))
+    real_result = validate_authoritative_proof_for_capability(
+        registry, _request(real_entry, applicability=real_scope)
+    )
+    demo_result = validate_authoritative_proof_for_capability(
+        registry,
+        _request(real_entry, applicability=replace(real_scope, environment="demo")),
+    )
+    assert real_result.state is DerivProofConsumptionState.PROOF_AVAILABLE
+    assert demo_result.state is DerivProofConsumptionState.PROOF_UNAVAILABLE
+    assert demo_result.reason_codes == frozenset(
         {DerivProofConsumptionReason.APPLICABILITY_MISMATCH}
     )
 
