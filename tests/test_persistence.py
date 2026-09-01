@@ -182,3 +182,94 @@ def test_legal_transitions_and_terminal_regression_protection(tmp_path) -> None:
 def test_missing_transition_is_safe(tmp_path) -> None:
     store = SQLiteIntentRecordStore(tmp_path / "intents.sqlite3")
     assert store.transition(_record(IntentRecordStatus.ACCEPTED)) is False
+
+
+def test_full_intent_payload_round_trip_and_transition_preservation(tmp_path) -> None:
+    from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide
+
+    path = tmp_path / "full_intents.sqlite3"
+    store = SQLiteIntentRecordStore(path)
+    record = IntentRecord(
+        idempotency_key="full-key-1",
+        status=IntentRecordStatus.PENDING,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        quantity=ExecutionQuantity(value=1.5, unit=ExecutionQuantityUnit.SIMULATION_UNITS),
+        entry=2000.0,
+        stop_loss=1990.0,
+        take_profit=2020.0,
+        authorized_risk_amount=25.0,
+        expected_loss_at_stop=24.5,
+        broker="simulation",
+        account_id="SIMULATED",
+    )
+    assert store.try_claim(record) is ClaimState.CLAIMED
+
+    retrieved = store.get("full-key-1")
+    assert retrieved is not None
+    assert retrieved.idempotency_key == "full-key-1"
+    assert retrieved.symbol == "XAUUSD"
+    assert retrieved.side is OrderSide.BUY
+    assert retrieved.quantity == ExecutionQuantity(value=1.5, unit=ExecutionQuantityUnit.SIMULATION_UNITS)
+    assert retrieved.entry == 2000.0
+    assert retrieved.stop_loss == 1990.0
+    assert retrieved.take_profit == 2020.0
+    assert retrieved.authorized_risk_amount == 25.0
+    assert retrieved.expected_loss_at_stop == 24.5
+    assert retrieved.broker == "simulation"
+    assert retrieved.account_id == "SIMULATED"
+
+    # Transitioning to ACCEPTED preserves the full original financial parameters
+    transitioned = IntentRecord("full-key-1", IntentRecordStatus.ACCEPTED, order_id="SIM-123", transaction_id="TX-456")
+    assert store.transition(transitioned) is True
+
+    after_transition = store.get("full-key-1")
+    assert after_transition is not None
+    assert after_transition.status is IntentRecordStatus.ACCEPTED
+    assert after_transition.order_id == "SIM-123"
+    assert after_transition.transaction_id == "TX-456"
+    assert after_transition.symbol == "XAUUSD"
+    assert after_transition.side is OrderSide.BUY
+    assert after_transition.quantity == ExecutionQuantity(value=1.5, unit=ExecutionQuantityUnit.SIMULATION_UNITS)
+    assert after_transition.entry == 2000.0
+
+    inspected = store.inspect("full-key-1")
+    assert inspected is not None
+    assert inspected.symbol == "XAUUSD"
+    assert inspected.side == "BUY"
+    assert inspected.quantity_value == 1.5
+    assert inspected.quantity_unit == "SIMULATION_UNITS"
+    assert inspected.order_id == "SIM-123"
+
+
+def test_legacy_schema_migration_backward_compatibility(tmp_path) -> None:
+    path = tmp_path / "legacy.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE intent_records (
+            idempotency_key TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            order_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO intent_records VALUES ('legacy-key', 'ACCEPTED', 'ORDER-OLD', '2026-08-01', '2026-08-01')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # Reopening with SQLiteIntentRecordStore should non-destructively migrate columns
+    store = SQLiteIntentRecordStore(path)
+    legacy = store.get("legacy-key")
+    assert legacy is not None
+    assert legacy.idempotency_key == "legacy-key"
+    assert legacy.status is IntentRecordStatus.ACCEPTED
+    assert legacy.order_id == "ORDER-OLD"
+    assert legacy.symbol is None
+    assert legacy.quantity is None

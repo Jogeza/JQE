@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import sqlite3
 from pathlib import Path
 
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide
 from execution.models import (
     ClaimState,
     ExecutionReservation,
@@ -25,6 +26,17 @@ class IntentRecordInspection:
     transaction_id: str | None
     created_at: str
     updated_at: str
+    symbol: str | None = None
+    side: str | None = None
+    quantity_value: float | None = None
+    quantity_unit: str | None = None
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    authorized_risk_amount: float | None = None
+    expected_loss_at_stop: float | None = None
+    broker: str | None = None
+    account_id: str | None = None
 
 
 _ALLOWED_TRANSITIONS: dict[IntentRecordStatus, frozenset[IntentRecordStatus]] = {
@@ -80,13 +92,39 @@ class SQLiteIntentRecordStore:
                     order_id TEXT,
                     transaction_id TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    symbol TEXT,
+                    side TEXT,
+                    quantity_value REAL,
+                    quantity_unit TEXT,
+                    entry REAL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    authorized_risk_amount REAL,
+                    expected_loss_at_stop REAL,
+                    broker TEXT,
+                    account_id TEXT
                 )
                 """
             )
             columns = {row[1] for row in connection.execute("PRAGMA table_info(intent_records)")}
-            if "transaction_id" not in columns:
-                connection.execute("ALTER TABLE intent_records ADD COLUMN transaction_id TEXT")
+            new_columns = (
+                ("transaction_id", "TEXT"),
+                ("symbol", "TEXT"),
+                ("side", "TEXT"),
+                ("quantity_value", "REAL"),
+                ("quantity_unit", "TEXT"),
+                ("entry", "REAL"),
+                ("stop_loss", "REAL"),
+                ("take_profit", "REAL"),
+                ("authorized_risk_amount", "REAL"),
+                ("expected_loss_at_stop", "REAL"),
+                ("broker", "TEXT"),
+                ("account_id", "TEXT"),
+            )
+            for col_name, col_type in new_columns:
+                if col_name not in columns:
+                    connection.execute(f"ALTER TABLE intent_records ADD COLUMN {col_name} {col_type}")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS execution_reservations (
@@ -106,11 +144,32 @@ class SQLiteIntentRecordStore:
     @staticmethod
     def _decode(row: sqlite3.Row) -> IntentRecord:
         try:
+            row_keys = row.keys()
+            quantity = None
+            if "quantity_value" in row_keys and row["quantity_value"] is not None:
+                quantity = ExecutionQuantity(
+                    value=float(row["quantity_value"]),
+                    unit=ExecutionQuantityUnit(row["quantity_unit"]),
+                )
+            side = None
+            if "side" in row_keys and row["side"] is not None:
+                side = OrderSide(row["side"])
+
             return IntentRecord(
                 idempotency_key=row["idempotency_key"],
                 status=IntentRecordStatus(row["state"]),
                 order_id=row["order_id"],
-                transaction_id=row["transaction_id"],
+                transaction_id=row["transaction_id"] if "transaction_id" in row_keys else None,
+                symbol=row["symbol"] if "symbol" in row_keys else None,
+                side=side,
+                quantity=quantity,
+                entry=float(row["entry"]) if "entry" in row_keys and row["entry"] is not None else None,
+                stop_loss=float(row["stop_loss"]) if "stop_loss" in row_keys and row["stop_loss"] is not None else None,
+                take_profit=float(row["take_profit"]) if "take_profit" in row_keys and row["take_profit"] is not None else None,
+                authorized_risk_amount=float(row["authorized_risk_amount"]) if "authorized_risk_amount" in row_keys and row["authorized_risk_amount"] is not None else None,
+                expected_loss_at_stop=float(row["expected_loss_at_stop"]) if "expected_loss_at_stop" in row_keys and row["expected_loss_at_stop"] is not None else None,
+                broker=row["broker"] if "broker" in row_keys else None,
+                account_id=row["account_id"] if "account_id" in row_keys else None,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Malformed persisted intent record") from exc
@@ -173,7 +232,7 @@ class SQLiteIntentRecordStore:
         self._validate_key(idempotency_key)
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT idempotency_key, state, order_id, transaction_id FROM intent_records WHERE idempotency_key = ?",
+                "SELECT * FROM intent_records WHERE idempotency_key = ?",
                 (idempotency_key,),
             ).fetchone()
         return None if row is None else self._decode(row)
@@ -182,8 +241,7 @@ class SQLiteIntentRecordStore:
         """Return non-terminal records in deterministic creation order."""
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT idempotency_key, state, order_id, transaction_id "
-                "FROM intent_records ORDER BY created_at ASC, idempotency_key ASC"
+                "SELECT * FROM intent_records ORDER BY created_at ASC, idempotency_key ASC"
             ).fetchall()
         records = tuple(self._decode(row) for row in rows)
         return tuple(
@@ -197,13 +255,34 @@ class SQLiteIntentRecordStore:
         self._validate_key(idempotency_key)
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT idempotency_key, state, order_id, transaction_id, created_at, updated_at FROM intent_records WHERE idempotency_key = ?",
+                "SELECT * FROM intent_records WHERE idempotency_key = ?",
                 (idempotency_key,),
             ).fetchone()
         if row is None:
             return None
         record = self._decode(row)
-        return IntentRecordInspection(record.idempotency_key, record.status, record.order_id, record.transaction_id, row["created_at"], row["updated_at"])
+        side_val = record.side.value if isinstance(record.side, OrderSide) else record.side
+        quantity_val = record.quantity.value if record.quantity is not None else None
+        quantity_unit = record.quantity.unit.value if record.quantity is not None else None
+        return IntentRecordInspection(
+            idempotency_key=record.idempotency_key,
+            status=record.status,
+            order_id=record.order_id,
+            transaction_id=record.transaction_id,
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            symbol=record.symbol,
+            side=side_val,
+            quantity_value=quantity_val,
+            quantity_unit=quantity_unit,
+            entry=record.entry,
+            stop_loss=record.stop_loss,
+            take_profit=record.take_profit,
+            authorized_risk_amount=record.authorized_risk_amount,
+            expected_loss_at_stop=record.expected_loss_at_stop,
+            broker=record.broker,
+            account_id=record.account_id,
+        )
 
     def backup_to(self, destination: str | Path) -> None:
         """Create a consistent SQLite backup without mutating this store."""
@@ -288,6 +367,9 @@ class SQLiteIntentRecordStore:
         self._validate_reservation_identity(scope, owner_id)
         now = self._now()
         now_text = now.isoformat(timespec="microseconds")
+        side_val = record.side.value if isinstance(record.side, OrderSide) else record.side
+        quantity_val = record.quantity.value if record.quantity is not None else None
+        quantity_unit = record.quantity.unit.value if record.quantity is not None else None
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -305,8 +387,32 @@ class SQLiteIntentRecordStore:
                 return ClaimState.CONFLICT
             try:
                 connection.execute(
-                    "INSERT INTO intent_records (idempotency_key, state, order_id, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (record.idempotency_key, record.status.value, record.order_id, record.transaction_id, now_text, now_text),
+                    """
+                    INSERT INTO intent_records (
+                        idempotency_key, state, order_id, transaction_id, created_at, updated_at,
+                        symbol, side, quantity_value, quantity_unit, entry, stop_loss, take_profit,
+                        authorized_risk_amount, expected_loss_at_stop, broker, account_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.idempotency_key,
+                        record.status.value,
+                        record.order_id,
+                        record.transaction_id,
+                        now_text,
+                        now_text,
+                        record.symbol,
+                        side_val,
+                        quantity_val,
+                        quantity_unit,
+                        record.entry,
+                        record.stop_loss,
+                        record.take_profit,
+                        record.authorized_risk_amount,
+                        record.expected_loss_at_stop,
+                        record.broker,
+                        record.account_id or scope,
+                    ),
                 )
             except sqlite3.IntegrityError:
                 connection.rollback()
@@ -322,13 +428,40 @@ class SQLiteIntentRecordStore:
     def try_claim(self, record: IntentRecord) -> ClaimState:
         self._validate_key(record.idempotency_key)
         now = _utc_now()
+        side_val = record.side.value if isinstance(record.side, OrderSide) else record.side
+        quantity_val = record.quantity.value if record.quantity is not None else None
+        quantity_unit = record.quantity.unit.value if record.quantity is not None else None
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute(
-                    "INSERT INTO intent_records (idempotency_key, state, order_id, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (record.idempotency_key, record.status.value, record.order_id, record.transaction_id, now, now),
+                    """
+                    INSERT INTO intent_records (
+                        idempotency_key, state, order_id, transaction_id, created_at, updated_at,
+                        symbol, side, quantity_value, quantity_unit, entry, stop_loss, take_profit,
+                        authorized_risk_amount, expected_loss_at_stop, broker, account_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.idempotency_key,
+                        record.status.value,
+                        record.order_id,
+                        record.transaction_id,
+                        now,
+                        now,
+                        record.symbol,
+                        side_val,
+                        quantity_val,
+                        quantity_unit,
+                        record.entry,
+                        record.stop_loss,
+                        record.take_profit,
+                        record.authorized_risk_amount,
+                        record.expected_loss_at_stop,
+                        record.broker,
+                        record.account_id,
+                    ),
                 )
             except sqlite3.IntegrityError:
                 connection.rollback()
@@ -347,7 +480,7 @@ class SQLiteIntentRecordStore:
         try:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT idempotency_key, state, order_id, transaction_id FROM intent_records WHERE idempotency_key = ?",
+                "SELECT * FROM intent_records WHERE idempotency_key = ?",
                 (record.idempotency_key,),
             ).fetchone()
             if row is None:

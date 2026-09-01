@@ -223,8 +223,14 @@ class AsyncTradeExecutor:
         if before_submit is not None:
             before_submit(decision)
         try:
+            intent_record = IntentRecord.from_execution_intent(
+                intent,
+                status=IntentRecordStatus.PENDING,
+                broker=context.broker if context is not None else None,
+                account_id=scope,
+            )
             claim = self._records.try_claim_under_reservation(
-                IntentRecord(intent.idempotency_key, IntentRecordStatus.PENDING),
+                intent_record,
                 scope,
                 owner_id,
             )
