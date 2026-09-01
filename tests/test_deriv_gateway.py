@@ -18,7 +18,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from broker.deriv_gateway import DerivGateway
+from broker.deriv_gateway import (
+    DerivGateway,
+    _build_buy_request,
+    _build_proposal_request,
+    _parse_proposal_response,
+)
 from broker.types import OrderRequest, OrderSide, OrderStatus, Timeframe
 from core.exceptions import (
     BrokerAuthenticationError,
@@ -181,92 +186,106 @@ class TestGetCandles:
 
 
 class TestSubmitOrder:
-    async def test_buy_order_flows_through_proposal_and_buy(self) -> None:
-        gateway, fake_connection = _connected_gateway(
-            {
-                "proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}},
-                "buy": {"buy": {"contract_id": 999, "buy_price": 10.0}},
-            }
-        )
-        await _connect_with_fake(gateway, fake_connection)
-        result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
-        )
-        assert result.status is OrderStatus.FILLED
-        assert result.order_id == "999"
-        await gateway.disconnect()
-
-    async def test_execution_identity_is_sent_only_in_buy_passthrough(self) -> None:
-        gateway, fake_connection = _connected_gateway(
-            {
-                "proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}},
-                "buy": {"buy": {"contract_id": 999, "transaction_id": 1234, "buy_price": 10.0}},
-            }
-        )
-        await _connect_with_fake(gateway, fake_connection)
-        intent_key = "JQE-intent-001"
-        result = await gateway.submit_order(
+    def test_proposal_base_schema_uses_underlying_symbol_only(self) -> None:
+        request = _build_proposal_request(
             OrderRequest(
                 symbol="R_100",
                 side=OrderSide.BUY,
                 quantity={"value": 10.0, "unit": "DERIV_STAKE"},
-                idempotency_key=intent_key,
-            )
+            ),
+            "USD",
         )
-        buy_request = next(message for message in fake_connection.sent if "buy" in message)
-        assert buy_request["passthrough"] == {"jqe": {"idempotency_key": intent_key}}
-        assert result.order_id == "999"
-        assert result.transaction_id == "1234"
-        assert buy_request["req_id"] != intent_key
-        await gateway.disconnect()
+        assert request == {
+            "proposal": 1,
+            "contract_type": "MULTUP",
+            "underlying_symbol": "R_100",
+            "amount": 10.0,
+            "basis": "stake",
+            "currency": "USD",
+        }
+        assert not {
+            "symbol", "loginid", "barrier_range", "product_type", "date_start",
+            "trade_risk_profile", "trading_period_start", "multiplier", "limit_order",
+        } & request.keys()
 
-    async def test_rejected_buy_returns_rejected_status(self) -> None:
-        gateway, fake_connection = _connected_gateway(
-            {
-                "proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}},
-                "buy": {"error": {"message": "insufficient balance"}},
-            }
+    def test_sell_preserves_multiplier_contract_design(self) -> None:
+        request = _build_proposal_request(
+            OrderRequest(
+                symbol="R_100",
+                side=OrderSide.SELL,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+            ),
+            "USD",
         )
-        await _connect_with_fake(gateway, fake_connection)
-        result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
-        )
-        assert result.status is OrderStatus.REJECTED
-        await gateway.disconnect()
+        assert request["contract_type"] == "MULTDOWN"
 
-    async def test_proposal_error_raises_execution_error(self) -> None:
-        gateway, fake_connection = _connected_gateway(
-            {
-                "proposal": {"error": {"message": "ContractNotAvailable"}},
-            }
+    @pytest.mark.parametrize("field", ["stop_loss", "take_profit"])
+    def test_absolute_market_limits_fail_closed(self, field: str) -> None:
+        values = {field: 95.0}
+        order = OrderRequest(
+            symbol="R_100",
+            side=OrderSide.BUY,
+            quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+            **values,
         )
+        with pytest.raises(ExecutionError, match="monetary limit conversion is unproven"):
+            _build_proposal_request(order, "USD")
+
+    async def test_unverified_multiplier_blocks_before_proposal_request(self) -> None:
+        gateway, fake_connection = _connected_gateway({})
         await _connect_with_fake(gateway, fake_connection)
-        with pytest.raises(ExecutionError, match="Deriv proposal request failed"):
+        with pytest.raises(ExecutionError, match="multiplier is unverified"):
             await gateway.submit_order(
-                OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"})
+                OrderRequest(
+                    symbol="R_100",
+                    side=OrderSide.BUY,
+                    quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                )
             )
+        assert not any("proposal" in message for message in fake_connection.sent)
         await gateway.disconnect()
+
+    @pytest.mark.parametrize("ask_price", [10, 10.5, "10.50"])
+    def test_proposal_price_is_normalized(self, ask_price: object) -> None:
+        proposal_id, normalized = _parse_proposal_response(
+            {"proposal": {"id": "prop-1", "ask_price": ask_price}}, symbol="R_100"
+        )
+        assert proposal_id == "prop-1"
+        assert normalized == float(ask_price)
 
     @pytest.mark.parametrize(
-        "buy",
-        [{}, {"buy_price": 10.0}, {"contract_id": 999}, {"contract_id": "", "buy_price": 10.0}, {"contract_id": 999, "buy_price": 0.0}],
+        "response",
+        [
+            {},
+            {"proposal": None},
+            {"proposal": {}},
+            {"proposal": {"id": "", "ask_price": 10}},
+            {"proposal": {"id": "   ", "ask_price": 10}},
+            {"proposal": {"id": 1, "ask_price": 10}},
+            {"proposal": {"id": "prop-1"}},
+            {"proposal": {"id": "prop-1", "ask_price": ""}},
+            {"proposal": {"id": "prop-1", "ask_price": "bad"}},
+            {"proposal": {"id": "prop-1", "ask_price": 0}},
+            {"proposal": {"id": "prop-1", "ask_price": -1}},
+            {"proposal": {"id": "prop-1", "ask_price": float("nan")}},
+            {"proposal": {"id": "prop-1", "ask_price": float("inf")}},
+            {"proposal": {"id": "prop-1", "ask_price": "Infinity"}},
+        ],
     )
-    async def test_malformed_buy_success_is_indeterminate(self, buy: dict[str, object]) -> None:
-        gateway, fake_connection = _connected_gateway(
-            {"proposal": {"proposal": {"id": "prop-1", "ask_price": 10.0}}, "buy": {"buy": buy}}
-        )
-        await _connect_with_fake(gateway, fake_connection)
-        with pytest.raises(ExecutionError, match="malformed or outcome is indeterminate"):
-            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"}))
-        await gateway.disconnect()
-
-    @pytest.mark.parametrize("proposal", [{}, {"id": "prop-1"}, {"ask_price": 10.0}])
-    async def test_malformed_proposal_is_indeterminate(self, proposal: dict[str, object]) -> None:
-        gateway, fake_connection = _connected_gateway({"proposal": {"proposal": proposal}})
-        await _connect_with_fake(gateway, fake_connection)
+    def test_malformed_proposal_fails_closed(self, response: dict[str, object]) -> None:
         with pytest.raises(ExecutionError, match="proposal response was malformed"):
-            await gateway.submit_order(OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity={"value": 10.0, "unit": "DERIV_STAKE"}))
-        await gateway.disconnect()
+            _parse_proposal_response(response, symbol="R_100")
+
+    def test_buy_contract_maps_proposal_and_normalized_price(self) -> None:
+        proposal_id, ask_price = _parse_proposal_response(
+            {"proposal": {"id": "prop-1", "ask_price": "10.50"}}, symbol="R_100"
+        )
+        request = _build_buy_request(proposal_id, ask_price, "JQE-intent-001")
+        assert request == {
+            "buy": "prop-1",
+            "price": 10.5,
+            "passthrough": {"jqe": {"idempotency_key": "JQE-intent-001"}},
+        }
 
 
 class TestGetPositions:

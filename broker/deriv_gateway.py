@@ -22,14 +22,10 @@ subscription push messages (ticks, ...). This module:
     and unit-tested against a mocked connection, not integration-
     verified. See "Remaining technical debt" in docs/architecture.md.
 
-    In particular, :meth:`submit_order` maps the broker-agnostic
-    ``OrderRequest`` onto Deriv's **Multipliers** contract type
-    (``MULTUP``/``MULTDOWN``), the closest Deriv product to a
-    directional position with stop-loss/take-profit — a real
-    integration test against a demo account is needed to confirm the
-    exact parameter names/values (particularly ``multiplier``, which
-    is currently a fixed placeholder) before this is used for anything
-    beyond development.
+    In particular, :meth:`submit_order` remains fail-closed until registered
+    evidence supplies an authoritative multiplier and monetary limit amounts.
+    Broker-neutral absolute stop/take-profit prices are never serialized as
+    Deriv ``limit_order`` loss/profit amounts.
 """
 
 from __future__ import annotations
@@ -68,9 +64,70 @@ from core.logger import logger
 
 DEFAULT_ENDPOINT = "wss://ws.derivws.com/websockets/v3"
 _REQUEST_TIMEOUT_SECONDS = 15.0
-# Provisional request-shape placeholder only.  It is represented as explicitly
-# unverified by broker.deriv_contract_spec and is never quantity evidence.
-_MULTIPLIER = 100
+
+
+def _positive_financial_number(value: Any, *, field: str) -> float:
+    """Normalize a positive finite commercial value without zero fallbacks."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ExecutionError(f"Deriv proposal {field} was malformed or indeterminate")
+    if isinstance(value, str) and not value.strip():
+        raise ExecutionError(f"Deriv proposal {field} was malformed or indeterminate")
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ExecutionError(
+            f"Deriv proposal {field} was malformed or indeterminate"
+        ) from exc
+    if not math.isfinite(normalized) or normalized <= 0:
+        raise ExecutionError(f"Deriv proposal {field} was malformed or indeterminate")
+    return normalized
+
+
+def _build_proposal_request(order: OrderRequest, currency: str) -> dict[str, Any]:
+    """Build only the verified base proposal schema; add no unproven terms."""
+    if order.stop_loss is not None or order.take_profit is not None:
+        raise ExecutionError(
+            "Deriv monetary limit conversion is unproven; absolute market "
+            "stop-loss/take-profit prices cannot be used as contract loss/profit amounts",
+            symbol=order.symbol,
+        )
+    return {
+        "proposal": 1,
+        "contract_type": "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN",
+        "underlying_symbol": order.symbol,
+        "amount": order.quantity.value,
+        "basis": "stake",
+        "currency": currency,
+    }
+
+
+def _parse_proposal_response(response: dict[str, Any], *, symbol: str) -> tuple[str, float]:
+    proposal = response.get("proposal")
+    if not isinstance(proposal, dict):
+        raise ExecutionError(
+            "Deriv proposal response was malformed or indeterminate", symbol=symbol
+        )
+    proposal_id = proposal.get("id")
+    if not isinstance(proposal_id, str) or not proposal_id.strip():
+        raise ExecutionError(
+            "Deriv proposal response was malformed or indeterminate", symbol=symbol
+        )
+    try:
+        ask_price = _positive_financial_number(proposal.get("ask_price"), field="ask_price")
+    except ExecutionError as exc:
+        raise ExecutionError(
+            "Deriv proposal response was malformed or indeterminate", symbol=symbol
+        ) from exc
+    return proposal_id, ask_price
+
+
+def _build_buy_request(
+    proposal_id: str, ask_price: float, idempotency_key: str | None
+) -> dict[str, Any]:
+    request: dict[str, Any] = {"buy": proposal_id, "price": ask_price}
+    if idempotency_key is not None:
+        request["passthrough"] = {"jqe": {"idempotency_key": idempotency_key}}
+    return request
 
 
 class DerivGateway(BrokerGateway):
@@ -195,23 +252,16 @@ class DerivGateway(BrokerGateway):
         if order.quantity.unit is not ExecutionQuantityUnit.DERIV_STAKE:
             raise ExecutionError("Deriv requires DERIV_STAKE")
         quantity = order.quantity.value
-        contract_type = "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN"
-        proposal_request: dict[str, Any] = {
-            "proposal": 1,
-            "contract_type": contract_type,
-            "symbol": order.symbol,
-            "amount": quantity,
-            "basis": "stake",
-            "currency": self._currency or "USD",
-            "multiplier": _MULTIPLIER,
-        }
-        limit_order = {
-            key: value
-            for key, value in (("stop_loss", order.stop_loss), ("take_profit", order.take_profit))
-            if value is not None
-        }
-        if limit_order:
-            proposal_request["limit_order"] = limit_order
+        proposal_request = _build_proposal_request(order, self._currency or "USD")
+
+        # No registered evidence currently supplies an authoritative multiplier.
+        # MULTUP/MULTDOWN execution therefore remains unreachable, and no proposal
+        # request is sent.  The base request above is retained as the corrected,
+        # offline-testable API schema boundary.
+        raise ExecutionError(
+            "Deriv multiplier is unverified; proposal submission is disabled",
+            symbol=order.symbol,
+        )
 
         proposal_response = await self._request(proposal_request)
         if proposal_response.get("error"):
@@ -220,15 +270,12 @@ class DerivGateway(BrokerGateway):
                 symbol=order.symbol,
                 reason=proposal_response["error"].get("message"),
             )
-        proposal = proposal_response.get("proposal", {})
-        proposal_id = proposal.get("id") if isinstance(proposal, dict) else None
-        ask_price = proposal.get("ask_price") if isinstance(proposal, dict) else None
-        if not proposal_id or not isinstance(ask_price, (int, float)) or isinstance(ask_price, bool) or not math.isfinite(float(ask_price)) or float(ask_price) <= 0:
-            raise ExecutionError("Deriv proposal response was malformed or indeterminate", symbol=order.symbol)
-
-        buy_request: dict[str, Any] = {"buy": proposal_id, "price": ask_price}
-        if order.idempotency_key is not None:
-            buy_request["passthrough"] = {"jqe": {"idempotency_key": order.idempotency_key}}
+        proposal_id, ask_price = _parse_proposal_response(
+            proposal_response, symbol=order.symbol
+        )
+        buy_request = _build_buy_request(
+            proposal_id, ask_price, order.idempotency_key
+        )
         buy_response = await self._request(buy_request)
         if buy_response.get("error"):
             logger.warning(
