@@ -234,7 +234,10 @@ source material
   → evidence claims
   → advisory evidence-review decision
   → non-authoritative proof-review assessment
-  → separate authoritative proof-registration process
+  → non-authoritative candidate proof material
+  → independent verification decision
+  → registration eligibility validation
+  → separate authoritative registry admission process
   → authoritative proof registry
   → quantity capability
   → execution quantity
@@ -261,6 +264,22 @@ constructs nor registers `DerivLossModelProof`. Production therefore supports
 evidence provenance, advisory review, and non-authoritative proof-review
 assessment while authoritative proof remains absent, capability false, and
 quantity unavailable.
+
+Authoritative proof-registration governance is a separate, pure boundary.
+Candidate proof material is non-authoritative and is bound to its exact source
+assessment, advisory decision, artifact IDs and SHA-256 identities, claim set,
+loss-model identity, and complete applicability tuple. A separate independent
+verification decision must bind the same candidate and chain. Explicit,
+append-only revocation records can invalidate candidates, verification
+decisions, and—once registry admission exists—registered proof identities
+without deleting their history. Registration eligibility requires a current
+READY advisory chain, an exact VERIFIED independent decision, no identity or
+scope mismatch, and no applicable revocation. `ELIGIBLE_FOR_REGISTRATION`
+means only that these governance prerequisites are consistent; it neither
+constructs `DerivLossModelProof` nor admits anything to the authoritative
+registry. Registry admission remains a future, separate process. The canonical
+Deriv proof registry therefore still has zero entries, capability remains
+false, and quantity remains unavailable.
 
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
