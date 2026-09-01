@@ -35,13 +35,38 @@ from core.exceptions import (
     MarketDataError,
 )
 from core.logger import logger
-from core.market_data import MarketData
 from core.mt5_connection import connect as mt5_connect
 from core.mt5_connection import disconnect as mt5_disconnect
 
 
 _TRADE_HISTORY_LOOKBACK_DAYS = 30
 _DEFAULT_TICK_POLL_INTERVAL_SECONDS = 1.0
+
+_MT5_SYMBOL_ALIASES: dict[str, list[str]] = {
+    "GOLD": [
+        "GOLD",
+        "XAUUSD",
+        "XAUUSDm",
+        "XAUUSD.pro",
+        "GOLD#",
+    ],
+    "BTCUSD": [
+        "BTCUSD",
+        "BTCUSDm",
+        "BTCUSD.pro",
+    ],
+    "DOW30": [
+        "DOW30",
+        "US30",
+        "DJ30",
+        "WS30",
+    ],
+    "EURUSD": [
+        "EURUSD",
+        "EURUSDm",
+        "EURUSD.pro",
+    ],
+}
 
 
 #: Maps the broker-agnostic Timeframe to MT5's native constants. Built
@@ -76,7 +101,6 @@ class MT5Gateway(BrokerGateway):
         expected_environment: str | None = None,
         strict_lifecycle: bool = False,
     ) -> None:
-        self._market_data = MarketData()
         self._connected = False
         self.tick_poll_interval = tick_poll_interval
         self.terminal_path = terminal_path
@@ -85,6 +109,19 @@ class MT5Gateway(BrokerGateway):
         self.server = server
         self.expected_environment = expected_environment
         self.strict_lifecycle = strict_lifecycle
+
+    def _resolve_symbol(self, symbol: str) -> str | None:
+        """Resolves broker-specific symbol using alias priority order."""
+        candidates = _MT5_SYMBOL_ALIASES.get(symbol, [symbol])
+        for candidate in candidates:
+            info = mt5.symbol_info(candidate)
+            if info is not None:
+                if not getattr(info, "visible", True):
+                    mt5.symbol_select(candidate, True)
+                logger.info("Symbol mapped: {} -> {}", symbol, candidate)
+                return candidate
+        logger.error("No broker symbol found for {}", symbol)
+        return None
 
     async def connect(self) -> None:
         connected = await asyncio.to_thread(
@@ -178,7 +215,7 @@ class MT5Gateway(BrokerGateway):
             # docstring; mt5.copy_rates_from's exact date-anchoring
             # semantics should be confirmed against a demo account
             # before relying on this for precise gap-filling.
-            real_symbol = self._market_data.resolve_symbol(symbol)
+            real_symbol = self._resolve_symbol(symbol)
             if not real_symbol:
                 raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
             raw_rates = await asyncio.to_thread(
@@ -203,13 +240,19 @@ class MT5Gateway(BrokerGateway):
         # docs/roadmap.md. Accepted here for interface conformance.
         del timeframe
 
-        raw_candles = await asyncio.to_thread(
-            self._market_data.get_candles,
-            symbol,
+        real_symbol = self._resolve_symbol(symbol)
+        if not real_symbol:
+            raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
+
+        raw_rates = await asyncio.to_thread(
+            mt5.copy_rates_from_pos,
+            real_symbol,
+            mt5.TIMEFRAME_H1,
+            0,
             count,
         )
 
-        if not raw_candles:
+        if raw_rates is None or len(raw_rates) == 0:
             raise MarketDataError(
                 "No candle data returned from MT5",
                 symbol=symbol,
@@ -217,16 +260,16 @@ class MT5Gateway(BrokerGateway):
 
         return [
             Candle(
-                time=candle["time"],
-                open=float(candle["open"]),
-                high=float(candle["high"]),
-                low=float(candle["low"]),
-                close=float(candle["close"]),
+                time=datetime.fromtimestamp(rate["time"]),
+                open=float(rate["open"]),
+                high=float(rate["high"]),
+                low=float(rate["low"]),
+                close=float(rate["close"]),
                 volume=float(
-                    candle.get("volume", 0.0)
-                ),
+                    rate["tick_volume"] if "tick_volume" in rate else rate.get("volume", 0.0)
+                ) if isinstance(rate, dict) else float(rate["tick_volume"]),
             )
-            for candle in raw_candles
+            for rate in raw_rates
         ]
 
     def stream_ticks(
@@ -253,7 +296,7 @@ class MT5Gateway(BrokerGateway):
                 self._connected = False
                 raise BrokerConnectionError("MT5 pre-submit readiness verification failed")
 
-        real_symbol = self._market_data.resolve_symbol(
+        real_symbol = self._resolve_symbol(
             order.symbol
         )
 
@@ -583,7 +626,7 @@ class MT5Gateway(BrokerGateway):
         symbol: str,
     ) -> AsyncIterator[Tick]:
 
-        real_symbol = self._market_data.resolve_symbol(
+        real_symbol = self._resolve_symbol(
             symbol
         )
 

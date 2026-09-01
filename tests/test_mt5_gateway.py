@@ -118,40 +118,121 @@ class TestGetAccountInfo:
     ) -> None:
         await gateway.connect()
         mock_mt5.account_info.return_value = None
+
+
+class TestGetAccountInfo:
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_maps_account_info(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        mock_mt5.account_info.return_value = MagicMock(
+            login=12345, balance=1000.0, currency="USD", equity=1010.0, leverage=100.0
+        )
+        account = await gateway.get_account_info()
+        assert account.account_id == "12345"
+        assert account.balance == 1000.0
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_raises_when_account_info_is_none(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        mock_mt5.account_info.return_value = None
         with pytest.raises(BrokerConnectionError):
             await gateway.get_account_info()
 
 
+class TestResolveSymbol:
+    @patch("broker.mt5_gateway.mt5")
+    def test_resolves_canonical_match(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        mock_info = MagicMock(visible=True)
+        mock_mt5.symbol_info.return_value = mock_info
+
+        resolved = gateway._resolve_symbol("GOLD")
+        assert resolved == "GOLD"
+        mock_mt5.symbol_info.assert_called_once_with("GOLD")
+        mock_mt5.symbol_select.assert_not_called()
+
+    @patch("broker.mt5_gateway.mt5")
+    def test_resolves_alias_fallback_order(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        def symbol_info_side_effect(name: str) -> MagicMock | None:
+            if name == "XAUUSDm":
+                return MagicMock(visible=True)
+            return None
+
+        mock_mt5.symbol_info.side_effect = symbol_info_side_effect
+
+        resolved = gateway._resolve_symbol("GOLD")
+        assert resolved == "XAUUSDm"
+        assert mock_mt5.symbol_info.call_count == 3  # GOLD, XAUUSD, XAUUSDm
+
+    @patch("broker.mt5_gateway.mt5")
+    def test_selects_invisible_symbol(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        mock_info = MagicMock(visible=False)
+        mock_mt5.symbol_info.return_value = mock_info
+
+        resolved = gateway._resolve_symbol("EURUSD")
+        assert resolved == "EURUSD"
+        mock_mt5.symbol_select.assert_called_once_with("EURUSD", True)
+
+    @patch("broker.mt5_gateway.mt5")
+    def test_returns_none_for_unknown_symbol(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        mock_mt5.symbol_info.return_value = None
+
+        resolved = gateway._resolve_symbol("UNKNOWN_SYM")
+        assert resolved is None
+        mock_mt5.symbol_info.assert_called_once_with("UNKNOWN_SYM")
+
+
 class TestGetCandles:
+    @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
-    async def test_maps_market_data_candles(
-        self, mock_connect: MagicMock, gateway: MT5Gateway
+    async def test_maps_unanchored_candles_with_h1(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.get_candles.return_value = [
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
+        mock_mt5.TIMEFRAME_H1 = 16385
+        mock_mt5.copy_rates_from_pos.return_value = [
             {
-                "time": "2024-01-01T00:00:00",
-                "open": 1,
-                "high": 2,
+                "time": 1700000000,
+                "open": 1.0,
+                "high": 2.0,
                 "low": 0.5,
                 "close": 1.5,
-                "volume": 10,
+                "tick_volume": 10,
             }
         ]
         candles = await gateway.get_candles("XAUUSD", Timeframe.H1, 1)
         assert len(candles) == 1
         assert candles[0].close == 1.5
+        assert candles[0].volume == 10.0
+        assert candles[0].time == datetime.fromtimestamp(1700000000)
+        mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 16385, 0, 1)
 
+    @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
     async def test_raises_when_no_candles_returned(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        await gateway.connect()
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
+        mock_mt5.TIMEFRAME_H1 = 16385
+        mock_mt5.copy_rates_from_pos.return_value = []
+        with pytest.raises(MarketDataError):
+            await gateway.get_candles("XAUUSD", Timeframe.H1, 10)
+
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_raises_when_symbol_unresolved(
         self, mock_connect: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.get_candles.return_value = []
-        with pytest.raises(MarketDataError):
-            await gateway.get_candles("XAUUSD", Timeframe.H1, 10)
+        gateway._resolve_symbol = MagicMock(return_value=None)
+        with pytest.raises(MarketDataError, match="Unknown MT5 symbol"):
+            await gateway.get_candles("UNKNOWN", Timeframe.H1, 10)
 
 
 class TestGetCandlesWithEnd:
@@ -161,8 +242,7 @@ class TestGetCandlesWithEnd:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.TIMEFRAME_M5 = 5
         mock_mt5.copy_rates_from.return_value = [
             {
@@ -181,7 +261,6 @@ class TestGetCandlesWithEnd:
         assert len(candles) == 1
         assert candles[0].close == 1.1
         mock_mt5.copy_rates_from.assert_called_once_with("XAUUSDm", 5, end, 1)
-        gateway._market_data.get_candles.assert_not_called()
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -189,8 +268,7 @@ class TestGetCandlesWithEnd:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = None
+        gateway._resolve_symbol = MagicMock(return_value=None)
         with pytest.raises(MarketDataError):
             await gateway.get_candles(
                 "NOPE", Timeframe.M5, 1, end=datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -202,8 +280,7 @@ class TestGetCandlesWithEnd:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.copy_rates_from.return_value = None
         with pytest.raises(MarketDataError):
             await gateway.get_candles(
@@ -218,8 +295,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = None
+        gateway._resolve_symbol = MagicMock(return_value=None)
         with pytest.raises(ExecutionError):
             await gateway.submit_order(OrderRequest(symbol="NOPE", side=OrderSide.BUY, quantity={"value": 0.1, "unit": "MT5_LOTS"}))
 
@@ -229,8 +305,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
         mock_mt5.TRADE_RETCODE_DONE = 10009
         mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=555, price=2000.5)
@@ -247,8 +322,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
@@ -266,8 +340,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
@@ -293,8 +366,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = False
 
         with pytest.raises(MarketDataError, match="Unable to select MT5 symbol"):
@@ -306,8 +378,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         mock_mt5.symbol_info.return_value = None
 
@@ -320,8 +391,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
         mock_mt5.symbol_info_tick.return_value = None
@@ -335,8 +405,7 @@ class TestSubmitOrder:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = "XAUUSDm"
+        gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         # stops level = 50 points * 0.1 = 5.0 min distance
         mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.1, trade_stops_level=50)
@@ -411,17 +480,11 @@ class TestStreamTicks:
         self, mock_connect: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
-        gateway._market_data = MagicMock()
-        gateway._market_data.resolve_symbol.return_value = None
+        gateway._resolve_symbol = MagicMock(return_value=None)
 
         gen = gateway.stream_ticks("UNKNOWN")
         with pytest.raises(MarketDataError, match="Unknown MT5 symbol"):
             await gen.__anext__()
-
-
-# ---------------------------------------------------------------------------
-# Helper factories for mock MT5 deal objects
-# ---------------------------------------------------------------------------
 
 def _make_deal(
     *,
