@@ -366,6 +366,53 @@ Only after independently reviewed production evidence defines and verifies an
 exact semantic specification should JQE implement its corresponding closed,
 typed financial equation evaluator. Quantity sizing is not the next boundary.
 
+External Deriv evidence intake is now modeled as a separate, pure governance
+path:
+
+```text
+externally supplied Deriv evidence
+  → immutable intake record with preserved raw bytes
+  → deterministic normalized-field representation
+  → raw and normalized SHA-256 provenance validation
+  → independent evidence-source verification
+  → exact source-bound advisory semantic claims
+  → semantic-review readiness
+  → STOP
+```
+
+The intake layer never fetches evidence. It has no HTTP, WebSocket, gateway,
+credential, environment, filesystem, database, or implicit wall-clock access.
+Capture time, observation time, expiry, evaluation time, source identity,
+environment, and account scope are supplied explicitly. Normalization only
+orders explicit path/value/semantic/unit records; it does not infer missing
+fields, correct broker values, convert units, or discard the original bytes.
+
+Source types and production-versus-synthetic classification are closed enums.
+Synthetic fixtures cannot be relabeled as production candidates. Independent
+source verification establishes only that evidence appears intact, correctly
+scoped, sufficiently complete, and suitable for semantic review. It does not
+verify a financial semantic specification, admit a proof, or grant monetary,
+risk, quantity, or execution authority. Multiple artifacts retain separate
+identities; contradictory claims produce a conflict rather than source
+selection. Explicit expiry and append-only intake/source-verification
+revocations disable new readiness while preserving history.
+
+No genuine production Deriv evidence has been admitted. The controlled
+production state is `PRODUCTION_EVIDENCE_NOT_AVAILABLE`; synthetic evidence is
+test-only, the canonical proof registry remains empty, proof availability and
+loss evaluation remain unavailable, `stop_risk_authorizable` remains false,
+and Deriv quantity remains `None`.
+
+The operational handoff requires genuine externally captured material supplied
+manually, potentially including official contract/proposal schemas, exact
+contract-family broker responses, stop behavior, multiplier semantics,
+settlement/loss behavior, currency treatment, domain limits, and rounding
+behavior. These categories are intake requirements, not a claim that any set is
+sufficient. After supply, JQE must validate provenance and integrity, extract
+exact advisory claims, review the semantic specification independently, and
+only then consider proof registration. Quantity sizing must not precede that
+evidence-driven authority work.
+
 The contract proof pipeline is exercised end-to-end only by a JQE-owned
 synthetic Simulation contract. Its deliberately artificial linear equation is
 `loss = SIMULATION_UNITS × price distance`, with conservative downward
