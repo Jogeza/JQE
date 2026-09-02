@@ -2,7 +2,7 @@
 
 :class:`CandleStore` wraps a SQLite database (Python's stdlib
 ``sqlite3`` — no extra dependency) that caches
-:class:`broker.types.Candle` data per ``(symbol, timeframe)``, so
+:class:`broker.types.Candle` data per ``(provider, symbol, timeframe)``, so
 :class:`data.historical.HistoricalDataService` can serve repeated
 requests without re-downloading from a broker every time.
 
@@ -30,6 +30,7 @@ from data.types import CacheValidationResult
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
+    provider TEXT NOT NULL DEFAULT 'unknown',
     symbol TEXT NOT NULL,
     timeframe TEXT NOT NULL,
     time INTEGER NOT NULL,
@@ -37,11 +38,12 @@ CREATE TABLE IF NOT EXISTS candles (
     high REAL NOT NULL,
     low REAL NOT NULL,
     close REAL NOT NULL,
-    volume REAL NOT NULL DEFAULT 0,
-    PRIMARY KEY (symbol, timeframe, time)
+    volume REAL,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    PRIMARY KEY (provider, symbol, timeframe, time)
 );
-CREATE INDEX IF NOT EXISTS idx_candles_symbol_timeframe_time
-    ON candles (symbol, timeframe, time);
+CREATE INDEX IF NOT EXISTS idx_candles_provider_symbol_timeframe_time
+    ON candles (provider, symbol, timeframe, time);
 """
 
 #: A gap is flagged when the interval between two consecutive cached
@@ -98,7 +100,7 @@ class CandleStore:
             raise CacheError(f"Failed to create cache directory for {self.db_path}") from exc
         self._init_schema()
 
-    def save_candles(self, symbol: str, timeframe: Timeframe, candles: Iterable[Candle]) -> int:
+    def save_candles(self, symbol: str, timeframe: Timeframe, candles: Iterable[Candle], provider: str | None = None) -> int:
         """Upserts candles into the cache.
 
         Safe to call with overlapping data — existing candles at the
@@ -115,8 +117,19 @@ class CandleStore:
         Returns:
             Number of candles written.
         """
+        candles = list(candles)
+        if not candles:
+            return 0
+        strict_conflicts = provider is not None
+        providers = {provider or candle.source for candle in candles}
+        if len(providers) != 1:
+            raise CacheError("Candle batch cannot mix providers")
+        resolved_provider = next(iter(providers), "unknown")
+        if not isinstance(resolved_provider, str) or not resolved_provider.strip():
+            raise CacheError("Candle provider identity is required")
         rows = [
             (
+                resolved_provider,
                 symbol,
                 timeframe.value,
                 int(candle.time.timestamp()),
@@ -125,27 +138,50 @@ class CandleStore:
                 candle.low,
                 candle.close,
                 candle.volume,
+                candle.source,
             )
             for candle in candles
         ]
-        if not rows:
-            return 0
-
+        written = 0
         try:
             with closing(self._connect()) as conn, conn:
-                conn.executemany(
-                    "INSERT OR REPLACE INTO candles "
-                    "(symbol, timeframe, time, open, high, low, close, volume) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    rows,
-                )
+                pending = []
+                seen_keys = set()
+                for row in rows:
+                    key = row[:4]
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    existing = conn.execute(
+                        "SELECT open, high, low, close, volume FROM candles WHERE provider=? AND symbol=? AND timeframe=? AND time=?",
+                        key,
+                    ).fetchone()
+                    if existing is not None:
+                        existing_values = tuple(existing)
+                        incoming_values = row[4:9]
+                        if existing_values != incoming_values:
+                            if strict_conflicts:
+                                raise CacheError("Conflicting duplicate candle", provider=resolved_provider, symbol=symbol, timestamp=row[3])
+                            conn.execute(
+                                "UPDATE candles SET open=?, high=?, low=?, close=?, volume=?, source=? WHERE provider=? AND symbol=? AND timeframe=? AND time=?",
+                                row[4:9] + (row[9],) + row[:4],
+                            )
+                            written += 1
+                        continue
+                    pending.append(row)
+                if pending:
+                    conn.executemany(
+                        "INSERT INTO candles (provider, symbol, timeframe, time, open, high, low, close, volume, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        pending,
+                    )
+                    written += len(pending)
         except sqlite3.DatabaseError as exc:
             raise CacheError(
                 "Failed to write candles to cache", symbol=symbol, timeframe=timeframe.value
             ) from exc
 
         logger.debug("Cached {} candle(s) for {} {}", len(rows), symbol, timeframe.value)
-        return len(rows)
+        return written
 
     def load_candles(
         self,
@@ -153,6 +189,7 @@ class CandleStore:
         timeframe: Timeframe,
         start: datetime | None = None,
         end: datetime | None = None,
+        provider: str | None = None,
     ) -> list[Candle]:
         """Loads cached candles, oldest to newest.
 
@@ -166,8 +203,11 @@ class CandleStore:
             Candles ordered oldest to newest. Empty if nothing is
             cached for this symbol/timeframe (and window, if given).
         """
-        query = "SELECT time, open, high, low, close, volume FROM candles WHERE symbol = ? AND timeframe = ?"
+        query = "SELECT provider, time, open, high, low, close, volume, source FROM candles WHERE symbol = ? AND timeframe = ?"
         params: list[object] = [symbol, timeframe.value]
+        if provider is not None:
+            query += " AND provider = ?"
+            params.append(provider)
         if start is not None:
             query += " AND time >= ?"
             params.append(int(start.timestamp()))
@@ -186,7 +226,7 @@ class CandleStore:
 
         return [_row_to_candle(row) for row in rows]
 
-    def load_latest(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle]:
+    def load_latest(self, symbol: str, timeframe: Timeframe, count: int, provider: str | None = None) -> list[Candle]:
         """Loads the most recent ``count`` cached candles, oldest to newest.
 
         Args:
@@ -201,9 +241,9 @@ class CandleStore:
         try:
             with closing(self._connect()) as conn:
                 rows = conn.execute(
-                    "SELECT time, open, high, low, close, volume FROM candles "
-                    "WHERE symbol = ? AND timeframe = ? ORDER BY time DESC LIMIT ?",
-                    (symbol, timeframe.value, count),
+                    "SELECT provider, time, open, high, low, close, volume, source FROM candles "
+                    "WHERE symbol = ? AND timeframe = ?" + (" AND provider = ?" if provider is not None else "") + " ORDER BY time DESC LIMIT ?",
+                    (symbol, timeframe.value, provider, count) if provider is not None else (symbol, timeframe.value, count),
                 ).fetchall()
         except sqlite3.DatabaseError as exc:
             raise CacheError(
@@ -212,13 +252,12 @@ class CandleStore:
 
         return [_row_to_candle(row) for row in reversed(rows)]
 
-    def get_coverage(self, symbol: str, timeframe: Timeframe) -> tuple[datetime, datetime] | None:
+    def get_coverage(self, symbol: str, timeframe: Timeframe, provider: str | None = None) -> tuple[datetime, datetime] | None:
         """Returns the ``(earliest, latest)`` cached candle time, or ``None`` if empty."""
         with closing(self._connect()) as conn:
             row = conn.execute(
-                "SELECT MIN(time) AS min_t, MAX(time) AS max_t FROM candles "
-                "WHERE symbol = ? AND timeframe = ?",
-                (symbol, timeframe.value),
+                "SELECT MIN(time) AS min_t, MAX(time) AS max_t FROM candles WHERE symbol = ? AND timeframe = ?" + (" AND provider = ?" if provider is not None else ""),
+                (symbol, timeframe.value, provider) if provider is not None else (symbol, timeframe.value),
             ).fetchone()
         if row is None or row["min_t"] is None:
             return None
@@ -227,16 +266,16 @@ class CandleStore:
             datetime.fromtimestamp(row["max_t"], tz=timezone.utc),
         )
 
-    def count(self, symbol: str, timeframe: Timeframe) -> int:
+    def count(self, symbol: str, timeframe: Timeframe, provider: str | None = None) -> int:
         """Returns the number of cached candles for a symbol/timeframe."""
         with closing(self._connect()) as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM candles WHERE symbol = ? AND timeframe = ?",
-                (symbol, timeframe.value),
+                "SELECT COUNT(*) AS n FROM candles WHERE symbol = ? AND timeframe = ?" + (" AND provider = ?" if provider is not None else ""),
+                (symbol, timeframe.value, provider) if provider is not None else (symbol, timeframe.value),
             ).fetchone()
         return int(row["n"])
 
-    def validate(self, symbol: str, timeframe: Timeframe) -> CacheValidationResult:
+    def validate(self, symbol: str, timeframe: Timeframe, provider: str | None = None) -> CacheValidationResult:
         """Checks cached data for corruption, ordering issues, and gaps.
 
         Args:
@@ -247,7 +286,7 @@ class CandleStore:
             A report of every issue found. An empty cache is
             considered valid (nothing to be wrong with).
         """
-        candles = self.load_candles(symbol, timeframe)
+        candles = self.load_candles(symbol, timeframe, provider=provider)
         issues: list[str] = []
 
         for previous, current in pairwise(candles):
@@ -266,7 +305,7 @@ class CandleStore:
 
         return CacheValidationResult(is_valid=not issues, issues=issues, candle_count=len(candles))
 
-    def clear(self, symbol: str | None = None, timeframe: Timeframe | None = None) -> int:
+    def clear(self, symbol: str | None = None, timeframe: Timeframe | None = None, provider: str | None = None) -> int:
         """Deletes cached candles.
 
         Args:
@@ -280,10 +319,14 @@ class CandleStore:
         """
         with closing(self._connect()) as conn, conn:
             if symbol is not None and timeframe is not None:
-                cursor = conn.execute(
-                    "DELETE FROM candles WHERE symbol = ? AND timeframe = ?",
-                    (symbol, timeframe.value),
-                )
+                query = "DELETE FROM candles WHERE symbol = ? AND timeframe = ?"
+                params: list[object] = [symbol, timeframe.value]
+                if provider is not None:
+                    query += " AND provider = ?"
+                    params.append(provider)
+                cursor = conn.execute(query, params)
+            elif provider is not None:
+                cursor = conn.execute("DELETE FROM candles WHERE provider = ?", (provider,))
             else:
                 cursor = conn.execute("DELETE FROM candles")
         return cursor.rowcount
@@ -296,7 +339,25 @@ class CandleStore:
     def _init_schema(self) -> None:
         try:
             with closing(self._connect()) as conn, conn:
-                conn.executescript(_SCHEMA)
+                table_info = list(conn.execute("PRAGMA table_info(candles)"))
+                columns = {row[1] for row in table_info}
+                if not columns:
+                    conn.executescript(_SCHEMA)
+                elif "provider" not in columns:
+                    # Preserve the old table and migrate rows using their source
+                    # as provider identity. Existing local data is never deleted.
+                    conn.execute("ALTER TABLE candles RENAME TO candles_legacy")
+                    conn.execute("DROP INDEX IF EXISTS idx_candles_symbol_timeframe_time")
+                    conn.executescript(_SCHEMA)
+                    legacy_columns = {row[1] for row in conn.execute("PRAGMA table_info(candles_legacy)")}
+                    source_expr = "source" if "source" in legacy_columns else "'unknown'"
+                    time_expr = "time" if "time" in legacy_columns else "timestamp"
+                    conn.execute(
+                        f"INSERT INTO candles (provider, symbol, timeframe, time, open, high, low, close, volume, source) SELECT {source_expr}, symbol, timeframe, {time_expr}, open, high, low, close, volume, {source_expr} FROM candles_legacy"
+                    )
+                    conn.execute("DROP TABLE candles_legacy")
+                else:
+                    conn.executescript(_SCHEMA)
         except sqlite3.DatabaseError as exc:
             raise CacheError(f"Failed to initialize cache database at {self.db_path}") from exc
 
@@ -309,4 +370,5 @@ def _row_to_candle(row: sqlite3.Row) -> Candle:
         low=row["low"],
         close=row["close"],
         volume=row["volume"],
+        source=row["source"],
     )

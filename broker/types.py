@@ -113,14 +113,15 @@ class AccountInfo(BaseModel):
 
 
 class Candle(BaseModel):
-    """One OHLC(V) candle."""
+    """One broker-neutral OHLC(V) candle with explicit provenance."""
 
     time: datetime
     open: float
     high: float
     low: float
     close: float
-    volume: float = 0.0
+    volume: float | None = None
+    source: str = "unknown"
 
 
 class Tick(BaseModel):

@@ -119,9 +119,9 @@ class TestAccountInfo:
 
 
 class TestCandle:
-    def test_volume_defaults_to_zero(self) -> None:
+    def test_missing_volume_remains_unknown(self) -> None:
         candle = Candle(time=datetime.now(timezone.utc), open=1.0, high=1.5, low=0.5, close=1.2)
-        assert candle.volume == 0.0
+        assert candle.volume is None
 
 
 class TestBrokerTransactionIds:

@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     deriv_api_token: str | None = Field(default=None, repr=False)
     deriv_app_id: str = "1089"
     deriv_endpoint: str = "wss://ws.derivws.com/websockets/v3"
+    deriv_public_endpoint: str = "wss://api.derivws.com/trading/v1/options/ws/public"
     deriv_options_account_id: str | None = None
     deriv_expected_environment: Literal["demo", "real"] | None = None
 
@@ -141,6 +142,7 @@ class Settings(BaseSettings):
     log_to_console: bool = True
 
     cache_dir: Path = Path("cache")
+    historical_data_path: Path = Path("data/historical.sqlite3")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")

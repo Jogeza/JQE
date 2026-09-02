@@ -58,6 +58,16 @@ class TestSaveAndLoadCandles:
     def test_saving_empty_list_writes_nothing(self, store: CandleStore) -> None:
         assert store.save_candles("R_100", Timeframe.M5, []) == 0
 
+    def test_missing_volume_and_source_round_trip(self, store: CandleStore) -> None:
+        candle = Candle(
+            time=_BASE_TIME, open=100, high=101, low=99, close=100,
+            volume=None, source="deriv",
+        )
+        store.save_candles("R_100", Timeframe.M5, [candle])
+        loaded = store.load_candles("R_100", Timeframe.M5)
+        assert loaded[0].volume is None
+        assert loaded[0].source == "deriv"
+
     def test_different_symbols_are_isolated(self, store: CandleStore) -> None:
         store.save_candles("R_100", Timeframe.M5, [_candle(0)])
         store.save_candles("R_50", Timeframe.M5, [_candle(0), _candle(5)])
@@ -169,6 +179,39 @@ class TestCacheErrorHandling:
             bad_path = Path(blocking_file.name) / "subdir" / "candles.db"
             with pytest.raises(CacheError):
                 CandleStore(db_path=bad_path)
+
+
+def test_legacy_schema_migration_preserves_rows_and_is_idempotent(tmp_path) -> None:
+    import sqlite3
+
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE candles (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, "
+            "timestamp INTEGER NOT NULL, open REAL NOT NULL, high REAL NOT NULL, "
+            "low REAL NOT NULL, close REAL NOT NULL, volume REAL, source TEXT NOT NULL, "
+            "PRIMARY KEY (symbol, timeframe, timestamp))"
+        )
+        conn.execute(
+            "INSERT INTO candles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("XAUUSD", "M15", int(_BASE_TIME.timestamp()), 100, 102, 99, 101, 7, "DERIV_PUBLIC"),
+        )
+
+    store = CandleStore(path)
+    assert store.count("XAUUSD", Timeframe.M15, provider="DERIV_PUBLIC") == 1
+    migrated = store.load_candles("XAUUSD", Timeframe.M15, provider="DERIV_PUBLIC")
+    assert len(migrated) == 1
+    assert migrated[0].time == _BASE_TIME
+    assert migrated[0].close == 101
+    assert migrated[0].source == "DERIV_PUBLIC"
+
+    simulation = migrated[0].model_copy(update={"source": "SIMULATION", "close": 100.5})
+    assert store.save_candles("XAUUSD", Timeframe.M15, [simulation], provider="SIMULATION") == 1
+    assert store.count("XAUUSD", Timeframe.M15) == 2
+
+    reopened = CandleStore(path)
+    assert reopened.count("XAUUSD", Timeframe.M15, provider="DERIV_PUBLIC") == 1
+    assert reopened.count("XAUUSD", Timeframe.M15, provider="SIMULATION") == 1
 
 
 class TestFindGaps:

@@ -40,7 +40,10 @@ class TestExecuteTrade:
         df = _price_path(closes, atr=1.0)
         df.loc[1, "high"] = 110.0  # triggers a WIN for a BUY at index 0
         result = engine.execute_trade({"signal": "BUY", "confidence": 90}, 0, df)
-        assert result == {"profit": 3, "result": "WIN"}
+        assert result["profit"] == 3
+        assert result["result"] == "WIN"
+        assert result["entry_index"] == 0
+        assert result["exit_index"] == 1
         assert engine.balance == 1003
         assert engine.total_trades == 1
         assert engine.wins == 1
@@ -54,7 +57,8 @@ class TestExecuteTrade:
         df = _price_path(closes, atr=1.0)
         df.loc[1, "low"] = 90.0  # triggers a LOSS for a BUY at index 0
         result = engine.execute_trade({"signal": "BUY", "confidence": 90}, 0, df)
-        assert result == {"profit": -1, "result": "LOSS"}
+        assert result["profit"] == -1
+        assert result["result"] == "LOSS"
         assert engine.balance == 999
         assert engine.wins == 0
         assert engine.losses == 1

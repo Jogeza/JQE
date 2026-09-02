@@ -6,18 +6,18 @@
     established in the Broker Foundation milestone (the Quant Core
     must never import a broker SDK directly — see
     docs/architecture.md, "Broker layer"), it's implemented against
-    :class:`broker.base.BrokerGateway` instead, so it works
-    identically with any configured broker (MT5, Deriv, Simulation),
+    :class:`CandleDataSource` instead, so it works
+    with any compatible read-only candle source,
     not just MT5. A caller who specifically wants MT5 gets it by
-    passing an ``MT5Gateway`` instance — nothing here hardcodes a
+    passing a compatible candle-data source — nothing here hardcodes a
     broker choice.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Protocol, runtime_checkable
 
-from broker.base import BrokerGateway
 from broker.types import TIMEFRAME_SECONDS, Candle, Timeframe
 from core.exceptions import MarketDataError
 from core.logger import logger
@@ -31,17 +31,43 @@ from data.types import SyncReport
 _FRESHNESS_TOLERANCE_CANDLES = 1
 
 
+@runtime_checkable
+class CandleDataSource(Protocol):
+    """Minimal read-only candle source required by historical-data services."""
+
+    async def get_candles(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        count: int,
+        end: datetime | None = None,
+    ) -> list[Candle]:
+        """Return historical candles ordered oldest to newest."""
+        ...
+
+
+@runtime_checkable
+class HistoricalCandleDataSource(CandleDataSource, Protocol):
+    """Range-capable extension used by frozen dataset acquisition."""
+
+    async def get_candles_range(
+        self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime,
+        count: int | None = None,
+    ) -> list[Candle]:
+        ...
+
+
+
 class HistoricalDataService:
     """Serves historical candles from cache, downloading only what's missing.
 
     Attributes:
-        gateway: The (already-connected) :class:`~broker.base.
-            BrokerGateway` used to download candles not already cached.
+        gateway: An already-connected :class:`CandleDataSource` used to download candles not already cached.
         store: The :class:`~data.storage.CandleStore` used for local
             persistence.
     """
 
-    def __init__(self, gateway: BrokerGateway, store: CandleStore | None = None) -> None:
+    def __init__(self, gateway: CandleDataSource, store: CandleStore | None = None) -> None:
         self.gateway = gateway
         self.store = store or CandleStore()
 
@@ -80,6 +106,43 @@ class HistoricalDataService:
         if fill_gaps:
             await self.fill_gaps(symbol, timeframe)
         return self.store.load_latest(symbol, timeframe, count)
+
+    async def get_candles_range(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+        count: int | None = None,
+        *,
+        provider: str | None = None,
+        cached_only: bool = False,
+    ) -> list[Candle]:
+        """Return an inclusive UTC range, filling it only when permitted."""
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            raise MarketDataError("Historical range must be timezone-aware and ordered")
+        start, end = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+        cached = self.store.load_candles(symbol, timeframe, start, end, provider=provider)
+        step = TIMEFRAME_SECONDS[timeframe]
+        expected = count or int((end - start).total_seconds() // step) + 1
+        complete = (
+            bool(cached) and cached[0].time <= start and cached[-1].time >= end
+            and len(cached) >= expected and not find_gaps(cached, step)
+        )
+        if complete or cached_only:
+            if not complete:
+                raise MarketDataError("Requested historical range is incomplete in cache")
+            return cached
+        range_loader = getattr(self.gateway, "get_candles_range", None)
+        if range_loader is not None:
+            fetched = await range_loader(symbol, timeframe, start, end, count=expected)
+        else:
+            fetched = await self.gateway.get_candles(symbol, timeframe, expected, end=end)
+        self.store.save_candles(symbol, timeframe, fetched, provider=provider)
+        refreshed = self.store.load_candles(symbol, timeframe, start, end, provider=provider)
+        if not refreshed or refreshed[0].time > start or refreshed[-1].time < end or find_gaps(refreshed, step):
+            raise MarketDataError("Historical provider did not produce a complete requested range")
+        return refreshed
 
     async def sync(self, symbol: str, timeframe: Timeframe, count: int) -> SyncReport:
         """Ensures the cache holds ``count`` recent, gap-free candles and reports the result.
