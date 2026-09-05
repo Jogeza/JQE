@@ -314,10 +314,11 @@ export function ResearchChartWorkspace({
     >
       <header className="research-workspace-context">
         <div>
+          <span className="research-workspace-label">{workspaceId} workspace</span>
           <strong>
-            {workspaceId === 'primary' ? 'Primary' : 'Comparison'} · {instrument.display_name}
+            {instrument.display_name}
           </strong>
-          <span>
+          <span className="font-mono">
             {instrument.canonical_symbol} · {timeframe}
           </span>
         </div>
@@ -347,8 +348,8 @@ export function ResearchChartWorkspace({
         >
           {busy ? 'Computing…' : 'Run cached backtest'}
         </button>
-        <span style={{ fontSize: '10px', color: active ? 'var(--quant-cyan)' : 'var(--text-muted)' }}>
-          {active ? '● ACTIVE WORKSPACE' : 'Click or focus to activate'}
+        <span className={`research-active-state ${active ? 'active' : ''}`}>
+          {active ? '● Active workspace' : 'Click or focus to activate'}
         </span>
       </div>
 
@@ -414,6 +415,23 @@ export function ResearchChartWorkspace({
         <p role="alert" style={{ color: 'var(--quant-red)', fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '6px 8px', background: 'var(--quant-red-subtle)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--quant-red-border)' }}>
           {error}. Check that sufficient historical candles are cached.
         </p>
+      )}
+
+      {!session && !error && (
+        <div className="research-empty-state" aria-label="Research chart preview">
+          <div className="research-empty-grid" aria-hidden="true">
+            <span /><span /><span /><span /><span />
+          </div>
+          <div className="research-empty-content">
+            <span className="research-empty-kicker">{instrument.canonical_symbol} · {timeframe}</span>
+            <h2>Chart workspace ready</h2>
+            <p>
+              {selectedCache
+                ? `${selectedCache.candle_count} cached candles are available. Run the research-only backtest to open the chart and replay controls.`
+                : 'This dataset is not cached yet. Use Historical acquisition above to request public market data.'}
+            </p>
+          </div>
+        </div>
       )}
 
       {session && (

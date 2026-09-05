@@ -1,54 +1,107 @@
 :root {
-  /* Color Palette — Institutional Quant Workstation */
-  --bg-app: #08090c;
-  --bg-subtle: #0c0e12;
-  --bg-surface: #12151b;
-  --bg-surface-elevated: #171b23;
-  --bg-surface-hover: #1c212b;
-  --bg-surface-active: #232936;
-  --bg-input: #0b0d11;
+  /* ==========================================================================
+     JQE TWO-TONE DESIGN SYSTEM
+     Light Workspace Canvas + Dark Terminal Surfaces + JQE Cyan Accent
+     ========================================================================== */
 
-  /* Borders & Dividers */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-medium: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.20);
-  --border-focus: rgba(0, 212, 255, 0.50);
-  --border-accent: rgba(0, 212, 255, 0.35);
+  /* 1. Primary Light Canvas (Application Workspace & Standard Cards) */
+  --bg-canvas: #f6f7f9;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f8fafc;
+  --bg-card-hover: #f1f5f9;
+  --bg-card-active: #e2e8f0;
+  --bg-card-inset: #f1f4f8;
 
-  /* Typography Colors */
-  --text-primary: #f1f4f8;
-  --text-secondary: #9aa3af;
-  --text-muted: #646d7a;
-  --text-dim: #434b55;
+  /* Card Borders */
+  --border-card: #e2e8f0;
+  --border-card-subtle: #edf2f7;
+  --border-card-strong: #cbd5e1;
 
-  /* Semantic Quantitative Colors */
-  --quant-green: #00e676;
-  --quant-green-subtle: rgba(0, 230, 118, 0.10);
-  --quant-green-border: rgba(0, 230, 118, 0.25);
-  --quant-red: #ff5252;
-  --quant-red-subtle: rgba(255, 82, 82, 0.10);
-  --quant-red-border: rgba(255, 82, 82, 0.25);
-  --quant-amber: #ffab00;
-  --quant-amber-subtle: rgba(255, 171, 0, 0.10);
-  --quant-amber-border: rgba(255, 171, 0, 0.25);
-  --quant-cyan: #00d4ff;
-  --quant-cyan-subtle: rgba(0, 212, 255, 0.10);
-  --quant-cyan-border: rgba(0, 212, 255, 0.25);
-  --quant-purple: #b388ff;
-  --quant-purple-subtle: rgba(179, 136, 255, 0.10);
-  --quant-blue: #448aff;
+  /* Card Typography */
+  --text-primary: #0f172a;       /* High-contrast dark charcoal */
+  --text-secondary: #475569;     /* Slate for labels and subtitles */
+  --text-muted: #64748b;         /* Cool gray for quiet captions */
+  --text-dim: #94a3b8;           /* Light slate for faint metadata */
 
-  /* Fonts */
+  /* Shadows (Restrained, subtle elevation on light cards) */
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-card-elevated: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  --shadow-chart: 0 4px 16px -2px rgba(0, 0, 0, 0.35), 0 2px 6px -1px rgba(0, 0, 0, 0.20);
+
+  /* Form & Input Controls on Light Canvas */
+  --bg-input: #ffffff;
+  --border-input: #cbd5e1;
+  --border-input-focus: #00bcd4;
+  --bg-input-focus: #ffffff;
+
+  /* 2. Primary Dark Terminal Surfaces (Sidebar, Header, Financial Charts, Status Rail) */
+  --bg-dark-sidebar: #13161c;
+  --bg-dark-header: #171a22;
+  --bg-dark-status: #14171e;
+  --bg-dark-surface: #191d26;
+  --bg-dark-surface-elevated: #202532;
+  --bg-dark-surface-hover: #262c3c;
+  --bg-dark-surface-active: #2e3547;
+  --bg-dark-input: #101318;
+  --bg-dark-input-border: rgba(255, 255, 255, 0.12);
+
+  /* Dark Surface Borders & Typography */
+  --border-dark: rgba(255, 255, 255, 0.08);
+  --border-dark-subtle: rgba(255, 255, 255, 0.05);
+  --border-dark-medium: rgba(255, 255, 255, 0.12);
+  --border-dark-strong: rgba(255, 255, 255, 0.22);
+  --text-dark-primary: #f8fafc;
+  --text-dark-secondary: #94a3b8;
+  --text-dark-muted: #64748b;
+  --text-dark-dim: #475569;
+
+  /* 3. JQE Brand Accent (Cyan / Teal) */
+  --quant-cyan: #00bcd4;
+  --quant-cyan-hover: #00acc1;
+  --quant-cyan-dark: #0891b2;
+  --quant-cyan-subtle: rgba(0, 188, 212, 0.10);
+  --quant-cyan-subtle-strong: rgba(0, 188, 212, 0.18);
+  --quant-cyan-border: rgba(0, 188, 212, 0.30);
+
+  /* 4. Semantic Financial Telemetry Colors (Consistent across dark and light) */
+  --quant-green: #0ebb68;
+  --quant-green-subtle: rgba(14, 187, 104, 0.10);
+  --quant-green-border: rgba(14, 187, 104, 0.25);
+  --quant-red: #eb3b4a;
+  --quant-red-subtle: rgba(235, 59, 74, 0.10);
+  --quant-red-border: rgba(235, 59, 74, 0.25);
+  --quant-amber: #d97706;
+  --quant-amber-subtle: rgba(217, 119, 6, 0.10);
+  --quant-amber-border: rgba(217, 119, 6, 0.25);
+  --quant-purple: #8b5cf6;
+  --quant-purple-subtle: rgba(139, 92, 246, 0.10);
+  --quant-blue: #2563eb;
+  --quant-blue-subtle: rgba(37, 99, 235, 0.10);
+
+  /* Backward Compatibility Aliases for Legacy Variables */
+  --bg-app: var(--bg-canvas);
+  --bg-subtle: var(--bg-canvas);
+  --bg-surface: var(--bg-card);
+  --bg-surface-elevated: var(--bg-card-subtle);
+  --bg-surface-hover: var(--bg-card-hover);
+  --bg-surface-active: var(--bg-card-active);
+  --border-subtle: var(--border-card);
+  --border-medium: var(--border-card-strong);
+  --border-strong: #94a3b8;
+  --border-focus: var(--quant-cyan);
+
+  /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 
   /* Layout & Metrics */
-  --sidebar-width: 220px;
-  --header-height: 46px;
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --sidebar-width: 230px;
+  --header-height: 48px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
   /* Transitions */
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -64,7 +117,7 @@
 html, body, #root {
   width: 100%;
   height: 100%;
-  background-color: var(--bg-app);
+  background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -76,16 +129,16 @@ html, body, #root {
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-app);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-surface-active);
+  background: rgba(100, 116, 139, 0.25);
   border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(100, 116, 139, 0.45);
 }

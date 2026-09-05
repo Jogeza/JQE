@@ -57,7 +57,7 @@ export function ReplayControls({
         aria-label="Replay to start"
         title="Rewind to beginning"
       >
-        |◀
+        Start
       </button>
       <button
         onClick={() => apply('PREVIOUS')}
@@ -65,7 +65,7 @@ export function ReplayControls({
         aria-label="Previous candle"
         title="Step back (←)"
       >
-        ◀
+        Previous
       </button>
       <button
         onClick={() => apply('TOGGLE')}
@@ -83,7 +83,7 @@ export function ReplayControls({
         aria-label="Next candle"
         title="Step forward (→)"
       >
-        ▶
+        Next
       </button>
 
       <select

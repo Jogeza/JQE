@@ -182,19 +182,19 @@ export function ResearchPage() {
 
   return (
     <div className="dashboard-page-container research-terminal">
-      {/* Top Context & Comparison Toggle Bar */}
       <div className="research-context-bar">
         <div>
-          <strong>Quantitative Research Terminal</strong>
+          <span className="research-eyebrow">Research workspace</span>
+          <strong>Explore historical market behaviour</strong>
           <span>
-            {comparisonEnabled ? 'Dual independent comparative view' : 'Single canonical research workspace'}
+            {comparisonEnabled ? 'Compare two independent datasets side by side.' : 'Inspect cached data, indicators, and replay outcomes.'}
           </span>
         </div>
         <button
           aria-pressed={comparisonEnabled}
           onClick={() => dispatchLayout({ type: 'set-comparison', enabled: !comparisonEnabled })}
         >
-          {comparisonEnabled ? 'Disable Comparison' : 'Enable Comparison Split'}
+          {comparisonEnabled ? 'Single workspace' : 'Compare workspaces'}
         </button>
       </div>
 
@@ -214,12 +214,11 @@ export function ResearchPage() {
         />
 
         <main className="research-workspace">
-          {/* Active Workspace Controls Strip */}
           <div className="quant-panel research-toolbar">
             <div className="quant-panel-header">
-              <div className="quant-panel-title">Active Workspace Parameter Controls</div>
-              <span className="badge badge-neutral font-mono" style={{ fontSize: '9px' }}>
-                TARGET: {activeWorkspaceId.toUpperCase()}
+              <div className="quant-panel-title">Market selection</div>
+              <span className="research-toolbar-target">
+                Editing {activeWorkspaceId}
               </span>
             </div>
             <div className="quant-panel-body research-inline-controls">
@@ -241,8 +240,8 @@ export function ResearchPage() {
                   </select>
                 </label>
               )}
-              <label>
-                Market:{' '}
+              <label className="research-control research-control-category">
+                <span>Market</span>
                 <select value={category} onChange={(event) => setCategory(event.target.value)}>
                   <option>All</option>
                   {marketGroups(markets).map((value) => (
@@ -250,17 +249,18 @@ export function ResearchPage() {
                   ))}
                 </select>
               </label>
-              <label>
-                Quick search:{' '}
+              <label className="research-control research-control-search">
+                <span>Quick search</span>
                 <input
                   ref={searchRef}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Ctrl+K or /"
+                  placeholder="Search name or symbol"
                 />
+                <kbd>Ctrl K</kbd>
               </label>
-              <label>
-                Instrument:{' '}
+              <label className="research-control research-control-instrument">
+                <span>Instrument</span>
                 <select
                   value={active.instrument.provider_symbol}
                   onChange={(event) => {
@@ -281,8 +281,8 @@ export function ResearchPage() {
                   ))}
                 </select>
               </label>
-              <label>
-                Timeframe:{' '}
+              <label className="research-control research-control-timeframe">
+                <span>Timeframe</span>
                 <select
                   value={active.timeframe}
                   onChange={(event) =>
@@ -297,8 +297,8 @@ export function ResearchPage() {
                   ))}
                 </select>
               </label>
-              <span style={{ marginLeft: 'auto', color: 'var(--text-dim)', fontSize: '10px' }}>
-                {markets.catalogue.source_status} · {isCached(markets, active.instrument, active.timeframe) ? 'cached' : 'uncached'}
+              <span className={`research-source-state ${isCached(markets, active.instrument, active.timeframe) ? 'cached' : ''}`}>
+                {markets.catalogue.source_status} · {isCached(markets, active.instrument, active.timeframe) ? 'Cached locally' : 'Not cached'}
               </span>
             </div>
           </div>

@@ -78,8 +78,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside
       style={{
         width: 'var(--sidebar-width)',
-        backgroundColor: 'var(--bg-subtle)',
-        borderRight: '1px solid var(--border-subtle)',
+        backgroundColor: 'var(--bg-dark-sidebar)',
+        borderRight: '1px solid var(--border-dark)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
@@ -97,16 +97,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '9px',
-            borderBottom: '1px solid var(--border-subtle)',
-            backgroundColor: 'var(--bg-surface)',
+            borderBottom: '1px solid var(--border-dark)',
+            backgroundColor: 'var(--bg-dark-header)',
           }}
         >
           <div
             style={{
-              width: '22px',
-              height: '22px',
-              backgroundColor: 'var(--bg-surface-elevated)',
-              border: '1px solid var(--border-strong)',
+              width: '24px',
+              height: '24px',
+              backgroundColor: '#1d222b',
+              border: '1px solid var(--border-dark-medium)',
               borderRadius: 'var(--radius-xs)',
               display: 'flex',
               alignItems: 'center',
@@ -119,9 +119,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span
               style={{
                 fontWeight: 800,
-                fontSize: '12.5px',
-                letterSpacing: '0.1em',
-                color: 'var(--text-primary)',
+                fontSize: '13px',
+                letterSpacing: '0.08em',
+                color: 'var(--text-dark-primary)',
                 lineHeight: 1.1,
               }}
             >
@@ -131,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               style={{
                 fontSize: '9px',
                 letterSpacing: '0.06em',
-                color: 'var(--text-muted)',
+                color: 'var(--text-dark-muted)',
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 fontFamily: 'var(--font-mono)',
@@ -143,15 +143,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Nav Items */}
-        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <div
             style={{
               padding: '6px 8px 4px 8px',
-              fontSize: '9px',
+              fontSize: '9.5px',
               fontWeight: 700,
               letterSpacing: '0.08em',
               textTransform: 'uppercase',
-              color: 'var(--text-dim)',
+              color: 'var(--text-dark-dim)',
+              fontFamily: 'var(--font-sans)',
             }}
           >
             Workspaces
@@ -169,14 +170,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '6px 8px',
+                  padding: '7px 10px',
                   borderRadius: 'var(--radius-xs)',
-                  border: '1px solid',
-                  borderColor: isActive ? 'var(--border-medium)' : 'transparent',
-                  backgroundColor: isActive ? 'var(--bg-surface-elevated)' : 'transparent',
-                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: '11.5px',
+                  border: 'none',
+                  borderLeft: isActive ? '3px solid var(--quant-cyan)' : '3px solid transparent',
+                  backgroundColor: isActive ? 'var(--bg-dark-surface-elevated)' : 'transparent',
+                  color: isActive ? 'var(--text-dark-primary)' : 'var(--text-dark-secondary)',
+                  fontSize: '12px',
                   fontWeight: isActive ? 600 : 400,
+                  fontFamily: 'var(--font-sans)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   transition: 'all var(--transition-fast)',
@@ -185,22 +187,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
+                    e.currentTarget.style.backgroundColor = 'var(--bg-dark-surface-hover)';
+                    e.currentTarget.style.color = 'var(--text-dark-primary)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) {
                     e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
+                    e.currentTarget.style.color = 'var(--text-dark-secondary)';
                   }
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
                   <Icon
-                    size={13}
+                    size={14}
                     color={isActive ? 'var(--quant-cyan)' : 'currentColor'}
-                    style={{ opacity: isActive ? 1 : 0.65, flexShrink: 0 }}
+                    style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}
                   />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.label}
@@ -210,7 +212,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {item.badge !== undefined && (
                   <span
                     className={`badge badge-${item.badgeType || 'neutral'}`}
-                    style={{ fontSize: '9px', padding: '0 4px', height: '16px', lineHeight: '16px' }}
+                    style={{
+                      fontSize: '9px',
+                      padding: '0 5px',
+                      height: '16px',
+                      lineHeight: '16px',
+                      backgroundColor: item.badgeType === 'neutral' ? 'rgba(255,255,255,0.08)' : undefined,
+                      color: item.badgeType === 'neutral' ? 'var(--text-dark-secondary)' : undefined,
+                      borderColor: item.badgeType === 'neutral' ? 'rgba(255,255,255,0.12)' : undefined,
+                    }}
                   >
                     {item.badge}
                   </span>
@@ -224,23 +234,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Terminal Footer Info */}
       <div
         style={{
-          padding: '10px 12px',
-          borderTop: '1px solid var(--border-subtle)',
-          backgroundColor: 'rgba(0,0,0,0.18)',
+          padding: '10px 14px',
+          borderTop: '1px solid var(--border-dark)',
+          backgroundColor: 'rgba(0, 0, 0, 0.25)',
           fontSize: '9.5px',
           fontFamily: 'var(--font-mono)',
-          color: 'var(--text-muted)',
+          color: 'var(--text-dark-dim)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '3px',
+          gap: '4px',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>TELEMETRY:</span>
-          <span style={{ color: 'var(--text-secondary)' }}>CANONICAL</span>
+          <span>TELEMETRY</span>
+          <span style={{ color: 'var(--text-dark-secondary)' }}>CANONICAL</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>ARCHITECTURE:</span>
+          <span>ARCHITECTURE</span>
           <span style={{ color: 'var(--quant-cyan)' }}>BROKER-AGNOSTIC</span>
         </div>
       </div>

@@ -251,18 +251,19 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Telemetry Status Ribbon */}
+        {/* Telemetry Status Ribbon / System Health Rail */}
         <div
           style={{
             display: 'flex',
-            gap: '12px',
+            alignItems: 'center',
+            gap: '16px',
             flexWrap: 'wrap',
-            padding: '4px 14px',
-            borderBottom: '1px solid var(--border-subtle)',
-            backgroundColor: 'var(--bg-subtle)',
-            fontFamily: 'var(--font-mono)',
+            padding: '3px 16px',
+            borderBottom: '1px solid var(--border-dark)',
+            backgroundColor: 'var(--bg-dark-status)',
             fontSize: '9.5px',
             flexShrink: 0,
+            minHeight: '24px',
           }}
         >
           {Object.entries(resources).map(([name, resource]) => {
@@ -274,7 +275,7 @@ export const App: React.FC = () => {
             const color = state === 'FRESH' ? 'var(--quant-green)'
               : state === 'STALE' ? 'var(--quant-amber)'
               : state === 'ERROR' ? 'var(--quant-red)'
-              : 'var(--text-muted)';
+              : 'var(--text-dark-muted)';
             const dotClass = state === 'FRESH' ? 'status-dot-green'
               : state === 'STALE' ? 'status-dot-amber'
               : state === 'ERROR' ? 'status-dot-red'
@@ -283,12 +284,17 @@ export const App: React.FC = () => {
               <span
                 key={name}
                 title={resource.error || (resource.lastUpdated ? `Updated ${resource.lastUpdated.toLocaleString('en-GB')}` : 'Never updated')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
               >
-                <span className={`status-dot ${dotClass}`} style={{ width: '4px', height: '4px' }} />
-                <span>{name.toUpperCase()}: {state}</span>
+                <span className={`status-dot ${dotClass}`} style={{ width: '3.5px', height: '3.5px' }} />
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600, color: 'var(--text-dark-secondary)' }}>
+                  {name.toUpperCase()}
+                </span>
+                <span className="font-mono" style={{ fontSize: '9px', fontWeight: 600, color }}>
+                  {state}
+                </span>
                 {resource.lastUpdated && (
-                  <span style={{ color: 'var(--text-dim)', fontSize: '8.5px' }}>
+                  <span style={{ color: 'var(--text-dark-dim)', fontFamily: 'var(--font-mono)', fontSize: '8.5px', opacity: 0.75 }}>
                     @{resource.lastUpdated.toLocaleTimeString('en-GB')}
                   </span>
                 )}

@@ -32,7 +32,10 @@ export function MarketSidebar({
   return (
     <aside className="research-market-sidebar" aria-label="Research watchlist">
       <div className="research-section-title">
-        <span>Watchlist</span>
+        <div>
+          <span>Watchlist</span>
+          <small>Available research markets</small>
+        </div>
         <span>{ordered.length}</span>
       </div>
       <div className="research-watchlist">
@@ -73,7 +76,7 @@ export function MarketSidebar({
           );
         })}
         {!ordered.length && (
-          <div style={{ padding: '16px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+          <div className="research-watchlist-empty">
             No instruments match search.
           </div>
         )}

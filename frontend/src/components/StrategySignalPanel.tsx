@@ -9,6 +9,15 @@ interface StrategySignalPanelProps {
   stale?: boolean;
 }
 
+const factorTone = (score: number, value: string) => {
+  const status = value.toUpperCase();
+  if (score === 0 || ['NONE', 'NEUTRAL', 'UNAVAILABLE', 'UNKNOWN'].includes(status)) return 'neutral';
+  if (['GOOD', 'FAVORABLE', 'HEALTHY', 'CLEAR'].includes(status)) return 'positive';
+  if (['HIGH', 'WARNING', 'ELEVATED'].includes(status)) return 'warning';
+  if (['BLOCKED', 'UNFAVORABLE', 'CRITICAL'].includes(status)) return 'negative';
+  return 'accent';
+};
+
 export const StrategySignalPanel: React.FC<StrategySignalPanelProps> = ({ signal, loading, stale }) => {
   const currentSignal = signal?.signal;
   const confidence = signal?.confidence ?? 0;
@@ -65,61 +74,81 @@ export const StrategySignalPanel: React.FC<StrategySignalPanelProps> = ({ signal
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: 'var(--bg-app)',
-            padding: '12px 14px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
+            backgroundColor: 'var(--bg-card-subtle)',
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-card)',
           }}
         >
           <div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', fontWeight: 600 }}>
               CURRENT DECISION ({signal?.symbol || '—'})
             </div>
             {getSignalBadge()}
           </div>
 
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px', fontWeight: 600 }}>
               CONFIDENCE INDEX
             </div>
-            <div className="font-mono" style={{ fontSize: '20px', fontWeight: 800, color: confidence >= 75 ? 'var(--quant-green)' : confidence >= 50 ? 'var(--quant-amber)' : 'var(--text-secondary)' }}>
+            <div className="font-mono" style={{ fontSize: '22px', fontWeight: 800, color: confidence >= 75 ? 'var(--quant-green)' : confidence >= 50 ? 'var(--quant-amber)' : 'var(--text-secondary)' }}>
               {signal ? `${confidence}%` : '—'}
             </div>
           </div>
         </div>
 
-        {/* 6-Factor Breakdown Bars */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {/* Compact 6-factor score overview */}
+        <div className="factor-score-section">
+          <div className="factor-score-header">
             6-Factor Scoring
           </div>
 
-          {factorBars.map((fb, idx) => {
-            const pct = Math.min(100, (fb.score / fb.max) * 100);
-            return (
-              <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{fb.label}</span>
-                  <span style={{ color: 'var(--text-dim)' }}>
-                    <strong style={{ color: fb.score > 0 ? 'var(--quant-cyan)' : 'var(--text-muted)' }}>{fb.score}</strong>/{fb.max} ({fb.value})
-                  </span>
+          <div className="factor-score-grid">
+            {factorBars.map((fb) => {
+              const pct = Math.min(100, Math.max(0, (fb.score / fb.max) * 100));
+              const circumference = 2 * Math.PI * 30;
+              const tone = factorTone(fb.score, fb.value);
+              return (
+                <div
+                  className={`factor-score-card factor-score-${tone}`}
+                  key={fb.label}
+                  aria-label={`${fb.label} score ${fb.score} out of ${fb.max}, ${fb.value}`}
+                >
+                  <div className="factor-score-ring">
+                    <svg viewBox="0 0 72 72" aria-hidden="true">
+                      <circle className="factor-ring-track" cx="36" cy="36" r="30" />
+                      <circle
+                        className="factor-ring-value"
+                        cx="36"
+                        cy="36"
+                        r="30"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={circumference * (1 - pct / 100)}
+                      />
+                    </svg>
+                    <div className="factor-score-number font-mono">
+                      <strong>{fb.score}</strong>
+                      <span>/{fb.max}</span>
+                    </div>
+                  </div>
+                  <div className="factor-score-copy">
+                    <span className="factor-score-label">{fb.label}</span>
+                    <span className="factor-score-status">{fb.value}</span>
+                  </div>
                 </div>
-                <div style={{ height: '4px', backgroundColor: 'var(--bg-app)', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, backgroundColor: pct > 70 ? 'var(--quant-green)' : pct > 30 ? 'var(--quant-cyan)' : 'var(--text-dim)' }} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* Trade Plan Details if available */}
         {plan && plan.signal !== 'NO_TRADE' ? (
           <div
             style={{
-              backgroundColor: 'var(--bg-app)',
-              border: '1px solid var(--border-medium)',
+              backgroundColor: 'var(--bg-card-subtle)',
+              border: '1px solid var(--border-card)',
               borderRadius: 'var(--radius-sm)',
-              padding: '10px 12px',
+              padding: '10px 14px',
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
@@ -127,14 +156,14 @@ export const StrategySignalPanel: React.FC<StrategySignalPanelProps> = ({ signal
               fontFamily: 'var(--font-mono)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '10px', fontWeight: 600 }}>
               <span>STRUCTURED TRADE PLAN</span>
               <span style={{ color: 'var(--quant-green)' }}>R:R {plan.risk_reward?.toFixed(1) ?? '—'}</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               <div>
-                <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>ENTRY</span>
-                <div style={{ fontWeight: 600 }}>{plan.entry === null ? '—' : formatInstrumentPrice(plan.entry, signal?.price_decimals)}</div>
+                <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>ENTRY</span>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plan.entry === null ? '—' : formatInstrumentPrice(plan.entry, signal?.price_decimals)}</div>
               </div>
               <div>
                 <span style={{ color: 'var(--quant-red)', fontSize: '10px' }}>STOP LOSS</span>
