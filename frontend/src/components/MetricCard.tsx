@@ -37,12 +37,14 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         backgroundColor: 'var(--bg-surface)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-sm)',
-        padding: '12px 14px',
+        padding: '10px 12px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
         position: 'relative',
         overflow: 'hidden',
+        transition: 'border-color var(--transition-fast)',
+        minHeight: '72px',
       }}
     >
       {/* Top row: Label + Badge */}
@@ -51,23 +53,30 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '6px',
+          marginBottom: '4px',
+          gap: '6px',
         }}
       >
         <span
           style={{
-            fontSize: '10.5px',
-            fontWeight: 600,
+            fontSize: '9.5px',
+            fontWeight: 700,
             textTransform: 'uppercase',
-            letterSpacing: '0.06em',
+            letterSpacing: '0.07em',
             color: 'var(--text-muted)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {label}
         </span>
 
         {badge && (
-          <span className={`badge badge-${badgeType}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
+          <span
+            className={`badge badge-${badgeType}`}
+            style={{ fontSize: '8.5px', padding: '0 4px', height: '16px', lineHeight: '16px' }}
+          >
             {badge}
           </span>
         )}
@@ -77,8 +86,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       <div
         className="font-mono"
         style={{
-          fontSize: '18px',
-          fontWeight: 700,
+          fontSize: '17px',
+          fontWeight: 800,
           color: getTrendColor(),
           letterSpacing: '-0.02em',
           lineHeight: '1.2',
@@ -91,10 +100,13 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       {subtext && (
         <div
           style={{
-            fontSize: '10.5px',
+            fontSize: '9.5px',
             color: 'var(--text-dim)',
-            marginTop: '4px',
+            marginTop: '3px',
             fontFamily: 'var(--font-mono)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {subtext}

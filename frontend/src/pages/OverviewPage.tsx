@@ -40,6 +40,7 @@ interface OverviewPageProps {
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({
   systemStatus,
+  marketSummary,
   candlesData,
   signalData,
   riskData,
@@ -65,8 +66,16 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
 
   return (
     <div className="dashboard-page-container">
-      {/* Top Metric Row */}
+      {/* Top Command Metric Grid */}
       <div className="grid-metrics">
+        <MetricCard
+          label="Market Data"
+          value={marketSummary?.market_data_source.replace('_', ' ') ?? 'UNAVAILABLE'}
+          subtext={`Execution: ${systemStatus?.broker?.toUpperCase() || 'UNKNOWN'}`}
+          badge="READ ONLY"
+          badgeType="cyan"
+          loading={loading && !marketSummary}
+        />
         <MetricCard
           label="Account Equity"
           value={equity === undefined ? null : formatMoney(equity, riskData?.currency)}
@@ -119,10 +128,10 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         />
       </div>
 
-      {/* Main Quantitative Workstation Grid: Left Chart/Strategy (2fr) + Right Engine/Risk (1fr) */}
+      {/* Main Quantitative Workstation Grid: Left Chart/Strategy (2fr) + Right Engine/Risk/Safety (1fr) */}
       <div className="grid-two-col">
         {/* Left Column: Market Telemetry & Execution Data */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
           <MarketChart
             symbol={selectedSymbol}
             timeframe={selectedTimeframe}
@@ -149,8 +158,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           />
         </div>
 
-        {/* Right Column: Engine & Risk Telemetry */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Right Column: Engine, Safety & Risk Telemetry */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
           <RecoveryPanel
             recovery={recoveryData}
             loading={loading && !recoveryData}

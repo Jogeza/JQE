@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Terminal,
   Settings as SettingsIcon,
+  Activity,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -38,7 +39,7 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   badge?: string | number;
-  badgeType?: 'green' | 'red' | 'neutral' | 'amber';
+  badgeType?: 'green' | 'red' | 'neutral' | 'amber' | 'cyan';
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -68,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeType: riskStale || riskAllowed === undefined ? 'neutral' : riskAllowed ? 'green' : 'red',
     },
     { id: 'performance', label: 'Performance', icon: LineChart },
-    { id: 'backtesting', label: 'Backtesting', icon: PlayCircle },
+    { id: 'backtesting', label: 'Research Terminal', icon: PlayCircle, badge: 'FLAGSHIP', badgeType: 'cyan' },
     { id: 'system', label: 'System Logs', icon: Terminal },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
@@ -86,98 +87,160 @@ export const Sidebar: React.FC<SidebarProps> = ({
         flexShrink: 0,
       }}
     >
-      {/* Navigation List */}
-      <div style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {/* Brand Header & Navigation List */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Brand Bar */}
         <div
           style={{
-            padding: '4px 10px',
-            fontSize: '9.5px',
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-dim)',
+            height: 'var(--header-height)',
+            padding: '0 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '9px',
+            borderBottom: '1px solid var(--border-subtle)',
+            backgroundColor: 'var(--bg-surface)',
           }}
         >
-          Navigation
-        </div>
-
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
+          <div
+            style={{
+              width: '22px',
+              height: '22px',
+              backgroundColor: 'var(--bg-surface-elevated)',
+              border: '1px solid var(--border-strong)',
+              borderRadius: 'var(--radius-xs)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Activity size={13} color="var(--quant-cyan)" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 10px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid',
-                borderColor: isActive ? 'var(--border-medium)' : 'transparent',
-                backgroundColor: isActive ? 'var(--bg-surface-elevated)' : 'transparent',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                fontSize: '12px',
-                fontWeight: isActive ? 600 : 500,
-                textAlign: 'left',
-                cursor: 'pointer',
-                transition: 'all 0.12s ease',
-                width: '100%',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }
+                fontWeight: 800,
+                fontSize: '12.5px',
+                letterSpacing: '0.1em',
+                color: 'var(--text-primary)',
+                lineHeight: 1.1,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Icon
-                  size={14}
-                  color={isActive ? 'var(--quant-cyan)' : 'currentColor'}
-                  style={{ opacity: isActive ? 1 : 0.7 }}
-                />
-                <span>{item.label}</span>
-              </div>
+              JQE
+            </span>
+            <span
+              style={{
+                fontSize: '9px',
+                letterSpacing: '0.06em',
+                color: 'var(--text-muted)',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              Quant Terminal
+            </span>
+          </div>
+        </div>
 
-              {item.badge !== undefined && (
-                <span
-                  className={`badge badge-${item.badgeType || 'neutral'}`}
-                  style={{ fontSize: '9.5px', padding: '1px 5px', height: '18px' }}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {/* Nav Items */}
+        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div
+            style={{
+              padding: '6px 8px 4px 8px',
+              fontSize: '9px',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--text-dim)',
+            }}
+          >
+            Workspaces
+          </div>
+
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 8px',
+                  borderRadius: 'var(--radius-xs)',
+                  border: '1px solid',
+                  borderColor: isActive ? 'var(--border-medium)' : 'transparent',
+                  backgroundColor: isActive ? 'var(--bg-surface-elevated)' : 'transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: '11.5px',
+                  fontWeight: isActive ? 600 : 400,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-fast)',
+                  width: '100%',
+                  position: 'relative',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover)';
+                    e.currentTarget.style.color = 'var(--text-primary)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-secondary)';
+                  }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <Icon
+                    size={13}
+                    color={isActive ? 'var(--quant-cyan)' : 'currentColor'}
+                    style={{ opacity: isActive ? 1 : 0.65, flexShrink: 0 }}
+                  />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.label}
+                  </span>
+                </div>
+
+                {item.badge !== undefined && (
+                  <span
+                    className={`badge badge-${item.badgeType || 'neutral'}`}
+                    style={{ fontSize: '9px', padding: '0 4px', height: '16px', lineHeight: '16px' }}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Terminal Footer Info */}
       <div
         style={{
-          padding: '12px',
+          padding: '10px 12px',
           borderTop: '1px solid var(--border-subtle)',
-          backgroundColor: 'rgba(0,0,0,0.2)',
-          fontSize: '10.5px',
+          backgroundColor: 'rgba(0,0,0,0.18)',
+          fontSize: '9.5px',
           fontFamily: 'var(--font-mono)',
           color: 'var(--text-muted)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '3px',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <span>STATUS SOURCE:</span>
-          <span style={{ color: 'var(--text-secondary)' }}>API TELEMETRY</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>TELEMETRY:</span>
+          <span style={{ color: 'var(--text-secondary)' }}>CANONICAL</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>ARCH:</span>
+          <span>ARCHITECTURE:</span>
           <span style={{ color: 'var(--quant-cyan)' }}>BROKER-AGNOSTIC</span>
         </div>
       </div>

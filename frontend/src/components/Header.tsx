@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Activity,
   Wifi,
   WifiOff,
   RefreshCw,
   Clock,
-  Layers
+  Layers,
 } from 'lucide-react';
 import { SystemStatusResponse } from '../types/api';
 
@@ -63,46 +62,34 @@ export const Header: React.FC<HeaderProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 16px',
+        padding: '0 14px',
         userSelect: 'none',
+        flexShrink: 0,
       }}
     >
-      {/* Brand & Wordmark */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* Left: Environment & Instrument / Timeframe controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Environment Badge */}
+        <div className={`badge ${getEnvBadgeClass()}`} style={{ height: '22px', fontSize: '9.5px' }}>
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'currentColor' }} />
+          <span>{env}</span>
+          <span style={{ opacity: 0.65, fontSize: '8.5px', marginLeft: '2px' }}>[{broker}]</span>
+        </div>
+
+        {/* Quick Instrument & Timeframe Selectors */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div
             style={{
-              width: '26px',
-              height: '26px',
-              backgroundColor: 'var(--bg-surface-elevated)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-sm)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              backgroundColor: 'var(--bg-input)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-xs)',
+              padding: '1px 6px',
+              height: '24px',
             }}
           >
-            <Activity size={16} color="var(--quant-green)" />
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: '13px', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>JQE</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500 }}>QUANT CORE</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Environment Badge */}
-        <div className={`badge ${getEnvBadgeClass()}`} style={{ height: '22px' }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'currentColor' }} />
-          <span>{env}</span>
-          <span style={{ opacity: 0.6, fontSize: '9px' }}>[{broker}]</span>
-        </div>
-
-        {/* Quick Instrument Selectors */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '2px 4px' }}>
-            <Layers size={13} style={{ marginRight: '4px', color: 'var(--text-muted)' }} />
+            <Layers size={11} style={{ marginRight: '4px', color: 'var(--text-muted)' }} />
             <select
               value={selectedSymbol}
               onChange={(e) => onSymbolChange(e.target.value)}
@@ -111,10 +98,12 @@ export const Header: React.FC<HeaderProps> = ({
                 border: 'none',
                 color: 'var(--text-primary)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11.5px',
+                fontSize: '11px',
                 fontWeight: 600,
                 outline: 'none',
                 cursor: 'pointer',
+                padding: '0',
+                height: '100%',
               }}
             >
               <option value="XAUUSD">XAUUSD (Gold)</option>
@@ -125,7 +114,17 @@ export const Header: React.FC<HeaderProps> = ({
             </select>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '2px 4px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'var(--bg-input)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-xs)',
+              padding: '1px 6px',
+              height: '24px',
+            }}
+          >
             <select
               value={selectedTimeframe}
               onChange={(e) => onTimeframeChange(e.target.value)}
@@ -134,10 +133,12 @@ export const Header: React.FC<HeaderProps> = ({
                 border: 'none',
                 color: 'var(--text-primary)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
+                fontSize: '10.5px',
                 fontWeight: 600,
                 outline: 'none',
                 cursor: 'pointer',
+                padding: '0',
+                height: '100%',
               }}
             >
               <option value="M1">M1</option>
@@ -152,22 +153,28 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Header Right: Status, Clock, Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      {/* Right: Connection, Clocks, Refresh */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         {/* Connection Indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
           {telemetryStale ? (
-            <><WifiOff size={13} color="var(--quant-amber)" /><span style={{ color: 'var(--quant-amber)', fontWeight: 600 }}>STALE</span></>
+            <>
+              <WifiOff size={12} color="var(--quant-amber)" />
+              <span style={{ color: 'var(--quant-amber)', fontWeight: 600 }}>STALE</span>
+            </>
           ) : isConnected === undefined ? (
-            <><WifiOff size={13} color="var(--text-muted)" /><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>UNKNOWN</span></>
+            <>
+              <WifiOff size={12} color="var(--text-muted)" />
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>UNKNOWN</span>
+            </>
           ) : isConnected ? (
             <>
-              <Wifi size={13} color="var(--quant-green)" />
+              <Wifi size={12} color="var(--quant-green)" />
               <span style={{ color: 'var(--quant-green)', fontWeight: 600 }}>ONLINE</span>
             </>
           ) : (
             <>
-              <WifiOff size={13} color="var(--quant-amber)" />
+              <WifiOff size={12} color="var(--quant-amber)" />
               <span style={{ color: 'var(--quant-amber)', fontWeight: 600 }}>DISCONNECTED</span>
             </>
           )}
@@ -178,19 +185,20 @@ export const Header: React.FC<HeaderProps> = ({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '6px',
             fontFamily: 'var(--font-mono)',
-            fontSize: '11.5px',
+            fontSize: '10.5px',
             color: 'var(--text-secondary)',
-            backgroundColor: 'var(--bg-app)',
-            padding: '3px 8px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)'
+            backgroundColor: 'var(--bg-input)',
+            padding: '2px 7px',
+            borderRadius: 'var(--radius-xs)',
+            border: '1px solid var(--border-subtle)',
+            height: '24px',
           }}
         >
-          <Clock size={12} color="var(--text-muted)" />
+          <Clock size={11} color="var(--text-muted)" />
           <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{time}</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({utcTime})</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '9.5px' }}>({utcTime})</span>
         </div>
 
         {/* Refresh button */}
@@ -198,9 +206,9 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={onRefresh}
           className="btn-quant"
           title="Refresh All Engine Feeds"
-          style={{ height: '28px', padding: '0 8px' }}
+          style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
         >
-          <RefreshCw size={12} className={loading ? 'spin' : ''} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          <RefreshCw size={10} className={loading ? 'spin' : ''} />
           <span>SYNC</span>
         </button>
       </div>

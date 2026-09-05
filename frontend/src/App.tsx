@@ -226,31 +226,45 @@ export const App: React.FC = () => {
           <div
             style={{
               backgroundColor: 'var(--quant-amber-subtle)',
-              borderBottom: '1px solid rgba(255, 171, 0, 0.3)',
-              padding: '6px 16px',
+              borderBottom: '1px solid var(--quant-amber-border)',
+              padding: '5px 14px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: '11.5px',
+              fontSize: '11px',
               fontFamily: 'var(--font-mono)',
               color: 'var(--quant-amber)',
+              flexShrink: 0,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={14} />
+              <AlertTriangle size={13} />
               <span>{apiError}{lastRefreshAttempt ? ` Last refresh attempt: ${lastRefreshAttempt.toLocaleTimeString('en-GB')}.` : ''}</span>
             </div>
             <button
               onClick={() => fetchAllData(true, false)}
               className="btn-quant"
-              style={{ fontSize: '10px', padding: '2px 6px', height: '20px' }}
+              style={{ fontSize: '9.5px', padding: '1px 6px', height: '18px' }}
             >
-              <RefreshCw size={10} /> RETRY
+              <RefreshCw size={9} /> RETRY
             </button>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '5px 16px', borderBottom: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-subtle)', fontFamily: 'var(--font-mono)', fontSize: '9.5px' }}>
+        {/* Telemetry Status Ribbon */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '12px',
+            flexWrap: 'wrap',
+            padding: '4px 14px',
+            borderBottom: '1px solid var(--border-subtle)',
+            backgroundColor: 'var(--bg-subtle)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '9.5px',
+            flexShrink: 0,
+          }}
+        >
           {Object.entries(resources).map(([name, resource]) => {
             const state = resource.loading && !resource.data ? 'LOADING'
               : resource.error && !resource.data ? 'ERROR'
@@ -261,9 +275,23 @@ export const App: React.FC = () => {
               : state === 'STALE' ? 'var(--quant-amber)'
               : state === 'ERROR' ? 'var(--quant-red)'
               : 'var(--text-muted)';
+            const dotClass = state === 'FRESH' ? 'status-dot-green'
+              : state === 'STALE' ? 'status-dot-amber'
+              : state === 'ERROR' ? 'status-dot-red'
+              : '';
             return (
-              <span key={name} title={resource.error || (resource.lastUpdated ? `Updated ${resource.lastUpdated.toLocaleString('en-GB')}` : 'Never updated')} style={{ color }}>
-                {name.toUpperCase()}: {state}{resource.lastUpdated ? ` @ ${resource.lastUpdated.toLocaleTimeString('en-GB')}` : ''}
+              <span
+                key={name}
+                title={resource.error || (resource.lastUpdated ? `Updated ${resource.lastUpdated.toLocaleString('en-GB')}` : 'Never updated')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color }}
+              >
+                <span className={`status-dot ${dotClass}`} style={{ width: '4px', height: '4px' }} />
+                <span>{name.toUpperCase()}: {state}</span>
+                {resource.lastUpdated && (
+                  <span style={{ color: 'var(--text-dim)', fontSize: '8.5px' }}>
+                    @{resource.lastUpdated.toLocaleTimeString('en-GB')}
+                  </span>
+                )}
               </span>
             );
           })}

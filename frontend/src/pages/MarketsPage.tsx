@@ -24,44 +24,88 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
 }) => {
   return (
     <div className="dashboard-page-container">
-      {/* Header Snapshot */}
+      {/* Header Snapshot Row */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
           gap: '10px',
         }}
       >
-        <div style={{ backgroundColor: 'var(--bg-surface)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>LATEST CLOSE ({symbol})</div>
-          <div className="font-mono" style={{ fontSize: '18px', fontWeight: 800, marginTop: '2px' }}>
-              {summary ? formatInstrumentPrice(summary.latest_close, summary.price_decimals) : '—'}
+        <div
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>
+            LATEST CLOSE ({symbol})
+          </div>
+          <div className="font-mono" style={{ fontSize: '17px', fontWeight: 800, marginTop: '2px', color: 'var(--text-primary)' }}>
+            {summary ? formatInstrumentPrice(summary.latest_close, summary.price_decimals) : '—'}
           </div>
         </div>
 
-        <div style={{ backgroundColor: 'var(--bg-surface)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>SPREAD</div>
-          <div className="font-mono" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--quant-cyan)', marginTop: '2px' }}>
+        <div
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>
+            SPREAD
+          </div>
+          <div className="font-mono" style={{ fontSize: '17px', fontWeight: 800, color: 'var(--quant-cyan)', marginTop: '2px' }}>
             {summary?.spread != null ? `${summary.spread.toFixed(1)} pts` : '—'}
           </div>
         </div>
 
-        <div style={{ backgroundColor: 'var(--bg-surface)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>VOLATILITY (ATR 14)</div>
-          <div className="font-mono" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--quant-amber)', marginTop: '2px' }}>
+        <div
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>
+            VOLATILITY (ATR 14)
+          </div>
+          <div className="font-mono" style={{ fontSize: '17px', fontWeight: 800, color: 'var(--quant-amber)', marginTop: '2px' }}>
             {summary?.atr != null ? summary.atr.toFixed(2) : '—'}
           </div>
         </div>
 
-        <div style={{ backgroundColor: 'var(--bg-surface)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>MOMENTUM (RSI 14)</div>
-          <div className="font-mono" style={{ fontSize: '18px', fontWeight: 700, color: summary?.rsi != null && (summary.rsi > 70 || summary.rsi < 30) ? 'var(--quant-red)' : 'var(--quant-green)', marginTop: '2px' }}>
+        <div
+          style={{
+            backgroundColor: 'var(--bg-surface)',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>
+            MOMENTUM (RSI 14)
+          </div>
+          <div
+            className="font-mono"
+            style={{
+              fontSize: '17px',
+              fontWeight: 800,
+              color: summary?.rsi != null && (summary.rsi > 70 || summary.rsi < 30) ? 'var(--quant-red)' : 'var(--quant-green)',
+              marginTop: '2px',
+            }}
+          >
             {summary?.rsi != null ? summary.rsi.toFixed(1) : '—'}
           </div>
         </div>
       </div>
 
-      {/* Main Chart */}
+      {/* Main Quantitative Market Chart */}
       <MarketChart
         symbol={symbol}
         timeframe={timeframe}
@@ -70,6 +114,7 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
         priceDecimals={candles?.price_decimals}
         loading={loading}
         error={candleError}
+        height={520}
       />
     </div>
   );
