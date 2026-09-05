@@ -52,33 +52,34 @@ class TestSimulateTrade:
         df = _price_path(closes, atr=1.0)
         df.loc[1, "high"] = 110.0
         result = simulate_trade({"signal": "BUY"}, 0, df)
-        assert result == {"profit": 3, "result": "WIN"}
+        assert result["profit"] == 3 and result["result"] == "WIN"
+        assert result["entry_index"] == 0 and result["exit_index"] == 1
 
     def test_buy_hits_stop_returns_loss(self) -> None:
         closes = [100.0] * 25
         df = _price_path(closes, atr=1.0)
         df.loc[1, "low"] = 90.0
         result = simulate_trade({"signal": "BUY"}, 0, df)
-        assert result == {"profit": -1, "result": "LOSS"}
+        assert result["profit"] == -1 and result["result"] == "LOSS"
 
     def test_sell_hits_target_returns_win(self) -> None:
         closes = [100.0] * 25
         df = _price_path(closes, atr=1.0)
         df.loc[1, "low"] = 90.0  # below target (100 - 3) for a SELL
         result = simulate_trade({"signal": "SELL"}, 0, df)
-        assert result == {"profit": 3, "result": "WIN"}
+        assert result["profit"] == 3 and result["result"] == "WIN"
 
     def test_sell_hits_stop_returns_loss(self) -> None:
         closes = [100.0] * 25
         df = _price_path(closes, atr=1.0)
         df.loc[1, "high"] = 110.0  # above stop (100 + 1.5) for a SELL
         result = simulate_trade({"signal": "SELL"}, 0, df)
-        assert result == {"profit": -1, "result": "LOSS"}
+        assert result["profit"] == -1 and result["result"] == "LOSS"
 
     def test_no_stop_or_target_hit_returns_timeout(self) -> None:
         df = _price_path([100.0] * 25, atr=1.0)
         result = simulate_trade({"signal": "BUY"}, 0, df)
-        assert result == {"profit": 0, "result": "TIMEOUT"}
+        assert result["profit"] == 0 and result["result"] == "TIMEOUT"
 
     def test_never_looks_further_back_than_current_index(self) -> None:
         # A stop/target-triggering candle placed *before* current_index
@@ -87,4 +88,4 @@ class TestSimulateTrade:
         df = _price_path(closes, atr=1.0)
         df.loc[0, "low"] = 0.0  # would trigger LOSS if (wrongly) considered
         result = simulate_trade({"signal": "BUY"}, 5, df)
-        assert result == {"profit": 0, "result": "TIMEOUT"}
+        assert result["profit"] == 0 and result["result"] == "TIMEOUT"

@@ -80,16 +80,23 @@ def simulate_trade(signal: dict, current_index: int, dataframe) -> dict | None:
     # ONLY future candles — no look-ahead bias.
     future = dataframe.iloc[current_index + 1 : current_index + 1 + _LOOKAHEAD_CANDLES]
 
-    for _, candle in future.iterrows():
+    for exit_index, candle in future.iterrows():
         if direction == "BUY":
             if candle["low"] <= stop:
-                return {"profit": -1, "result": "LOSS"}
+                return {"profit": -1, "result": "LOSS", "entry": entry, "exit": stop,
+                        "entry_index": current_index, "exit_index": exit_index}
             if candle["high"] >= target:
-                return {"profit": 3, "result": "WIN"}
+                return {"profit": 3, "result": "WIN", "entry": entry, "exit": target,
+                        "entry_index": current_index, "exit_index": exit_index}
         else:
             if candle["high"] >= stop:
-                return {"profit": -1, "result": "LOSS"}
+                return {"profit": -1, "result": "LOSS", "entry": entry, "exit": stop,
+                        "entry_index": current_index, "exit_index": exit_index}
             if candle["low"] <= target:
-                return {"profit": 3, "result": "WIN"}
+                return {"profit": 3, "result": "WIN", "entry": entry, "exit": target,
+                        "entry_index": current_index, "exit_index": exit_index}
 
-    return {"profit": 0, "result": "TIMEOUT"}
+    exit_index = future.index[-1] if not future.empty else current_index
+    exit_price = dataframe.loc[exit_index, "close"]
+    return {"profit": 0, "result": "TIMEOUT", "entry": entry, "exit": exit_price,
+            "entry_index": current_index, "exit_index": exit_index}
