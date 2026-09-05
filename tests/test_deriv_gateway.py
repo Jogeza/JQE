@@ -81,9 +81,9 @@ def _connected_gateway(
     responses: dict[str, dict[str, Any]],
 ) -> tuple[DerivGateway, FakeDerivConnection]:
     fake_connection = FakeDerivConnection(
-        {"authorize": {"authorize": {"loginid": "CR12345", "currency": "USD"}}, **responses}
+        {"authorize": {"authorize": {"loginid": "CR12345", "currency": "USD", "is_virtual": 1}}, **responses}
     )
-    gateway = DerivGateway(api_token="test-token", app_id="1089")
+    gateway = DerivGateway(api_token="test-token", app_id="1089", expected_environment="demo")
     return gateway, fake_connection
 
 
@@ -113,6 +113,26 @@ class TestConnect:
         )
         with pytest.raises(BrokerAuthenticationError):
             await _connect_with_fake(gateway, fake_connection)
+        assert gateway.is_connected is False
+
+    @pytest.mark.parametrize("expected", [None, "real"])
+    async def test_missing_or_wrong_expected_environment_fails_closed(self, expected) -> None:
+        fake = FakeDerivConnection({"authorize": {"authorize": {
+            "loginid": "CR12345", "currency": "USD", "is_virtual": 1
+        }}})
+        gateway = DerivGateway(api_token="test-token", app_id="1089", expected_environment=expected)
+        with pytest.raises(BrokerAuthenticationError, match="not DEMO"):
+            await _connect_with_fake(gateway, fake)
+        assert gateway.is_connected is False
+
+    @pytest.mark.parametrize("is_virtual", [0, False, None, "1"])
+    async def test_non_virtual_or_unknown_broker_evidence_fails_closed(self, is_virtual) -> None:
+        fake = FakeDerivConnection({"authorize": {"authorize": {
+            "loginid": "CR12345", "currency": "USD", "is_virtual": is_virtual
+        }}})
+        gateway = DerivGateway(api_token="test-token", app_id="1089", expected_environment="demo")
+        with pytest.raises(BrokerAuthenticationError, match="not authoritatively verified"):
+            await _connect_with_fake(gateway, fake)
         assert gateway.is_connected is False
 
 
@@ -329,10 +349,10 @@ class TestGetPositions:
 class TestRequestTimeout:
     async def test_request_timeout_raises_broker_connection_error(self) -> None:
         fake_connection = FakeDerivConnection(
-            {"authorize": {"authorize": {"loginid": "CR12345", "currency": "USD"}}},
+            {"authorize": {"authorize": {"loginid": "CR12345", "currency": "USD", "is_virtual": 1}}},
             ignore_requests={"balance"},
         )
-        gateway = DerivGateway(api_token="test-token", app_id="1089", request_timeout=0.05)
+        gateway = DerivGateway(api_token="test-token", app_id="1089", request_timeout=0.05, expected_environment="demo")
         await _connect_with_fake(gateway, fake_connection)
 
         with pytest.raises(BrokerConnectionError, match="timed out"):

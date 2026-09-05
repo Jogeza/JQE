@@ -124,6 +124,7 @@ class SimulationGateway(BrokerGateway):
                     low=low,
                     close=close_price,
                     volume=self._rng.uniform(10, 100),
+                    source="simulation",
                 )
             )
             price = close_price

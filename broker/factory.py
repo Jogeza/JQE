@@ -44,10 +44,15 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
     if settings.broker == "deriv":
         if not settings.deriv_api_token:
             raise ConfigurationError("JQE_DERIV_API_TOKEN is required when JQE_BROKER=deriv")
+        if settings.deriv_expected_environment != "demo":
+            raise ConfigurationError(
+                "JQE_DERIV_EXPECTED_ENVIRONMENT=demo is required for Deriv read-only access"
+            )
         return DerivGateway(
             api_token=settings.deriv_api_token,
             app_id=settings.deriv_app_id,
             endpoint=settings.deriv_endpoint,
+            expected_environment=settings.deriv_expected_environment,
         )
 
     if settings.broker == "mt5":

@@ -231,6 +231,7 @@ class MT5Gateway(BrokerGateway):
                     low=float(rate["low"]),
                     close=float(rate["close"]),
                     volume=float(rate["tick_volume"]),
+                    source="mt5",
                 )
                 for rate in raw_rates
             ]
@@ -260,14 +261,17 @@ class MT5Gateway(BrokerGateway):
 
         return [
             Candle(
-                time=datetime.fromtimestamp(rate["time"]),
+                time=datetime.fromtimestamp(rate["time"], tz=timezone.utc),
                 open=float(rate["open"]),
                 high=float(rate["high"]),
                 low=float(rate["low"]),
                 close=float(rate["close"]),
-                volume=float(
-                    rate["tick_volume"] if "tick_volume" in rate else rate.get("volume", 0.0)
-                ) if isinstance(rate, dict) else float(rate["tick_volume"]),
+                volume=(
+                    float(rate["tick_volume"])
+                    if not isinstance(rate, dict) or "tick_volume" in rate
+                    else None
+                ),
+                source="mt5",
             )
             for rate in raw_rates
         ]

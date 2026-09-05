@@ -148,6 +148,7 @@ class DerivGateway(BrokerGateway):
         app_id: str,
         endpoint: str = DEFAULT_ENDPOINT,
         request_timeout: float = _REQUEST_TIMEOUT_SECONDS,
+        expected_environment: str | None = None,
     ) -> None:
         if not api_token:
             raise BrokerAuthenticationError("Deriv API token is required")
@@ -155,6 +156,7 @@ class DerivGateway(BrokerGateway):
         self.app_id = app_id
         self.endpoint = endpoint
         self._request_timeout = request_timeout
+        self.expected_environment = expected_environment
 
         self._connection: websockets.ClientConnection | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -184,8 +186,27 @@ class DerivGateway(BrokerGateway):
             )
 
         authorize = response.get("authorize", {})
-        self._account_id = authorize.get("loginid")
-        self._currency = authorize.get("currency")
+        if not isinstance(authorize, dict):
+            await self._teardown()
+            raise BrokerAuthenticationError("Deriv authorization identity was malformed")
+        if self.expected_environment != "demo":
+            await self._teardown()
+            raise BrokerAuthenticationError("Deriv environment is missing or is not DEMO")
+        # `is_virtual` is broker-supplied authorization evidence.  Configuration
+        # alone is never accepted as proof that the account is a demo account.
+        if authorize.get("is_virtual") not in (True, 1):
+            await self._teardown()
+            raise BrokerAuthenticationError("Deriv account is not authoritatively verified as DEMO")
+        account_id = authorize.get("loginid")
+        currency = authorize.get("currency")
+        if not isinstance(account_id, str) or not account_id.strip():
+            await self._teardown()
+            raise BrokerAuthenticationError("Deriv account identity is missing")
+        if not isinstance(currency, str) or not currency.strip():
+            await self._teardown()
+            raise BrokerAuthenticationError("Deriv account currency is missing")
+        self._account_id = account_id.strip()
+        self._currency = currency.strip()
         self._connected = True
         logger.info("DerivGateway connected and authorized (account={})", self._account_id)
 
@@ -205,11 +226,13 @@ class DerivGateway(BrokerGateway):
                 "Failed to retrieve Deriv balance", reason=response["error"].get("message")
             )
         balance = response.get("balance", {})
+        if not isinstance(balance, dict) or balance.get("loginid") != self._account_id:
+            raise BrokerConnectionError("Deriv balance account identity mismatch")
         return AccountInfo(
-            account_id=str(balance.get("loginid", self._account_id or "unknown")),
-            balance=float(balance.get("balance", 0.0)),
-            currency=str(balance.get("currency", self._currency or "USD")),
-            equity=float(balance.get("balance", 0.0)),
+            account_id=self._account_id,
+            balance=float(balance["balance"]),
+            currency=str(balance.get("currency", self._currency)),
+            equity=float(balance["balance"]),
         )
 
     async def get_candles(
@@ -238,6 +261,8 @@ class DerivGateway(BrokerGateway):
                 high=float(candle["high"]),
                 low=float(candle["low"]),
                 close=float(candle["close"]),
+                volume=None,
+                source="deriv",
             )
             for candle in response.get("candles", [])
         ]

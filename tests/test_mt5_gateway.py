@@ -210,7 +210,7 @@ class TestGetCandles:
         assert len(candles) == 1
         assert candles[0].close == 1.5
         assert candles[0].volume == 10.0
-        assert candles[0].time == datetime.fromtimestamp(1700000000)
+        assert candles[0].time == datetime.fromtimestamp(1700000000, tz=timezone.utc)
         mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 16385, 0, 1)
 
     @patch("broker.mt5_gateway.mt5")
