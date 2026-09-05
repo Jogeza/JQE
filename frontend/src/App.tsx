@@ -8,7 +8,7 @@ import { TradesPage } from './pages/TradesPage';
 import { StrategyPage } from './pages/StrategyPage';
 import { RiskPage } from './pages/RiskPage';
 import { PerformancePage } from './pages/PerformancePage';
-import { BacktestPage } from './pages/BacktestPage';
+import { ResearchPage } from './pages/ResearchPage';
 import { SystemPage } from './pages/SystemPage';
 import { jqeApi } from './services/api';
 import {
@@ -161,6 +161,7 @@ export const App: React.FC = () => {
             loading={loading}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedTimeframe}
+            candleError={resources.candles.error}
             telemetryStale={{ system: resources.system.stale, strategy: resources.strategy.stale, risk: resources.risk.stale }}
           />
         );
@@ -172,6 +173,8 @@ export const App: React.FC = () => {
             symbol={selectedSymbol}
             timeframe={selectedTimeframe}
             loading={loading}
+            signal={signalData}
+            candleError={resources.candles.error}
           />
         );
       case 'positions':
@@ -185,7 +188,7 @@ export const App: React.FC = () => {
       case 'performance':
         return <PerformancePage performance={performanceData} execution={executionData} loading={loading} currency={performanceData?.currency ?? undefined} />;
       case 'backtesting':
-        return <BacktestPage />;
+        return <ResearchPage />;
       case 'system':
       case 'settings':
         return <SystemPage systemStatus={systemStatus} loading={loading} />;

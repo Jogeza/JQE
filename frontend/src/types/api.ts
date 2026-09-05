@@ -36,7 +36,7 @@ export interface CandleItemDTO {
   high: number;
   low: number;
   close: number;
-  volume: number;
+  volume: number | null;
   EMA50: number | null;
   EMA200: number | null;
   RSI: number | null;

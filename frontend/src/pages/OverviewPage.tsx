@@ -34,6 +34,7 @@ interface OverviewPageProps {
   loading: boolean;
   selectedSymbol: string;
   selectedTimeframe: string;
+  candleError: string | null;
   telemetryStale: { system: boolean; strategy: boolean; risk: boolean };
 }
 
@@ -50,6 +51,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   loading,
   selectedSymbol,
   selectedTimeframe,
+  candleError,
   telemetryStale,
 }) => {
   const balance = riskData?.balance;
@@ -125,8 +127,10 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             symbol={selectedSymbol}
             timeframe={selectedTimeframe}
             candles={candlesData?.candles || []}
+            signal={signalData}
             priceDecimals={candlesData?.price_decimals}
             loading={loading && !candlesData}
+            error={candleError}
           />
 
           <StrategySignalPanel signal={signalData} loading={loading && !signalData} stale={telemetryStale.strategy} />

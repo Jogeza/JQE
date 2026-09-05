@@ -42,6 +42,10 @@ Thumbs.db
 
 # Local market data
 data/storage/symbols/
+cache/
+data/historical.sqlite3
+data/historical.sqlite3-shm
+data/historical.sqlite3-wal
 
 # Local durable execution state
 state/*.sqlite3

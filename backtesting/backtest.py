@@ -23,6 +23,7 @@ import pandas as pd
 
 from analytics.performance import calculate_performance
 from backtesting.engine import BacktestEngine
+from backtesting.drawdown import balance_drawdown
 from collections.abc import Sequence
 
 from broker.types import Candle, Timeframe
@@ -34,7 +35,7 @@ from strategy.pipeline import generate_trading_signal
 from data.dataset import CandleDatasetManifest, verify_dataset_manifest
 from data.storage import CandleStore
 from backtesting.models import (
-    BacktestExecutionAssumptions, BacktestResult, BacktestRiskConfiguration,
+    BacktestExecutionAssumptions, BacktestIndicatorObservation, BacktestResult, BacktestRiskConfiguration,
     CandleDatasetSnapshot,
 )
 
@@ -144,6 +145,22 @@ async def run_backtest(
     df = pd.DataFrame([candle.model_dump() for candle in raw_candles])
     df = calculate_indicators(df)
 
+    def finite(value: object) -> float | None:
+        try:
+            number = float(value)
+            return number if pd.notna(number) else None
+        except (TypeError, ValueError):
+            return None
+
+    indicator_rows = [
+        BacktestIndicatorObservation(
+            candle_index=i, timestamp=row["time"], ema50=finite(row.get("EMA50")),
+            ema200=finite(row.get("EMA200")), rsi=finite(row.get("RSI")),
+            atr=finite(row.get("ATR")),
+        )
+        for i, row in df.iterrows()
+    ]
+
     if len(df) <= _WARMUP_CANDLES:
         raise MarketDataError(
             "Not enough candles to clear the indicator warmup period",
@@ -166,7 +183,12 @@ async def run_backtest(
         engine.process_candle(i, df)
         history = df.iloc[: i + 1]
         regime = detect_regime(history)
-        signal = generate_trading_signal(history, symbol, regime=regime)
+        indicator_rows[i] = BacktestIndicatorObservation(
+            candle_index=i, timestamp=df.iloc[i]["time"], ema50=finite(df.iloc[i].get("EMA50")),
+            ema200=finite(df.iloc[i].get("EMA200")), rsi=finite(df.iloc[i].get("RSI")),
+            atr=finite(df.iloc[i].get("ATR")), regime=str(regime),
+        )
+        signal = generate_trading_signal(history, symbol, regime=regime, include_details=True)
         engine.queue_signal(signal, i, df)
 
     engine.finish(len(df) - 1, df)
@@ -183,13 +205,15 @@ async def run_backtest(
     engine.result = build_backtest_result(
         snapshot, engine,
         strategy_configuration or {"entrypoint": "strategy.pipeline.generate_trading_signal"},
+        tuple(indicator_rows),
     )
 
     return engine
 
 
 def build_backtest_result(
-    dataset: CandleDatasetSnapshot, engine: BacktestEngine, strategy: dict
+    dataset: CandleDatasetSnapshot, engine: BacktestEngine, strategy: dict,
+    indicators: tuple[BacktestIndicatorObservation, ...] = (),
 ) -> BacktestResult:
     pnls = [trade.net_pnl for trade in engine.trades]
     wins, losses = [p for p in pnls if p > 0], [p for p in pnls if p < 0]
@@ -204,10 +228,9 @@ def build_backtest_result(
     peak = engine.equity_curve[0]
     max_dd = max_dd_pct = 0.0
     for balance in engine.equity_curve:
-        peak = max(peak, balance)
-        drawdown = peak - balance
+        peak, drawdown, percent = balance_drawdown(balance, peak)
         if drawdown > max_dd:
-            max_dd, max_dd_pct = drawdown, (drawdown / peak * 100.0 if peak else 0.0)
+            max_dd, max_dd_pct = drawdown, percent
     max_wins = max_losses = win_run = loss_run = 0
     for pnl in pnls:
         win_run, loss_run = ((win_run + 1, 0) if pnl > 0 else (0, loss_run + 1) if pnl < 0 else (0, 0))
@@ -231,6 +254,8 @@ def build_backtest_result(
         average_holding_candles=(sum(t.holding_candles for t in engine.trades)/count if count else 0.0),
         maximum_consecutive_wins=max_wins, maximum_consecutive_losses=max_losses,
         trades=tuple(engine.trades),
+        decisions=tuple(engine.decisions),
+        indicators=indicators,
     )
 
 

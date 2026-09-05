@@ -27,6 +27,10 @@ from config import settings
 from core.exceptions import CacheError
 from core.logger import logger
 from data.types import CacheValidationResult
+from data.provenance import CachedDatasetSummary, DatasetProvenance, VolumeType
+from data.dataset import candle_content_hash
+
+_SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
@@ -44,6 +48,15 @@ CREATE TABLE IF NOT EXISTS candles (
 );
 CREATE INDEX IF NOT EXISTS idx_candles_provider_symbol_timeframe_time
     ON candles (provider, symbol, timeframe, time);
+CREATE TABLE IF NOT EXISTS schema_metadata (
+    key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dataset_provenance (
+    provider TEXT NOT NULL, symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
+    source TEXT NOT NULL, provider_symbol TEXT NOT NULL,
+    volume_type TEXT NOT NULL, retrieved_at TEXT NOT NULL,
+    PRIMARY KEY (provider, symbol, timeframe)
+);
 """
 
 #: A gap is flagged when the interval between two consecutive cached
@@ -92,8 +105,13 @@ class CandleStore:
             its parent directory) on first use if it doesn't exist.
     """
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(self, db_path: Path | None = None, *, read_only: bool = False) -> None:
         self.db_path = db_path or (settings.cache_dir / "candles.db")
+        self.read_only = read_only
+        if read_only:
+            if not self.db_path.is_file():
+                raise CacheError("Historical cache unavailable")
+            return
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -275,6 +293,62 @@ class CandleStore:
             ).fetchone()
         return int(row["n"])
 
+    def save_provenance(self, value: DatasetProvenance) -> None:
+        """Persist explicit dataset semantics without altering candle values."""
+        if value.retrieved_at.tzinfo is None:
+            raise CacheError("Dataset retrieval timestamp must be timezone-aware")
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO dataset_provenance (provider,symbol,timeframe,source,provider_symbol,volume_type,retrieved_at) "
+                "VALUES (?,?,?,?,?,?,?) ON CONFLICT(provider,symbol,timeframe) DO UPDATE SET "
+                "source=excluded.source,provider_symbol=excluded.provider_symbol,volume_type=excluded.volume_type,retrieved_at=excluded.retrieved_at",
+                (value.provider, value.symbol, value.timeframe, value.source, value.provider_symbol,
+                 value.volume_type.value, value.retrieved_at.astimezone(timezone.utc).isoformat()),
+            )
+
+    def load_provenance(self, provider: str, symbol: str, timeframe: Timeframe) -> DatasetProvenance | None:
+        """Load explicit provenance; missing legacy metadata stays unknown."""
+        try:
+            with closing(self._connect()) as conn:
+                row = conn.execute(
+                    "SELECT * FROM dataset_provenance WHERE provider=? AND symbol=? AND timeframe=?",
+                    (provider, symbol, timeframe.value),
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return None
+            raise CacheError("Failed to read dataset provenance") from exc
+        if row is None:
+            return None
+        return DatasetProvenance(
+            provider=row["provider"], symbol=row["symbol"], timeframe=row["timeframe"],
+            source=row["source"], provider_symbol=row["provider_symbol"],
+            volume_type=VolumeType(row["volume_type"]), retrieved_at=datetime.fromisoformat(row["retrieved_at"]),
+        )
+
+    def list_cached_datasets(self, provider: str | None = None) -> tuple[CachedDatasetSummary, ...]:
+        """Enumerate canonical cached datasets without filesystem discovery."""
+        query = "SELECT provider,symbol,timeframe,MIN(time) first_time,MAX(time) last_time,COUNT(*) count FROM candles"
+        params: tuple[object, ...] = ()
+        if provider is not None:
+            query += " WHERE provider=?"; params = (provider,)
+        query += " GROUP BY provider,symbol,timeframe ORDER BY provider,symbol,timeframe"
+        with closing(self._connect()) as conn:
+            rows = conn.execute(query, params).fetchall()
+        summaries = []
+        for row in rows:
+            timeframe = Timeframe(row["timeframe"])
+            candles = self.load_candles(row["symbol"], timeframe, provider=row["provider"])
+            provenance = self.load_provenance(row["provider"], row["symbol"], timeframe)
+            summaries.append(CachedDatasetSummary(row["provider"], row["symbol"],
+                provenance.provider_symbol if provenance else row["symbol"], timeframe.value,
+                datetime.fromtimestamp(row["first_time"], tz=timezone.utc),
+                datetime.fromtimestamp(row["last_time"], tz=timezone.utc), int(row["count"]),
+                candle_content_hash(candles), provenance.volume_type if provenance else VolumeType.UNKNOWN,
+                provenance.source if provenance else "unknown",
+                len(find_gaps(candles, TIMEFRAME_SECONDS[timeframe]))))
+        return tuple(summaries)
+
     def validate(self, symbol: str, timeframe: Timeframe, provider: str | None = None) -> CacheValidationResult:
         """Checks cached data for corruption, ordering issues, and gaps.
 
@@ -332,7 +406,8 @@ class CandleStore:
         return cursor.rowcount
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = (sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+                if self.read_only else sqlite3.connect(self.db_path))
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -358,6 +433,11 @@ class CandleStore:
                     conn.execute("DROP TABLE candles_legacy")
                 else:
                     conn.executescript(_SCHEMA)
+                conn.execute(
+                    "INSERT INTO schema_metadata(key,value) VALUES('schema_version',?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (str(_SCHEMA_VERSION),),
+                )
         except sqlite3.DatabaseError as exc:
             raise CacheError(f"Failed to initialize cache database at {self.db_path}") from exc
 

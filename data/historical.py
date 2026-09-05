@@ -116,6 +116,7 @@ class HistoricalDataService:
         count: int | None = None,
         *,
         provider: str | None = None,
+        source_symbol: str | None = None,
         cached_only: bool = False,
     ) -> list[Candle]:
         """Return an inclusive UTC range, filling it only when permitted."""
@@ -134,10 +135,11 @@ class HistoricalDataService:
                 raise MarketDataError("Requested historical range is incomplete in cache")
             return cached
         range_loader = getattr(self.gateway, "get_candles_range", None)
+        requested_symbol = source_symbol or symbol
         if range_loader is not None:
-            fetched = await range_loader(symbol, timeframe, start, end, count=expected)
+            fetched = await range_loader(requested_symbol, timeframe, start, end, count=expected)
         else:
-            fetched = await self.gateway.get_candles(symbol, timeframe, expected, end=end)
+            fetched = await self.gateway.get_candles(requested_symbol, timeframe, expected, end=end)
         self.store.save_candles(symbol, timeframe, fetched, provider=provider)
         refreshed = self.store.load_candles(symbol, timeframe, start, end, provider=provider)
         if not refreshed or refreshed[0].time > start or refreshed[-1].time < end or find_gaps(refreshed, step):

@@ -158,6 +158,17 @@ class DerivPublicMarketData:
             raise MarketDataError("Deriv public candle timestamps are not monotonic", symbol=symbol)
         return result
 
+    async def get_active_symbols(self) -> dict[str, Any]:
+        """Return the unauthenticated current public catalogue payload."""
+        if not self._connected:
+            raise BrokerConnectionError("Deriv public market data is not connected")
+        response = await self._request({"active_symbols": "full"})
+        if response.get("error"):
+            raise MarketDataError("Failed to retrieve Deriv public active symbols")
+        if not isinstance(response.get("active_symbols"), list):
+            raise MarketDataError("Malformed Deriv active_symbols response")
+        return response
+
     async def get_candles_range(
         self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime,
         count: int | None = None,

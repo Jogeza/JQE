@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 import pandas as pd
 
-from backtesting.models import BacktestExecutionAssumptions, BacktestExitReason, BacktestRiskConfiguration, BacktestTrade, BacktestResult
+from backtesting.models import BacktestDecision, BacktestExecutionAssumptions, BacktestExitReason, BacktestRiskConfiguration, BacktestTrade, BacktestResult
 from broker.types import ExecutionQuantity, ExecutionQuantityUnit, Timeframe
 from risk.risk_engine import RiskEngine
 from execution.simulator import calculate_stop_target
@@ -44,6 +44,7 @@ class BacktestEngine:
         self._pending: _PendingSignal | None = None
         self._position: _OpenPosition | None = None
         self.trades: list[BacktestTrade] = []
+        self.decisions: list[BacktestDecision] = []
         self.equity_curve: list[float] = [self.balance]
         self.total_trades = self.wins = self.losses = 0
         self.result: BacktestResult | None = None
@@ -61,15 +62,44 @@ class BacktestEngine:
             self._evaluate_exit(index, row, dataframe)
 
     def queue_signal(self, signal: dict[str, Any], index: int, dataframe: pd.DataFrame) -> None:
-        if self._position is not None or self._pending is not None:
-            return
         direction, confidence = signal.get("signal"), int(signal.get("confidence", 0))
         atr = float(dataframe.iloc[index].get("ATR", 0.0))
-        if direction not in ("BUY", "SELL") or confidence < self.risk_configuration.minimum_confidence or atr <= 0:
+        state = "NO_TRADE"
+        reasons = [str(reason) for reason in signal.get("reasons", [])]
+        if self._position is not None:
+            state, reasons = "REJECTED_CANDIDATE", [*reasons, "Position already open"]
+        elif self._pending is not None:
+            state, reasons = "REJECTED_CANDIDATE", [*reasons, "Entry already pending"]
+        elif direction not in ("BUY", "SELL"):
+            state = "NO_TRADE"
+        elif confidence < self.risk_configuration.minimum_confidence:
+            state, reasons = "REJECTED_CANDIDATE", [*reasons, "Confidence below backtest minimum"]
+        elif atr <= 0:
+            state, reasons = "INSUFFICIENT_SETUP", [*reasons, "ATR unavailable"]
+        else:
+            decision = self._risk_engine.approve_trade(signal, dataframe.iloc[: index + 1], balance=self.balance, enforce_limits=False)
+            if decision["approved"]:
+                self._pending = _PendingSignal(direction, confidence, index, atr)
+                state = "QUEUED"
+            else:
+                state = "RISK_BLOCKED"
+                reason = decision.get("reason") or decision.get("rejection_reason")
+                if reason:
+                    reasons.append(str(reason))
+        plan = signal.get("trade_plan")
+        self.decisions.append(BacktestDecision(
+            candle_index=index,
+            timestamp=dataframe.iloc[index]["time"],
+            signal=str(direction or "NO_TRADE"),
+            confidence=confidence,
+            state=state,
+            reasons=tuple(reasons),
+            entry_price=getattr(plan, "entry", None),
+            stop_price=getattr(plan, "stop_loss", None),
+            target_price=getattr(plan, "take_profit", None),
+        ))
+        if state != "QUEUED":
             return
-        decision = self._risk_engine.approve_trade(signal, dataframe.iloc[: index + 1], balance=self.balance, enforce_limits=False)
-        if decision["approved"]:
-            self._pending = _PendingSignal(direction, confidence, index, atr)
 
     def finish(self, final_index: int, dataframe: pd.DataFrame) -> None:
         if self._position is not None:

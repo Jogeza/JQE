@@ -134,6 +134,34 @@ class BacktestTrade:
 
 
 @dataclass(frozen=True, slots=True)
+class BacktestDecision:
+    """One chronological strategy/risk observation made during a backtest."""
+
+    candle_index: int
+    timestamp: datetime
+    signal: str
+    confidence: int
+    state: str
+    reasons: tuple[str, ...] = ()
+    entry_price: float | None = None
+    stop_price: float | None = None
+    target_price: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BacktestIndicatorObservation:
+    """Canonical indicator values known at one candle close."""
+
+    candle_index: int
+    timestamp: datetime
+    ema50: float | None
+    ema200: float | None
+    rsi: float | None
+    atr: float | None
+    regime: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class BacktestResult:
     provider: str
     symbol: str
@@ -170,6 +198,8 @@ class BacktestResult:
     maximum_consecutive_wins: int
     maximum_consecutive_losses: int
     trades: tuple[BacktestTrade, ...]
+    decisions: tuple[BacktestDecision, ...] = ()
+    indicators: tuple[BacktestIndicatorObservation, ...] = ()
 
     def to_json_bytes(self) -> bytes:
         def normalize(value: Any) -> Any:

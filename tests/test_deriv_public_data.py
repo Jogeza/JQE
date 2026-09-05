@@ -41,6 +41,12 @@ class FakePublicConnection:
                     },
                 ],
             }
+        elif "active_symbols" in message:
+            response = {"req_id": message["req_id"], "active_symbols": [{
+                "underlying_symbol": "frxEURUSD", "underlying_symbol_name": "EUR/USD",
+                "underlying_symbol_type": "forex", "market": "forex", "subgroup": "none",
+                "submarket": "major_pairs", "pip_size": .00001, "trade_count": 1,
+                "exchange_is_open": 1, "is_trading_suspended": 0}]}
         else:
             response = {
                 "req_id": message["req_id"],
@@ -138,6 +144,18 @@ def test_public_adapter_has_no_account_or_execution_api() -> None:
     assert not hasattr(gateway, "submit_order")
     assert not hasattr(gateway, "get_positions")
     assert not hasattr(gateway, "get_trade_history")
+
+
+@pytest.mark.asyncio
+async def test_public_active_symbols_uses_exact_unauthenticated_request() -> None:
+    connection = FakePublicConnection(); source = DerivPublicMarketData()
+    with patch("broker.deriv_public_data.websockets.connect", new=AsyncMock(return_value=connection)):
+        await source.connect()
+    payload = await source.get_active_symbols()
+    assert payload["active_symbols"][0]["underlying_symbol"] == "frxEURUSD"
+    assert connection.sent[0]["active_symbols"] == "full"
+    assert set(connection.sent[0]) == {"active_symbols", "req_id"}
+    await source.disconnect()
 
 
 @pytest.mark.asyncio
