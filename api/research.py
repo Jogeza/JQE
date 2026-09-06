@@ -8,7 +8,7 @@ from decimal import Decimal
 from threading import Lock
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from backtesting.backtest import run_backtest
@@ -22,6 +22,7 @@ from data.historical import HistoricalDataService
 from broker.deriv_public_data import DerivPublicMarketData
 from research.markets import MarketCatalogueService
 from config.settings import settings
+from core.exceptions import MarketDataError
 from broker.types import TIMEFRAME_SECONDS
 from research.volume_profile import (
     VolumeAllocationMethod, VolumeProfileRequest as DomainVolumeProfileRequest,
@@ -33,6 +34,10 @@ from research.frvp_experiments import (
 from research.acquisitions import (
     AcquisitionErrorCode, AcquisitionFailure, AcquisitionJobRegistry,
     AcquisitionOutcome, AcquisitionSpec,
+)
+from research.experiments import (
+    ExperimentCatalog, ExperimentNotFoundError, ExperimentStatus,
+    compare_experiment_records, experiment_record_dict,
 )
 from data.storage import find_gaps
 
@@ -75,8 +80,84 @@ class IndicatorDTO(BaseModel):
 class SessionDTO(BaseModel):
     id: str
     dataset: DatasetDTO
+    run_fingerprint: str
+    result_hash: str
+    engine_version: str
+    identity_schema_version: int
     strategy: dict[str, JsonValue]
     volume_metadata: VolumeDTO
+
+
+class ExperimentSummaryDTO(BaseModel):
+    experiment_id: str
+    status: ExperimentStatus
+    created_at: datetime
+    symbol: str
+    timeframe: str
+    effective_start: datetime
+    effective_end: datetime
+    candle_count: int
+    dataset_hash: str | None
+    run_fingerprint: str | None
+    result_hash: str | None
+    engine_version: str | None
+    identity_schema_version: int | None
+    initial_capital: float | None
+    ending_capital: float | None
+    total_return: float | None
+    total_trades: int | None
+    fully_reproducible: bool
+
+
+class DiscoveryIssueDTO(BaseModel):
+    file_name: str
+    code: str
+    message: str
+
+
+class ExperimentListDTO(BaseModel):
+    experiments: list[ExperimentSummaryDTO]
+    issues: list[DiscoveryIssueDTO]
+    total: int
+    limit: int
+    offset: int
+
+
+class ExperimentDetailDTO(BaseModel):
+    schema_version: int
+    experiment_id: str
+    status: ExperimentStatus
+    created_at: datetime
+    dataset_hash: str | None
+    run_fingerprint: str | None
+    result_hash: str | None
+    engine_version: str | None
+    identity_schema_version: int | None
+    symbol: str
+    timeframe: str
+    partition: str
+    partition_first_candle: datetime
+    partition_last_candle: datetime
+    partition_candle_count: int
+    strategy_name: str
+    configuration: dict[str, JsonValue]
+    metrics: dict[str, JsonValue]
+    provenance: dict[str, JsonValue]
+
+
+class ExperimentComparisonDTO(BaseModel):
+    left_experiment_id: str
+    right_experiment_id: str
+    classification: str
+    controlled_comparison: bool
+    both_fully_reproducible: bool
+    same_dataset: bool
+    same_run_configuration: bool
+    same_result: bool
+    same_strategy_configuration: bool
+    same_risk_configuration: bool
+    same_execution_assumptions: bool
+    metric_deltas: dict[str, float | int | None]
 
 
 class IndexedCandleDTO(BaseModel):
@@ -234,7 +315,11 @@ def create_session(candles: list[Candle], result: BacktestResult, provenance: Da
         id=uuid4().hex,
         dataset=DatasetDTO(provider=result.provider, symbol=result.symbol, timeframe=result.timeframe,
                            start=snapshot.start, end=snapshot.end, candle_count=len(candles),
-                           content_hash=candle_content_hash(candles)),
+                           content_hash=result.dataset_hash),
+        run_fingerprint=result.run_fingerprint,
+        result_hash=result.result_hash,
+        engine_version=result.engine_version,
+        identity_schema_version=result.identity_schema_version,
         strategy=result.strategy, volume_metadata=volume,
     ), snapshot.candles, result)
 
@@ -290,6 +375,66 @@ async def _load_deriv_catalogue():
 
 _market_catalogue = MarketCatalogueService(_load_deriv_catalogue)
 _acquisition_jobs = AcquisitionJobRegistry()
+_experiment_catalog = ExperimentCatalog(settings.research_experiment_path)
+
+
+@router.get("/experiments", response_model=ExperimentListDTO)
+def list_persisted_experiments(
+    symbol: str | None = None, timeframe: str | None = None,
+    status: ExperimentStatus | None = None, fully_reproducible: bool | None = None,
+    dataset_hash: str | None = None, run_fingerprint: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0),
+):
+    """List bounded factual summaries without running research or broker code."""
+    try:
+        result = _experiment_catalog.discover(
+            symbol=symbol, timeframe=timeframe, status=status,
+            fully_reproducible=fully_reproducible, dataset_hash=dataset_hash,
+            run_fingerprint=run_fingerprint, limit=limit, offset=offset,
+        )
+    except (ValueError, MarketDataError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "experiments": [asdict(item) for item in result.experiments],
+        "issues": [asdict(item) for item in result.issues],
+        "total": result.total, "limit": limit, "offset": offset,
+    }
+
+
+@router.get("/experiments/compare", response_model=ExperimentComparisonDTO)
+def compare_persisted_experiments(left: str, right: str):
+    try:
+        comparison = compare_experiment_records(
+            _experiment_catalog.load(left), _experiment_catalog.load(right)
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(404, "Experiment not found") from exc
+    except MarketDataError as exc:
+        raise HTTPException(422, "Experiment record is malformed") from exc
+    return {
+        "left_experiment_id": comparison.left_experiment_id,
+        "right_experiment_id": comparison.right_experiment_id,
+        "classification": comparison.classification.value,
+        "controlled_comparison": comparison.controlled_comparison,
+        "both_fully_reproducible": comparison.both_fully_reproducible,
+        "same_dataset": comparison.same_dataset,
+        "same_run_configuration": comparison.same_run_configuration,
+        "same_result": comparison.same_result,
+        "same_strategy_configuration": comparison.same_strategy_configuration,
+        "same_risk_configuration": comparison.same_risk_configuration,
+        "same_execution_assumptions": comparison.same_execution_assumptions,
+        "metric_deltas": dict(comparison.metric_deltas),
+    }
+
+
+@router.get("/experiments/{experiment_id}", response_model=ExperimentDetailDTO)
+def get_persisted_experiment(experiment_id: str):
+    try:
+        return experiment_record_dict(_experiment_catalog.load(experiment_id))
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(404, "Experiment not found") from exc
+    except MarketDataError as exc:
+        raise HTTPException(422, "Experiment record is malformed") from exc
 
 
 def _acquisition_outcome(store: CandleStore, spec: AcquisitionSpec, cached_before: int,

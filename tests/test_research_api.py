@@ -40,6 +40,10 @@ async def test_replay_prefix_has_no_future_data(candles):
     assert final.balance_curve[-1].balance == engine.balance
     assert len(final.signals) == 10
     assert session.metadata.dataset.content_hash.startswith("sha256:")
+    assert session.metadata.run_fingerprint == engine.result.run_fingerprint
+    assert session.metadata.result_hash == engine.result.result_hash
+    assert session.metadata.engine_version == engine.result.engine_version
+    assert session.metadata.identity_schema_version == engine.result.identity_schema_version
 
 
 @pytest.mark.asyncio

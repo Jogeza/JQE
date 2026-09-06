@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from core.exceptions import MarketDataError
-from backtesting.engine import BacktestEngine
 from broker.types import Candle, Timeframe
 from data.dataset import (
     build_dataset_manifest,
@@ -14,8 +13,8 @@ from data.dataset import (
     load_dataset_bundle,
 )
 from research.experiments import (
+    ExperimentCatalog,
     ResearchPartition,
-    load_experiment_record,
 )
 from research.runner import run_training_experiment
 
@@ -70,22 +69,22 @@ async def test_frozen_public_data_to_train_experiment(
 
     captured = {}
 
+    from research.runner import run_backtest as real_run_backtest
+
     async def fake_run_backtest(**kwargs):
         captured.update(kwargs)
-        return BacktestEngine(
-            starting_balance=kwargs["starting_balance"]
-        )
+        return await real_run_backtest(**kwargs)
 
     monkeypatch.setattr(
         "research.runner.run_backtest",
         fake_run_backtest,
     )
 
-    experiment_path = tmp_path / "experiment.json"
+    catalog = ExperimentCatalog(tmp_path / "catalog")
 
     result = await run_training_experiment(
         bundle_directory=bundle,
-        experiment_path=experiment_path,
+        catalog=catalog,
         strategy_name="TrendContinuation",
         strategy_config={"research_fixture": True},
         starting_balance=50.0,
@@ -113,11 +112,13 @@ async def test_frozen_public_data_to_train_experiment(
         < result.split.out_of_sample[0].time
     )
 
-    record = load_experiment_record(experiment_path)
+    record = catalog.load(result.experiment.experiment_id)
 
     assert record.partition is ResearchPartition.TRAIN
-    assert record.dataset_hash == manifest.content_hash
-    assert record.partition_hash == candle_content_hash(train)
+    assert record.dataset_hash == result.engine.result.dataset_hash
+    assert record.run_fingerprint == result.engine.result.run_fingerprint
+    assert record.result_hash == result.engine.result.result_hash
+    assert record.provenance["frozen_manifest_content_hash"] == manifest.content_hash
     assert record.partition_candle_count == 240
     assert record.symbol == "XAUUSD"
     assert record.timeframe == "M15"
@@ -152,12 +153,12 @@ async def test_pipeline_rejects_tampered_frozen_dataset(
     text = text.replace("2600.2", "9999.2", 1)
     csv_path.write_text(text, encoding="utf-8")
 
-    experiment_path = tmp_path / "must-not-exist.json"
+    catalog = ExperimentCatalog(tmp_path / "catalog")
 
     with pytest.raises(MarketDataError):
         await run_training_experiment(
             bundle_directory=bundle,
-            experiment_path=experiment_path,
+            catalog=catalog,
             strategy_name="TrendContinuation",
             strategy_config={"research_fixture": True},
             starting_balance=50.0,
@@ -169,4 +170,4 @@ async def test_pipeline_rejects_tampered_frozen_dataset(
             ),
         )
 
-    assert not experiment_path.exists()
+    assert not catalog.root.exists()

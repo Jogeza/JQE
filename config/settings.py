@@ -148,6 +148,7 @@ class Settings(BaseSettings):
 
     cache_dir: Path = Path("cache")
     historical_data_path: Path = Path("data/historical.sqlite3")
+    research_experiment_path: Path = Path("data/experiments")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")

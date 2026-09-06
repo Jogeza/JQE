@@ -32,11 +32,11 @@ from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
 from strategy.pipeline import generate_trading_signal
-from data.dataset import CandleDatasetManifest, verify_dataset_manifest
+from data.dataset import CandleDatasetManifest, canonical_dataset_hash, verify_dataset_manifest
 from data.storage import CandleStore
 from backtesting.models import (
     BacktestExecutionAssumptions, BacktestIndicatorObservation, BacktestResult, BacktestRiskConfiguration,
-    CandleDatasetSnapshot,
+    CandleDatasetSnapshot, backtest_run_fingerprint,
 )
 
 DEFAULT_SYMBOL = "XAUUSD"
@@ -47,6 +47,13 @@ DEFAULT_CANDLES = 5000
 # leading candles before their values are meaningful — trades aren't
 # evaluated before this point.
 _WARMUP_CANDLES = 200
+_BACKTEST_ENGINE_VERSION = "jqe-backtest-v1"
+_DEFAULT_STRATEGY_CONFIGURATION = {
+    "strategy_id": "jqe-canonical-strategy-v1",
+    "entrypoint": "strategy.pipeline.generate_trading_signal",
+    "indicator_engine": "core.indicators.calculate_indicators-v1",
+    "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+}
 
 
 class BacktestRunner:
@@ -204,7 +211,7 @@ async def run_backtest(
 
     engine.result = build_backtest_result(
         snapshot, engine,
-        strategy_configuration or {"entrypoint": "strategy.pipeline.generate_trading_signal"},
+        strategy_configuration or _DEFAULT_STRATEGY_CONFIGURATION,
         tuple(indicator_rows),
     )
 
@@ -236,7 +243,18 @@ def build_backtest_result(
         win_run, loss_run = ((win_run + 1, 0) if pnl > 0 else (0, loss_run + 1) if pnl < 0 else (0, 0))
         max_wins, max_losses = max(max_wins, win_run), max(max_losses, loss_run)
     count = len(pnls)
+    dataset_hash = canonical_dataset_hash(
+        dataset.candles, symbol=dataset.symbol, timeframe=dataset.timeframe
+    )
+    run_fingerprint = backtest_run_fingerprint(
+        dataset_hash=dataset_hash, symbol=dataset.symbol, timeframe=dataset.timeframe,
+        initial_capital=engine.starting_balance, strategy=strategy,
+        risk=engine.risk_configuration, execution=engine.execution_assumptions,
+        engine_version=_BACKTEST_ENGINE_VERSION,
+    )
     return BacktestResult(
+        identity_schema_version=1, engine_version=_BACKTEST_ENGINE_VERSION,
+        dataset_hash=dataset_hash, run_fingerprint=run_fingerprint,
         provider=dataset.provider, symbol=dataset.symbol, timeframe=dataset.timeframe,
         dataset_start=dataset.start, dataset_end=dataset.end, candle_count=len(dataset.candles),
         initial_capital=engine.starting_balance, strategy=dict(strategy),

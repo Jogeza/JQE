@@ -43,6 +43,10 @@ class TestSettingsDefaults:
         settings = Settings(_env_file=None)
         assert settings.emergency_stop is EmergencyStopState.UNKNOWN
 
+    def test_default_research_experiment_catalog_is_repository_relative(self) -> None:
+        settings = Settings(_env_file=None)
+        assert settings.research_experiment_path.as_posix() == "data/experiments"
+
 
 class TestSettingsEnvOverrides:
     """Environment variables (JQE_-prefixed) should override defaults."""

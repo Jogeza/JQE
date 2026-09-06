@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -21,6 +22,10 @@ class SameCandleCollisionPolicy(str, Enum):
     STOP_LOSS_WINS = "STOP_LOSS_WINS"
 
 
+class GapFillPolicy(str, Enum):
+    AT_TRIGGER_PRICE = "AT_TRIGGER_PRICE"
+
+
 class BacktestExitReason(str, Enum):
     STOP_LOSS = "STOP_LOSS"
     TAKE_PROFIT = "TAKE_PROFIT"
@@ -35,25 +40,44 @@ class BacktestExecutionAssumptions:
     slippage: float = 0.0
     fee_per_trade: float = 0.0
     same_candle_collision_policy: SameCandleCollisionPolicy = SameCandleCollisionPolicy.STOP_LOSS_WINS
+    gap_fill_policy: GapFillPolicy = GapFillPolicy.AT_TRIGGER_PRICE
     max_holding_candles: int = 19
+    stop_atr_multiple: float = 1.5
+    target_atr_multiple: float = 3.0
 
     def __post_init__(self) -> None:
+        numeric = (
+            self.spread, self.slippage, self.fee_per_trade,
+            self.stop_atr_multiple, self.target_atr_multiple,
+        )
+        if not all(math.isfinite(value) for value in numeric):
+            raise ValueError("Backtest execution assumptions must be finite")
         if any(value < 0 for value in (self.spread, self.slippage, self.fee_per_trade)):
             raise ValueError("Backtest costs cannot be negative")
         if self.max_holding_candles <= 0:
             raise ValueError("max_holding_candles must be positive")
+        if self.stop_atr_multiple <= 0 or self.target_atr_multiple <= 0:
+            raise ValueError("Backtest ATR multiples must be positive")
 
 
 @dataclass(frozen=True, slots=True)
 class BacktestRiskConfiguration:
     risk_percent: float = 1.0
     minimum_confidence: int = 70
+    minimum_atr: float = 1.0
+    maximum_spread: float = 30.0
 
     def __post_init__(self) -> None:
+        if not all(math.isfinite(value) for value in (
+            self.risk_percent, self.minimum_atr, self.maximum_spread
+        )):
+            raise ValueError("Backtest risk configuration must be finite")
         if not 0 < self.risk_percent <= 100:
             raise ValueError("risk_percent must be in (0, 100]")
         if not 0 <= self.minimum_confidence <= 100:
             raise ValueError("minimum_confidence must be in [0, 100]")
+        if self.minimum_atr < 0 or self.maximum_spread < 0:
+            raise ValueError("Backtest market-risk limits cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +187,10 @@ class BacktestIndicatorObservation:
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
+    identity_schema_version: int
+    engine_version: str
+    dataset_hash: str
+    run_fingerprint: str
     provider: str
     symbol: str
     timeframe: Timeframe
@@ -201,22 +229,67 @@ class BacktestResult:
     decisions: tuple[BacktestDecision, ...] = ()
     indicators: tuple[BacktestIndicatorObservation, ...] = ()
 
-    def to_json_bytes(self) -> bytes:
-        def normalize(value: Any) -> Any:
-            if hasattr(value, "model_dump"):
-                return normalize(value.model_dump())
-            if isinstance(value, datetime):
-                return value.astimezone(timezone.utc).isoformat(timespec="microseconds")
-            if isinstance(value, Enum):
-                return value.value
-            if isinstance(value, dict):
-                return {str(k): normalize(v) for k, v in sorted(value.items())}
-            if isinstance(value, (list, tuple)):
-                return [normalize(item) for item in value]
-            return value
+    @property
+    def result_hash(self) -> str:
+        """Identity of the complete deterministic result payload."""
+        payload = self._normalized_payload()
+        payload.pop("provider", None)
+        return _sha256(payload)
 
-        return (json.dumps(normalize(asdict(self)), sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+    def _normalized_payload(self) -> dict[str, Any]:
+        return _normalize(asdict(self))
+
+    def to_json_bytes(self) -> bytes:
+        payload = self._normalized_payload()
+        payload["result_hash"] = self.result_hash
+        return (_canonical_json(payload) + "\n").encode("utf-8")
 
     def to_dict(self) -> dict[str, Any]:
         """Return the normalized canonical payload used for serialization."""
         return json.loads(self.to_json_bytes().decode("utf-8"))
+
+
+def _normalize(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return _normalize(value.model_dump())
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            raise ValueError("Deterministic timestamps must be timezone-aware")
+        return value.astimezone(timezone.utc).isoformat(timespec="microseconds")
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {str(key): _normalize(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+    if isinstance(value, (list, tuple)):
+        return [_normalize(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("Deterministic numeric values must be finite")
+    return value
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(_normalize(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+
+
+def _sha256(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def backtest_run_fingerprint(
+    *, dataset_hash: str, symbol: str, timeframe: Timeframe,
+    initial_capital: float, strategy: dict[str, Any],
+    risk: BacktestRiskConfiguration, execution: BacktestExecutionAssumptions,
+    engine_version: str,
+) -> str:
+    """Hash every explicit deterministic input, excluding observation metadata."""
+    return _sha256({
+        "identity_schema_version": 1,
+        "engine_version": engine_version,
+        "dataset_hash": dataset_hash,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "initial_capital": initial_capital,
+        "strategy": strategy,
+        "risk": asdict(risk),
+        "execution": asdict(execution),
+    })

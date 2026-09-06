@@ -64,6 +64,36 @@ def candle_content_hash(candles: Sequence[Candle]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_dataset_hash(
+    candles: Sequence[Candle], *, symbol: str, timeframe: Timeframe
+) -> str:
+    """Identify the exact canonical market sequence used by a backtest.
+
+    Provider and per-row source are provenance, not market facts, so they are
+    deliberately excluded. Symbol and timeframe are bound to the ordered OHLCV
+    sequence under an explicit schema version.
+    """
+    normalized_candles = []
+    for candle in candles:
+        if candle.time.tzinfo is None:
+            raise MarketDataError("Dataset identity requires timezone-aware timestamps")
+        normalized_candles.append({
+            "time": candle.time.astimezone(timezone.utc).isoformat(timespec="microseconds"),
+            "open": float(candle.open), "high": float(candle.high),
+            "low": float(candle.low), "close": float(candle.close),
+            "volume": None if candle.volume is None else float(candle.volume),
+        })
+    payload = {
+        "dataset_identity_schema_version": 1,
+        "symbol": symbol.strip().upper(),
+        "timeframe": timeframe.value,
+        "candles": normalized_candles,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                         allow_nan=False).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def build_dataset_manifest(
     candles: Sequence[Candle],
     *,

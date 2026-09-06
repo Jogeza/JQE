@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 import pandas as pd
 
@@ -34,13 +35,18 @@ class _OpenPosition:
 class BacktestEngine:
     """Event-driven research engine; balance changes only at reached exits."""
     def __init__(self, starting_balance: float = 50.0, *, symbol: str = "XAUUSD", timeframe: Timeframe = Timeframe.M5, risk: BacktestRiskConfiguration | None = None, execution: BacktestExecutionAssumptions | None = None) -> None:
-        if starting_balance <= 0:
-            raise ValueError("starting_balance must be positive")
+        if not math.isfinite(starting_balance) or starting_balance <= 0:
+            raise ValueError("starting_balance must be positive and finite")
         self.starting_balance = self.balance = float(starting_balance)
         self.symbol, self.timeframe = symbol, timeframe
         self.risk_configuration = risk or BacktestRiskConfiguration()
         self.execution_assumptions = execution or BacktestExecutionAssumptions()
-        self._risk_engine = RiskEngine(min_confidence=self.risk_configuration.minimum_confidence, max_risk_percent=self.risk_configuration.risk_percent)
+        self._risk_engine = RiskEngine(
+            min_confidence=self.risk_configuration.minimum_confidence,
+            max_risk_percent=self.risk_configuration.risk_percent,
+            min_atr=self.risk_configuration.minimum_atr,
+            max_spread=self.risk_configuration.maximum_spread,
+        )
         self._pending: _PendingSignal | None = None
         self._position: _OpenPosition | None = None
         self.trades: list[BacktestTrade] = []
@@ -153,15 +159,15 @@ class BacktestEngine:
         adverse = self.execution_assumptions.spread + self.execution_assumptions.slippage
         raw_open = float(row["open"])
         entry = raw_open + adverse if self._pending.direction == "BUY" else raw_open - adverse
-        stop_distance = self._pending.atr * 1.5
+        stop_distance = self._pending.atr * self.execution_assumptions.stop_atr_multiple
         risk_amount = self.balance * self.risk_configuration.risk_percent / 100.0
         if stop_distance <= 0 or risk_amount <= self.execution_assumptions.fee_per_trade or risk_amount > self.balance:
             return
         quantity = ExecutionQuantity(value=risk_amount / stop_distance, unit=ExecutionQuantityUnit.SIMULATION_UNITS)
         if self._pending.direction == "BUY":
-            stop, target = entry - stop_distance, entry + self._pending.atr * 3.0
+            stop, target = entry - stop_distance, entry + self._pending.atr * self.execution_assumptions.target_atr_multiple
         else:
-            stop, target = entry + stop_distance, entry - self._pending.atr * 3.0
+            stop, target = entry + stop_distance, entry - self._pending.atr * self.execution_assumptions.target_atr_multiple
         self._position = _OpenPosition(self._pending.direction, self._pending.signal_index, index, entry, stop, target, quantity, self.balance)
 
     def _evaluate_exit(self, index: int, row: pd.Series, dataframe: pd.DataFrame) -> None:
