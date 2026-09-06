@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { isCached, marketGroups, searchMarkets } from '../components/chart/marketCatalogueAdapter';
 import { MarketSidebar } from '../components/research/MarketSidebar';
 import { ResearchChartWorkspace } from '../components/research/ResearchChartWorkspace';
+import { ExperimentCatalog } from '../components/research/ExperimentCatalog';
 import {
   createResearchWorkspace,
   initialResearchLayout,
@@ -45,6 +46,7 @@ function workspacePairReducer(state: WorkspacePair, change: WorkspacePairAction)
 }
 
 export function ResearchPage() {
+  const [researchView, setResearchView] = useState<'charts' | 'experiments'>('charts');
   const [markets, setMarkets] = useState<ResearchMarketsDTO | null>(null);
   const [workspaces, dispatchPair] = useReducer(workspacePairReducer, {
     primary: null,
@@ -156,10 +158,18 @@ export function ResearchPage() {
   const comparison = workspaces.comparison;
   if (!markets || !primary || !comparison)
     return (
-      <div className="dashboard-page-container">
-        <p role={catalogueError ? 'alert' : undefined} style={{ color: catalogueError ? 'var(--quant-red)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-          {catalogueError ?? 'Loading Research Terminal…'}
-        </p>
+      <div className="dashboard-page-container research-terminal">
+        <div className="research-context-bar">
+          <div><span className="research-eyebrow">Research workspace</span><strong>Explore historical market behaviour</strong><span>Charts and durable experiment observations remain separate research views.</span></div>
+        </div>
+        <nav className="research-view-tabs" aria-label="Research views">
+          <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>
+          <button aria-current={researchView === 'experiments' ? 'page' : undefined} onClick={() => setResearchView('experiments')}>Experiment catalog</button>
+        </nav>
+        {researchView === 'charts' && <p role={catalogueError ? 'alert' : undefined} style={{ color: catalogueError ? 'var(--quant-red)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+          {catalogueError ?? 'Loading Research Terminal\u2026'}
+        </p>}
+        {researchView === 'experiments' && <ExperimentCatalog />}
       </div>
     );
 
@@ -191,6 +201,7 @@ export function ResearchPage() {
           </span>
         </div>
         <button
+          hidden={researchView !== 'charts'}
           aria-pressed={comparisonEnabled}
           onClick={() => dispatchLayout({ type: 'set-comparison', enabled: !comparisonEnabled })}
         >
@@ -198,8 +209,13 @@ export function ResearchPage() {
         </button>
       </div>
 
+      <nav className="research-view-tabs" aria-label="Research views">
+        <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>
+        <button aria-current={researchView === 'experiments' ? 'page' : undefined} onClick={() => setResearchView('experiments')}>Experiment catalog</button>
+      </nav>
+
       {/* Main Research Layout */}
-      <div className="research-layout">
+      <div className="research-layout" hidden={researchView !== 'charts'}>
         <MarketSidebar
           markets={markets}
           items={visibleMarkets}
@@ -326,6 +342,7 @@ export function ResearchPage() {
           </div>
         </main>
       </div>
+      {researchView === 'experiments' && <ExperimentCatalog />}
     </div>
   );
 }

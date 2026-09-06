@@ -13,6 +13,10 @@ import {
   ExecutionSafetyResponse,
   RecoveryDiagnosticsResponse,
   PerformanceSummaryResponse,
+  ExperimentListFilters,
+  ExperimentListResponse,
+  ExperimentDetailDTO,
+  ExperimentComparisonResponse,
 } from '../types/api';
 
 const API_BASE = '/api/v1';
@@ -118,4 +122,24 @@ export const jqeApi = {
   async getPerformanceSummary(signal?: AbortSignal): Promise<PerformanceSummaryResponse> {
     return fetchJson(`${API_BASE}/performance`, { signal });
   },
+
+  async listExperiments(filters: ExperimentListFilters = {}, signal?: AbortSignal): Promise<ExperimentListResponse> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined) params.set(key, String(value));
+    });
+    const query = params.size ? `?${params.toString()}` : '';
+    return fetchJson(`${API_BASE}/research/experiments${query}`, { signal });
+  },
+
+  async getExperiment(experimentId: string, signal?: AbortSignal): Promise<ExperimentDetailDTO> {
+    return fetchJson(`${API_BASE}/research/experiments/${encodeURIComponent(experimentId)}`, { signal });
+  },
+
+  async compareExperiments(leftId: string, rightId: string, signal?: AbortSignal): Promise<ExperimentComparisonResponse> {
+    const params = new URLSearchParams({ left: leftId, right: rightId });
+    return fetchJson(`${API_BASE}/research/experiments/compare?${params.toString()}`, { signal });
+  },
 };
+
+export { ApiError };

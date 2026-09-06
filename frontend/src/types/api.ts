@@ -238,6 +238,100 @@ export interface PerformanceSummaryResponse {
   net_profit: number;
 }
 
+export type ExperimentStatus = 'COMPLETED' | 'LEGACY_INCOMPLETE';
+
+export type ExperimentComparisonClassification =
+  | 'IDENTICAL_RESULT'
+  | 'SAME_RUN_CONFIGURATION_DIFFERENT_OBSERVATION'
+  | 'SAME_DATASET_DIFFERENT_CONFIGURATION'
+  | 'DIFFERENT_DATASET'
+  | 'LEGACY_OR_INCOMPLETE';
+
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+export interface ExperimentDiscoveryIssueDTO {
+  file_name: string;
+  code: 'INVALID_EXPERIMENT_RECORD' | string;
+  message: string;
+}
+
+export interface ExperimentSummaryDTO {
+  experiment_id: string;
+  status: ExperimentStatus;
+  created_at: string;
+  symbol: string;
+  timeframe: string;
+  effective_start: string;
+  effective_end: string;
+  candle_count: number;
+  dataset_hash: string | null;
+  run_fingerprint: string | null;
+  result_hash: string | null;
+  engine_version: string | null;
+  identity_schema_version: number | null;
+  initial_capital: number | null;
+  ending_capital: number | null;
+  total_return: number | null;
+  total_trades: number | null;
+  fully_reproducible: boolean;
+}
+
+export interface ExperimentListResponse {
+  experiments: ExperimentSummaryDTO[];
+  issues: ExperimentDiscoveryIssueDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ExperimentDetailDTO {
+  schema_version: number;
+  experiment_id: string;
+  status: ExperimentStatus;
+  created_at: string;
+  dataset_hash: string | null;
+  run_fingerprint: string | null;
+  result_hash: string | null;
+  engine_version: string | null;
+  identity_schema_version: number | null;
+  symbol: string;
+  timeframe: string;
+  partition: string;
+  partition_first_candle: string;
+  partition_last_candle: string;
+  partition_candle_count: number;
+  strategy_name: string;
+  configuration: Record<string, JsonValue>;
+  metrics: Record<string, JsonValue>;
+  provenance: Record<string, JsonValue>;
+}
+
+export interface ExperimentComparisonResponse {
+  left_experiment_id: string;
+  right_experiment_id: string;
+  classification: ExperimentComparisonClassification;
+  controlled_comparison: boolean;
+  both_fully_reproducible: boolean;
+  same_dataset: boolean;
+  same_run_configuration: boolean;
+  same_result: boolean;
+  same_strategy_configuration: boolean;
+  same_risk_configuration: boolean;
+  same_execution_assumptions: boolean;
+  metric_deltas: Record<string, number | null>;
+}
+
+export interface ExperimentListFilters {
+  symbol?: string;
+  timeframe?: string;
+  status?: ExperimentStatus;
+  fully_reproducible?: boolean;
+  dataset_hash?: string;
+  run_fingerprint?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface ResourceState<T> {
   data: T | null;
   loading: boolean;
