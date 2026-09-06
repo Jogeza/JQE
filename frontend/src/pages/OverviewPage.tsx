@@ -8,6 +8,7 @@ import { MarketChart } from '../components/MarketChart';
 import { StrategySignalPanel } from '../components/StrategySignalPanel';
 import { PerformanceSection } from '../components/PerformanceSection';
 import { RecoveryPanel } from '../components/RecoveryPanel';
+import { ExecutionSafetyPanel } from '../components/ExecutionSafetyPanel';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -15,6 +16,7 @@ import {
   SignalResponse,
   RiskStatusResponse,
   ExecutionStateResponse,
+  ExecutionSafetyResponse,
   PerformanceSummaryResponse,
   RecoveryDiagnosticsResponse,
 } from '../types/api';
@@ -27,6 +29,9 @@ interface OverviewPageProps {
   signalData: SignalResponse | null;
   riskData: RiskStatusResponse | null;
   executionData: ExecutionStateResponse | null;
+  safetyData: ExecutionSafetyResponse | null;
+  safetyUnavailable: boolean;
+  safetyStale: boolean;
   performanceData: PerformanceSummaryResponse | null;
   recoveryData: RecoveryDiagnosticsResponse | null;
   recoveryUnavailable: boolean;
@@ -45,6 +50,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   signalData,
   riskData,
   executionData,
+  safetyData,
+  safetyUnavailable,
+  safetyStale,
   performanceData,
   recoveryData,
   recoveryUnavailable,
@@ -65,7 +73,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const winRate = performanceData?.win_rate_percent ?? 0.0;
 
   return (
-    <div className="dashboard-page-container">
+    <div className="dashboard-page-container overview-page">
+      <div className="editorial-heading">
+        <div><span className="editorial-kicker">The market, in perspective</span><h1>Overview<span>.</span></h1></div>
+        <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}<small>Account, market & system health</small></p>
+      </div>
       {/* Top Command Metric Grid */}
       <div className="grid-metrics">
         <MetricCard
@@ -80,7 +92,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           label="Account Equity"
           value={equity === undefined ? null : formatMoney(equity, riskData?.currency)}
           subtext={`Currency: ${riskData?.currency || '—'}`}
-          trend={equity !== undefined && balance !== undefined ? (equity >= balance ? 'up' : 'down') : 'neutral'}
           badge={systemStatus?.broker?.toUpperCase() || 'UNKNOWN'}
           badgeType="cyan"
           loading={loading && !riskData}
@@ -160,6 +171,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
 
         {/* Right Column: Engine, Safety & Risk Telemetry */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+          <ExecutionSafetyPanel
+            safety={safetyData}
+            loading={loading && !safetyData}
+            unavailable={safetyUnavailable}
+            stale={safetyStale}
+          />
+
           <RecoveryPanel
             recovery={recoveryData}
             loading={loading && !recoveryData}

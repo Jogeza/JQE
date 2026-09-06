@@ -1,6 +1,7 @@
 import type { CandlestickData, HistogramData, LineData, SeriesMarker, Time, UTCTimestamp } from 'lightweight-charts';
 import type { CandleItemDTO, SignalResponse } from '../../types/api';
 import type { JQEChartAnnotation, JQEChartCandle } from './chartTypes';
+import { chartPaletteFallback, type JQEChartPalette } from './chartPalette';
 
 const finiteOrNull = (value: number | null): number | null =>
   value !== null && Number.isFinite(value) ? value : null;
@@ -24,16 +25,18 @@ export function adaptCandles(candles: CandleItemDTO[]): JQEChartCandle[] {
   return [...byTimestamp.values()].sort((left, right) => Number(left.time) - Number(right.time));
 }
 
-export const toCandlestickData = (candles: JQEChartCandle[]): CandlestickData<Time>[] =>
-  candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+export const toCandlestickData = (candles: JQEChartCandle[], palette: JQEChartPalette = chartPaletteFallback): CandlestickData<Time>[] =>
+  candles.map(({ time, open, high, low, close }) => open === close
+    ? { time, open, high, low, close, color: palette.neutral, borderColor: palette.neutral, wickColor: palette.neutral }
+    : { time, open, high, low, close });
 
 export const toLineData = (candles: JQEChartCandle[], key: 'ema50' | 'ema200' | 'rsi'): LineData<Time>[] =>
   candles.flatMap((candle) => candle[key] === null ? [] : [{ time: candle.time, value: candle[key] }]);
 
-export const toVolumeData = (candles: JQEChartCandle[]): HistogramData<Time>[] =>
+export const toVolumeData = (candles: JQEChartCandle[], palette: JQEChartPalette = chartPaletteFallback): HistogramData<Time>[] =>
   candles.flatMap((candle) => candle.volume === null ? [] : [{
     time: candle.time, value: candle.volume,
-    color: candle.close >= candle.open ? 'rgba(0, 230, 118, 0.22)' : 'rgba(255, 82, 82, 0.22)',
+    color: candle.close === candle.open ? palette.profile : candle.close > candle.open ? palette.bullSoft : palette.bearSoft,
   }]);
 
 export function adaptSignal(signal: SignalResponse | null, symbol: string): JQEChartAnnotation | null {
@@ -45,9 +48,9 @@ export function adaptSignal(signal: SignalResponse | null, symbol: string): JQEC
   };
 }
 
-export function toSignalMarkers(annotation: JQEChartAnnotation | null, time: Time | null): SeriesMarker<Time>[] {
+export function toSignalMarkers(annotation: JQEChartAnnotation | null, time: Time | null, palette: JQEChartPalette = chartPaletteFallback): SeriesMarker<Time>[] {
   if (!annotation || time === null) return [];
-  if (annotation.signal === 'BUY') return [{ time, position: 'belowBar', color: '#00e676', shape: 'arrowUp', text: 'JQE BUY' }];
-  if (annotation.signal === 'SELL') return [{ time, position: 'aboveBar', color: '#ff5252', shape: 'arrowDown', text: 'JQE SELL' }];
-  return [{ time, position: 'aboveBar', color: '#9aa4b2', shape: 'circle', text: 'JQE NO TRADE' }];
+  if (annotation.signal === 'BUY') return [{ time, position: 'belowBar', color: palette.bull, shape: 'arrowUp', text: 'JQE BUY' }];
+  if (annotation.signal === 'SELL') return [{ time, position: 'aboveBar', color: palette.bear, shape: 'arrowDown', text: 'JQE SELL' }];
+  return [{ time, position: 'aboveBar', color: palette.neutral, shape: 'circle', text: 'JQE NO TRADE' }];
 }

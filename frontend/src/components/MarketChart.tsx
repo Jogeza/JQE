@@ -1,4 +1,5 @@
 import React from 'react';
+import { EmptyStateIllustration } from './EmptyStateIllustration';
 import { CandlestickChart as ChartIcon } from 'lucide-react';
 import type { CandleItemDTO, SignalResponse } from '../types/api';
 import { JQEChart } from './chart/JQEChart';
@@ -26,10 +27,12 @@ export const MarketChart: React.FC<MarketChartProps> = ({
   <div className="quant-panel chart-panel" style={{ minHeight: '360px' }}>
     <div className="quant-panel-header">
       <div className="quant-panel-title">
-        <ChartIcon size={14} color="var(--quant-cyan)" />
-        <span>{symbol} — {timeframe} Quantitative Telemetry</span>
-        <span style={{ fontSize: '10px', color: 'var(--text-dark-muted)', marginLeft: '6px' }}>
-          JQE DATA · EMA50 · EMA200 · RSI(14)
+        <ChartIcon size={14} color="var(--chart-accent)" />
+        <span>{symbol} / {timeframe}</span>
+        <span className="chart-legend" style={{ fontSize: '10px', color: 'var(--text-dark-muted)', marginLeft: '6px' }}>
+          <span>JQE DATA</span><span className="chart-legend-item ema50"><i className="chart-legend-dot" />EMA50</span>
+          <span className="chart-legend-item ema200"><i className="chart-legend-dot" />EMA200</span>
+          <span className="chart-legend-item rsi"><i className="chart-legend-dot" />RSI(14)</span>
         </span>
       </div>
     </div>
@@ -46,7 +49,8 @@ export const MarketChart: React.FC<MarketChartProps> = ({
 );
 
 const ChartState: React.FC<React.PropsWithChildren<{ tone?: 'error' }>> = ({ children, tone }) => (
-  <div style={{ minHeight: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', textAlign: 'center', color: tone === 'error' ? 'var(--quant-red)' : 'var(--text-dark-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+  <div className="chart-empty-state" role={tone === 'error' ? 'alert' : 'status'}>
+    <EmptyStateIllustration />
     {children}
   </div>
 );

@@ -1,48 +1,86 @@
 :root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-strong: #ededed;
+  --text: #161616;
+  --border: #dedede;
+  --inverse-bg: #111111;
+  --inverse-text: #ffffff;
+  --shadow: 0 2px 12px rgba(0,0,0,.03);
+  --focus: #777777;
+  --accent-blue: #2f64c5;
+  --accent-blue-hover: #234d9d;
+  --accent-blue-soft: rgba(47,100,197,.08);
+  --accent-blue-border: rgba(47,100,197,.34);
+  --status-green: #2c7a4b;
+  --status-green-soft: rgba(44,122,75,.08);
+  --status-green-border: rgba(44,122,75,.3);
+  /* Chart colors are semantic and shared by every JQE chart workspace. */
+  --chart-bg: #080a0d;
+  --chart-grid: rgba(207,216,227,.045);
+  --chart-axis: #303741;
+  --chart-text: #929ba8;
+  --chart-bull: #3f9b67;
+  --chart-bull-soft: rgba(63,155,103,.28);
+  --chart-bear: #c7545d;
+  --chart-bear-soft: rgba(199,84,93,.28);
+  --chart-accent: var(--accent-blue);
+  --chart-accent-soft: rgba(79,131,223,.24);
+  --chart-accent-secondary: #8ba7cf;
+  --chart-neutral: #a5adb8;
+  --chart-crosshair: #6684ad;
+  --chart-profile: rgba(133,145,160,.22);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
   /* ==========================================================================
-     JQE TWO-TONE DESIGN SYSTEM
-     Light Workspace Canvas + Dark Terminal Surfaces + JQE Cyan Accent
+     JQE MONOCHROME DESIGN SYSTEM
+     Neutral compatibility aliases preserve existing component contracts.
      ========================================================================== */
 
   /* 1. Primary Light Canvas (Application Workspace & Standard Cards) */
-  --bg-canvas: #f6f7f9;
+  --bg-canvas: var(--bg);
   --bg-card: #ffffff;
-  --bg-card-subtle: #f8fafc;
-  --bg-card-hover: #f1f5f9;
-  --bg-card-active: #e2e8f0;
-  --bg-card-inset: #f1f4f8;
+  --bg-card-subtle: #fafafa;
+  --bg-card-hover: #f5f5f5;
+  --bg-card-active: #e9e9e9;
+  --bg-card-inset: #f4f4f4;
 
   /* Card Borders */
-  --border-card: #e2e8f0;
-  --border-card-subtle: #edf2f7;
-  --border-card-strong: #cbd5e1;
+  --border-card: #e9e9e9;
+  --border-card-subtle: #f2f2f2;
+  --border-card-strong: #d6d6d6;
 
   /* Card Typography */
-  --text-primary: #0f172a;       /* High-contrast dark charcoal */
-  --text-secondary: #475569;     /* Slate for labels and subtitles */
-  --text-muted: #64748b;         /* Cool gray for quiet captions */
-  --text-dim: #94a3b8;           /* Light slate for faint metadata */
+  --text-primary: #1b1b1b;       /* High-contrast dark charcoal */
+  --text-secondary: #575757;     /* Slate for labels and subtitles */
+  --text-muted: #767676;         /* Cool gray for quiet captions */
+  --text-dim: #a5a5a5;           /* Light slate for faint metadata */
 
   /* Shadows (Restrained, subtle elevation on light cards) */
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --shadow-card-elevated: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-card-elevated: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
   --shadow-chart: 0 4px 16px -2px rgba(0, 0, 0, 0.35), 0 2px 6px -1px rgba(0, 0, 0, 0.20);
 
   /* Form & Input Controls on Light Canvas */
   --bg-input: #ffffff;
-  --border-input: #cbd5e1;
-  --border-input-focus: #00bcd4;
+  --border-input: #d6d6d6;
+  --border-input-focus: #858585;
   --bg-input-focus: #ffffff;
 
   /* 2. Primary Dark Terminal Surfaces (Sidebar, Header, Financial Charts, Status Rail) */
-  --bg-dark-sidebar: #13161c;
-  --bg-dark-header: #171a22;
-  --bg-dark-status: #14171e;
-  --bg-dark-surface: #191d26;
-  --bg-dark-surface-elevated: #202532;
-  --bg-dark-surface-hover: #262c3c;
-  --bg-dark-surface-active: #2e3547;
-  --bg-dark-input: #101318;
+  --bg-dark-sidebar: #171717;
+  --bg-dark-header: #1c1c1c;
+  --bg-dark-status: #181818;
+  --bg-dark-surface: #1f1f1f;
+  --bg-dark-surface-elevated: #282828;
+  --bg-dark-surface-hover: #2f2f2f;
+  --bg-dark-surface-active: #393939;
+  --bg-dark-input: #141414;
   --bg-dark-input-border: rgba(255, 255, 255, 0.12);
 
   /* Dark Surface Borders & Typography */
@@ -50,33 +88,33 @@
   --border-dark-subtle: rgba(255, 255, 255, 0.05);
   --border-dark-medium: rgba(255, 255, 255, 0.12);
   --border-dark-strong: rgba(255, 255, 255, 0.22);
-  --text-dark-primary: #f8fafc;
-  --text-dark-secondary: #94a3b8;
-  --text-dark-muted: #64748b;
-  --text-dark-dim: #475569;
+  --text-dark-primary: #fafafa;
+  --text-dark-secondary: #a5a5a5;
+  --text-dark-muted: #767676;
+  --text-dark-dim: #575757;
 
   /* 3. JQE Brand Accent (Cyan / Teal) */
-  --quant-cyan: #00bcd4;
-  --quant-cyan-hover: #00acc1;
-  --quant-cyan-dark: #0891b2;
-  --quant-cyan-subtle: rgba(0, 188, 212, 0.10);
-  --quant-cyan-subtle-strong: rgba(0, 188, 212, 0.18);
-  --quant-cyan-border: rgba(0, 188, 212, 0.30);
+  --quant-cyan: #333333;
+  --quant-cyan-hover: #333333;
+  --quant-cyan-dark: #333333;
+  --quant-cyan-subtle: rgba(0, 0, 0, 0.10);
+  --quant-cyan-subtle-strong: rgba(0, 0, 0, 0.18);
+  --quant-cyan-border: rgba(0, 0, 0, 0.30);
 
   /* 4. Semantic Financial Telemetry Colors (Consistent across dark and light) */
-  --quant-green: #0ebb68;
-  --quant-green-subtle: rgba(14, 187, 104, 0.10);
-  --quant-green-border: rgba(14, 187, 104, 0.25);
-  --quant-red: #eb3b4a;
-  --quant-red-subtle: rgba(235, 59, 74, 0.10);
-  --quant-red-border: rgba(235, 59, 74, 0.25);
-  --quant-amber: #d97706;
-  --quant-amber-subtle: rgba(217, 119, 6, 0.10);
-  --quant-amber-border: rgba(217, 119, 6, 0.25);
-  --quant-purple: #8b5cf6;
-  --quant-purple-subtle: rgba(139, 92, 246, 0.10);
-  --quant-blue: #2563eb;
-  --quant-blue-subtle: rgba(37, 99, 235, 0.10);
+  --quant-green: #333333;
+  --quant-green-subtle: rgba(0, 0, 0, 0.10);
+  --quant-green-border: rgba(0, 0, 0, 0.25);
+  --quant-red: #333333;
+  --quant-red-subtle: rgba(0, 0, 0, 0.10);
+  --quant-red-border: rgba(0, 0, 0, 0.25);
+  --quant-amber: #333333;
+  --quant-amber-subtle: rgba(0, 0, 0, 0.10);
+  --quant-amber-border: rgba(0, 0, 0, 0.25);
+  --quant-purple: #333333;
+  --quant-purple-subtle: rgba(0, 0, 0, 0.10);
+  --quant-blue: #333333;
+  --quant-blue-subtle: rgba(0, 0, 0, 0.10);
 
   /* Backward Compatibility Aliases for Legacy Variables */
   --bg-app: var(--bg-canvas);
@@ -87,20 +125,20 @@
   --bg-surface-active: var(--bg-card-active);
   --border-subtle: var(--border-card);
   --border-medium: var(--border-card-strong);
-  --border-strong: #94a3b8;
+  --border-strong: #a5a5a5;
   --border-focus: var(--quant-cyan);
 
   /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-sans: 'Poppins', sans-serif;
+  --font-mono: var(--font-sans);
 
   /* Layout & Metrics */
   --sidebar-width: 230px;
-  --header-height: 48px;
+  --header-height: 64px;
   --radius-xs: 4px;
   --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
   --radius-xl: 16px;
 
   /* Transitions */
@@ -136,9 +174,9 @@ html, body, #root {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.25);
+  background: rgba(0, 0, 0, 0.25);
   border-radius: var(--radius-xs);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.45);
+  background: rgba(0, 0, 0, 0.45);
 }

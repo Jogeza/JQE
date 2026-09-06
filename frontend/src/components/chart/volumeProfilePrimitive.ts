@@ -4,6 +4,7 @@ import type {
 } from 'lightweight-charts';
 import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { VolumeProfileSnapshotDTO } from '../../types/research';
+import { chartPaletteFallback, type JQEChartPalette } from './chartPalette';
 
 export interface VolumeProfileVisualBin { low: number; high: number; volume: number; }
 export interface VolumeProfileVisual {
@@ -32,7 +33,7 @@ export function adaptVolumeProfile(snapshot: VolumeProfileSnapshotDTO): VolumePr
 }
 
 class Renderer implements IPrimitivePaneRenderer {
-  constructor(private series: ISeriesApi<'Candlestick'>, private visual: VolumeProfileVisual) {}
+  constructor(private series: ISeriesApi<'Candlestick'>, private visual: VolumeProfileVisual, private palette: JQEChartPalette) {}
   draw(target: CanvasRenderingTarget2D) {
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       if (this.visual.maxVolume <= 0) return;
@@ -43,10 +44,11 @@ class Renderer implements IPrimitivePaneRenderer {
         const bottom = this.series.priceToCoordinate(bin.low);
         if (top === null || bottom === null) continue;
         const width = maxWidth * bin.volume / this.visual.maxVolume;
-        context.fillStyle = 'rgba(0,188,212,0.24)';
+        const inValueArea = bin.high >= this.visual.val && bin.low <= this.visual.vah;
+        context.fillStyle = inValueArea ? this.palette.accentSoft : this.palette.profile;
         context.fillRect(mediaSize.width - width, top, width, Math.max(1, bottom - top));
       }
-      for (const [price, color, width] of [[this.visual.poc, '#ffab00', 2], [this.visual.vah, '#00e676', 1], [this.visual.val, '#00e676', 1]] as const) {
+      for (const [price, color, width] of [[this.visual.poc, this.palette.accent, 2], [this.visual.vah, this.palette.accentSecondary, 1], [this.visual.val, this.palette.accentSecondary, 1]] as const) {
         const y = this.series.priceToCoordinate(price);
         if (y === null) continue;
         context.strokeStyle = color; context.lineWidth = width;
@@ -60,12 +62,12 @@ class Renderer implements IPrimitivePaneRenderer {
 export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<'Candlestick'> | null = null;
   private requestUpdate: (() => void) | null = null;
-  constructor(private visual: VolumeProfileVisual) {}
+  constructor(private visual: VolumeProfileVisual, private palette: JQEChartPalette = chartPaletteFallback) {}
   attached(param: SeriesAttachedParameter<Time, 'Candlestick'>) { this.series = param.series; this.requestUpdate = param.requestUpdate; }
   detached() { this.series = null; this.requestUpdate = null; }
   paneViews(): readonly IPrimitivePaneView[] {
     if (!this.series) return [];
-    const renderer = new Renderer(this.series, this.visual);
+    const renderer = new Renderer(this.series, this.visual, this.palette);
     return [{ zOrder: () => 'top', renderer: () => renderer }];
   }
   updateAllViews() { this.requestUpdate?.(); }

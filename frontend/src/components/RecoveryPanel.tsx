@@ -1,4 +1,5 @@
 import React from 'react';
+import { EmptyStateIllustration } from './EmptyStateIllustration';
 import { AlertTriangle, CheckCircle2, HelpCircle } from 'lucide-react';
 import { RecoveryDiagnosticsResponse } from '../types/api';
 
@@ -30,17 +31,20 @@ export const RecoveryPanel: React.FC<RecoveryPanelProps> = ({
     : recovery.reason;
 
   return (
-    <section className="quant-panel" aria-label="Execution recovery diagnostics">
+    <section className={`quant-panel recovery-panel ${status.toLowerCase()}`} aria-label="Execution recovery diagnostics">
       <div className="quant-panel-header">
         <div className="quant-panel-title"><Icon size={14} /> Execution recovery</div>
         <span className={`badge ${badgeClass}`}>{loading && !recovery ? 'UNKNOWN' : status}</span>
       </div>
-      <div className="quant-panel-body">
-        <div className={blocked ? 'text-red' : unknown ? 'text-amber' : 'text-secondary'} style={{ fontSize: 12 }}>
-          {message}
+      <div className="quant-panel-body recovery-panel-body">
+        {status === 'CLEAR' && <EmptyStateIllustration />}
+        <Icon size={18} className={blocked ? 'text-red' : unknown ? 'text-amber' : 'text-green'} />
+        <div className="recovery-message">
+          <strong>{status === 'CLEAR' ? 'No unresolved intents' : status}</strong>
+          <span>{message}</span>
         </div>
         {!unknown && recovery.intents.length > 0 && (
-          <div className="quant-table-wrapper" style={{ marginTop: 12 }}>
+          <div className="quant-table-wrapper recovery-intents-table">
             <table className="quant-table">
               <thead><tr>
                 <th>Intent</th><th>State</th><th>Scope</th><th>Instrument</th>

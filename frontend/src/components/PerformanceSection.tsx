@@ -14,6 +14,7 @@ export const PerformanceSection: React.FC<PerformanceSectionProps> = ({ performa
   const missing = loading ? '...' : '—';
   const metricStyle = { backgroundColor: 'var(--bg-app)', padding: '10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' };
   const rowStyle = { display: 'flex', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' };
+  const pnlClass = (value: number) => value > 0 ? 'financial-positive' : value < 0 ? 'financial-negative' : 'financial-neutral';
   return (
     <div className="quant-panel">
       <div className="quant-panel-header"><div className="quant-panel-title"><PerformanceIcon size={14} color="var(--quant-cyan)" /><span>Quantitative Performance Analytics</span></div><span className="badge badge-neutral">API SUMMARY</span></div>
@@ -29,7 +30,7 @@ export const PerformanceSection: React.FC<PerformanceSectionProps> = ({ performa
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
           <div style={rowStyle}><span style={{ color: 'var(--text-muted)' }}>Gross Profit:</span><span style={{ color: 'var(--quant-green)', fontWeight: 600 }}>{performance ? formatMoney(performance.gross_profit, currency, true) : missing}</span></div>
           <div style={rowStyle}><span style={{ color: 'var(--text-muted)' }}>Gross Loss:</span><span style={{ color: 'var(--quant-red)', fontWeight: 600 }}>{performance ? formatMoney(-Math.abs(performance.gross_loss), currency) : missing}</span></div>
-          <div style={rowStyle}><span style={{ color: 'var(--text-muted)' }}>Average Execution P&amp;L:</span><span style={{ fontWeight: 600 }}>{performance ? formatMoney(performance.average_trade, currency) : missing}</span></div>
+          <div style={rowStyle}><span style={{ color: 'var(--text-muted)' }}>Average Execution P&amp;L:</span><span className={performance ? pnlClass(performance.average_trade) : undefined} style={{ fontWeight: 600 }}>{performance ? formatMoney(performance.average_trade, currency, true) : missing}</span></div>
         </div>
         <div style={{ padding: '14px', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)', textAlign: 'center', color: 'var(--text-dim)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>DRAWDOWN AMOUNT: REALIZED P&amp;L, {performance?.drawdown_amount_unit || 'UNIT UNAVAILABLE'} · DRAWDOWN % REQUIRES HISTORICAL EQUITY · {trades.length} RECENT CLOSED EXECUTION{trades.length === 1 ? '' : 'S'}</div>
       </div>

@@ -23,7 +23,8 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
   candleError,
 }) => {
   return (
-    <div className="dashboard-page-container">
+    <div className="dashboard-page-container markets-page">
+      <div className="editorial-heading"><div><span className="editorial-kicker">Market observatory</span><h1>{symbol}<span>.</span></h1></div><p>{timeframe}<small>Latest market snapshot</small></p></div>
       {/* Header Snapshot Row */}
       <div
         style={{

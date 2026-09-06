@@ -21,13 +21,14 @@ export interface MarketSummaryResponse {
   latest_high: number;
   latest_low: number;
   latest_open: number;
-  spread: number;
-  atr: number;
-  rsi: number;
+  spread: number | null;
+  atr: number | null;
+  rsi: number | null;
   ema50: number | null;
   ema200: number | null;
   timestamp: string | null;
   price_decimals: number;
+  market_data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
 }
 
 export interface CandleItemDTO {
@@ -49,6 +50,7 @@ export interface CandlesResponse {
   count: number;
   candles: CandleItemDTO[];
   price_decimals: number;
+  market_data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
 }
 
 export interface ConfidenceBreakdownDTO {
@@ -164,6 +166,22 @@ export interface ExecutionStateResponse {
   recent_trades_count: number;
   recent_trades: TradeHistoryDTO[];
   currency: string;
+}
+
+export interface ExecutionSafetyResponse {
+  schema_version: number | null;
+  observed_at: string | null;
+  observation_state: 'OBSERVED' | 'NOT_OBSERVED' | 'UNAVAILABLE' | 'STALE';
+  emergency_stop_state: 'CLEAR' | 'ACTIVE' | 'UNKNOWN';
+  execution_mode: 'DURABLE' | null;
+  broker: string | null;
+  environment: string | null;
+  durable_executor_enabled: boolean | null;
+  daily_state_authority: 'AUTHORITATIVE' | 'NOT_AUTHORITATIVE' | 'NOT_EVALUATED' | 'UNKNOWN';
+  unresolved_intent_count: number | null;
+  unresolved_intent_blocked: boolean | null;
+  execution_authorization: 'AUTHORIZED' | 'BLOCKED' | 'NOT_EVALUATED' | 'UNKNOWN';
+  reason_codes: string[];
 }
 
 export interface RecoveryQuantity {

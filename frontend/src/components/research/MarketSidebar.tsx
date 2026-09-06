@@ -69,9 +69,9 @@ export function MarketSidebar({
                 </small>
               </button>
               <span
-                className={`research-cache-dot ${cached ? 'cached' : ''}`}
+                className="research-cache-label"
                 title={cached ? 'Dataset cached locally' : 'Public data only (uncached)'}
-              />
+              >{cached ? 'Cached' : 'Public'}</span>
             </div>
           );
         })}

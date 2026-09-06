@@ -18,6 +18,7 @@ import {
   SignalResponse,
   RiskStatusResponse,
   ExecutionStateResponse,
+  ExecutionSafetyResponse,
   PerformanceSummaryResponse,
   RecoveryDiagnosticsResponse,
   ResourceState,
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
     strategy: ResourceState<SignalResponse>;
     risk: ResourceState<RiskStatusResponse>;
     execution: ResourceState<ExecutionStateResponse>;
+    safety: ResourceState<ExecutionSafetyResponse>;
     performance: ResourceState<PerformanceSummaryResponse>;
     recovery: ResourceState<RecoveryDiagnosticsResponse>;
   };
@@ -46,7 +48,7 @@ export const App: React.FC = () => {
   const [resources, setResources] = useState<Resources>({
     system: emptyResource(), market: emptyResource(), candles: emptyResource(),
     strategy: emptyResource(), risk: emptyResource(), execution: emptyResource(),
-    performance: emptyResource(), recovery: emptyResource(),
+    safety: emptyResource(), performance: emptyResource(), recovery: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const requestIdRef = useRef(0);
@@ -78,12 +80,13 @@ export const App: React.FC = () => {
         jqeApi.getStrategySignal(selectedSymbol, selectedTimeframe, undefined, controller.signal),
         jqeApi.getRiskStatus(selectedSymbol, selectedTimeframe, controller.signal),
         jqeApi.getExecutionState(controller.signal),
+        jqeApi.getExecutionSafety(controller.signal),
         jqeApi.getPerformanceSummary(controller.signal),
         jqeApi.getRecoveryDiagnostics(controller.signal),
       ]);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
 
-      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'performance', 'recovery'];
+      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery'];
       const updatedAt = new Date();
       setResources(previous => {
         const next = { ...previous };
@@ -135,6 +138,7 @@ export const App: React.FC = () => {
   const signalData = resources.strategy.data;
   const riskData = resources.risk.data;
   const executionData = resources.execution.data;
+  const safetyData = resources.safety.data;
   const performanceData = resources.performance.data;
   const recoveryData = resources.recovery.data;
   const loading = Object.values(resources).some(resource => resource.loading);
@@ -154,6 +158,9 @@ export const App: React.FC = () => {
             signalData={signalData}
             riskData={riskData}
             executionData={executionData}
+            safetyData={safetyData}
+            safetyUnavailable={resources.safety.error !== null}
+            safetyStale={resources.safety.stale}
             performanceData={performanceData}
             recoveryData={recoveryData}
             recoveryUnavailable={resources.recovery.error !== null}
@@ -211,6 +218,7 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <div className="main-content-wrapper">
         <Header
+          pageTitle={activeTab === 'backtesting' ? 'Research' : activeTab === 'risk' ? 'Risk Control' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
           systemStatus={systemStatus}
           loading={loading}
           telemetryStale={resources.system.stale}
@@ -252,7 +260,7 @@ export const App: React.FC = () => {
         )}
 
         {/* Telemetry Status Ribbon / System Health Rail */}
-        <div
+        <div className="telemetry-ribbon"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -272,7 +280,7 @@ export const App: React.FC = () => {
               : resource.stale ? 'STALE'
               : resource.data ? 'FRESH'
               : 'UNAVAILABLE';
-            const color = state === 'FRESH' ? 'var(--quant-green)'
+            const color = state === 'FRESH' ? 'var(--status-green)'
               : state === 'STALE' ? 'var(--quant-amber)'
               : state === 'ERROR' ? 'var(--quant-red)'
               : 'var(--text-dark-muted)';

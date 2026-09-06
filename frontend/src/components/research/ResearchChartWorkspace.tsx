@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EmptyStateIllustration } from '../EmptyStateIllustration';
 import { MarketChart } from '../MarketChart';
 import { adaptExperiment } from '../chart/experimentAdapter';
 import { adaptReplay } from '../chart/researchAdapter';
@@ -419,9 +420,7 @@ export function ResearchChartWorkspace({
 
       {!session && !error && (
         <div className="research-empty-state" aria-label="Research chart preview">
-          <div className="research-empty-grid" aria-hidden="true">
-            <span /><span /><span /><span /><span />
-          </div>
+          <EmptyStateIllustration />
           <div className="research-empty-content">
             <span className="research-empty-kicker">{instrument.canonical_symbol} · {timeframe}</span>
             <h2>Chart workspace ready</h2>

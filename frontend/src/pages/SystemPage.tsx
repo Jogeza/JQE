@@ -22,7 +22,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({ systemStatus, loading })
         <div className="quant-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div
             style={{
-              backgroundColor: '#050607',
+              backgroundColor: '#060606',
               border: '1px solid var(--border-medium)',
               borderRadius: 'var(--radius-sm)',
               padding: '14px',

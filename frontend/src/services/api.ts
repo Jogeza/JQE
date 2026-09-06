@@ -10,6 +10,7 @@ import {
   SignalResponse,
   RiskStatusResponse,
   ExecutionStateResponse,
+  ExecutionSafetyResponse,
   RecoveryDiagnosticsResponse,
   PerformanceSummaryResponse,
 } from '../types/api';
@@ -101,6 +102,11 @@ export const jqeApi = {
   /** Execution layer open positions and recent trade history */
   async getExecutionState(signal?: AbortSignal): Promise<ExecutionStateResponse> {
     return fetchJson(`${API_BASE}/execution`, { signal });
+  },
+
+  /** Read-only canonical execution-safety publication; never evaluates policy */
+  async getExecutionSafety(signal?: AbortSignal): Promise<ExecutionSafetyResponse> {
+    return fetchJson(`${API_BASE}/execution/safety`, { signal });
   },
 
   /** Read-only durable startup recovery diagnostics; never triggers recovery */

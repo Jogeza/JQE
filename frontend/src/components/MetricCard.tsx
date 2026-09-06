@@ -32,7 +32,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   };
 
   return (
-    <div
+    <div className="metric-card"
       style={{
         backgroundColor: 'var(--bg-card)',
         border: '1px solid var(--border-card)',
@@ -86,7 +86,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 
       {/* Main Metric Value */}
       <div
-        className="font-mono"
+        className="font-mono metric-value"
         style={{
           fontSize: '18px',
           fontWeight: 800,
@@ -95,7 +95,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           lineHeight: '1.2',
         }}
       >
-        {formatValue()}
+        {trend && trend !== 'neutral' && <span aria-label={trend === 'up' ? 'Up' : 'Down'} className="metric-trend">{trend === 'up' ? '↗' : '↘'}</span>}{formatValue()}
       </div>
 
       {/* Subtext */}

@@ -19,22 +19,22 @@ export const EngineStatusPanel: React.FC<EngineStatusPanelProps> = ({
   const brokerConnected = systemStatus?.broker_connected;
   const riskAllowed = risk?.risk_allowed;
 
+  const heartbeat = (() => {
+    if (!systemStatus?.server_time) return { time: '—', date: null };
+    const parsed = new Date(systemStatus.server_time);
+    if (Number.isNaN(parsed.getTime())) return { time: systemStatus.server_time, date: null };
+    return {
+      time: parsed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      date: parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+  })();
+
   const getStatusBadge = (connected: boolean | undefined, labelOnline: string = 'CONNECTED', labelOffline: string = 'OFFLINE') => {
-    if (connected === undefined) return <span className="badge badge-neutral">UNKNOWN</span>;
+    if (connected === undefined) return <span className="operations-health-value neutral"><span className="status-dot" />UNKNOWN</span>;
     if (connected) {
-      return (
-        <span className="badge badge-green">
-          <span className="status-dot status-dot-green" />
-          {labelOnline}
-        </span>
-      );
+      return <span className="operations-health-value positive"><span className="status-dot status-dot-green" />{labelOnline}</span>;
     }
-    return (
-      <span className="badge badge-red">
-        <span className="status-dot status-dot-red" />
-        {labelOffline}
-      </span>
-    );
+    return <span className="operations-health-value negative"><span className="status-dot status-dot-red" />{labelOffline}</span>;
   };
 
   return (
@@ -42,88 +42,61 @@ export const EngineStatusPanel: React.FC<EngineStatusPanelProps> = ({
       <div className="quant-panel-header">
         <div className="quant-panel-title">
           <Cpu size={14} color="var(--quant-cyan)" />
-          <span>Engine Status & Architecture State</span>
+          <span>System Health</span>
         </div>
         <span className="badge badge-neutral">CLEAN ARCH</span>
       </div>
 
-      <div className="quant-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {/* Status Grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-            gap: '8px',
-            backgroundColor: 'var(--bg-app)',
-            padding: '10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
-          }}
-        >
-          {/* Core Engine */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Engine State</span>
-            {stale?.system ? <span className="badge badge-neutral">STALE</span> : getStatusBadge(isOnline, 'ONLINE', 'STOPPED')}
+      <div className="quant-panel-body operations-panel-body">
+        <div className="operations-health-strip">
+          <div className="operations-health-item">
+            {stale?.system ? <span className="operations-health-value neutral"><span className="status-dot" />STALE</span> : getStatusBadge(isOnline, 'ONLINE', 'STOPPED')}
+            <span className="operations-health-label">Engine</span>
           </div>
-
-          {/* Broker Gateway */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              Broker Gateway ({systemStatus?.broker || 'UNKNOWN'})
-            </span>
-            {stale?.system ? <span className="badge badge-neutral">STALE</span> : getStatusBadge(brokerConnected, 'CONNECTED', 'DISCONNECTED')}
+          <div className="operations-health-item">
+            {stale?.system ? <span className="operations-health-value neutral"><span className="status-dot" />STALE</span> : getStatusBadge(brokerConnected, 'CONNECTED', 'DISCONNECTED')}
+            <span className="operations-health-label">Gateway · {systemStatus?.broker || 'Unknown'}</span>
           </div>
-
-          {/* Strategy Engine */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Strategy Bridge</span>
-            {stale?.strategy ? <span className="badge badge-neutral">STALE</span> : signal ? <span className="badge badge-green"><Zap size={10} />EVALUATED</span> : <span className="badge badge-neutral">UNKNOWN</span>}
+          <div className="operations-health-item">
+            {stale?.strategy ? <span className="operations-health-value neutral"><span className="status-dot" />STALE</span> : signal ? <span className="operations-health-value information"><Zap size={11} />EVALUATED</span> : <span className="operations-health-value neutral"><span className="status-dot" />UNKNOWN</span>}
+            <span className="operations-health-label">Strategy</span>
           </div>
-
-          {/* Risk Engine */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Risk Controller</span>
+          <div className="operations-health-item">
             {stale?.risk ? (
-              <span className="badge badge-neutral">STALE</span>
+              <span className="operations-health-value neutral"><span className="status-dot" />STALE</span>
             ) : riskAllowed === undefined ? (
-              <span className="badge badge-neutral">UNKNOWN</span>
+              <span className="operations-health-value neutral"><span className="status-dot" />UNKNOWN</span>
             ) : riskAllowed ? (
-              <span className="badge badge-green">
-                <ShieldCheck size={10} />
-                PERMITTED
-              </span>
+              <span className="operations-health-value positive"><ShieldCheck size={11} />PERMITTED</span>
             ) : (
-              <span className="badge badge-red">
-                <AlertTriangle size={10} />
-                BLOCKED
-              </span>
+              <span className="operations-health-value negative"><AlertTriangle size={11} />BLOCKED</span>
             )}
+            <span className="operations-health-label">Risk</span>
           </div>
         </div>
 
-        {/* Diagnostic Metadata Rows */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Target Symbol:</span>
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{systemStatus?.default_symbol || '—'}</span>
+        <dl className="operations-definition-list">
+          <div>
+            <dt>Target symbol</dt>
+            <dd>{systemStatus?.default_symbol || '—'}</dd>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Default Timeframe:</span>
-            <span style={{ color: 'var(--text-secondary)' }}>{systemStatus?.default_timeframe || '—'}</span>
+          <div>
+            <dt>Default timeframe</dt>
+            <dd>{systemStatus?.default_timeframe || '—'}</dd>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Min Confidence Threshold:</span>
-            <span style={{ color: 'var(--quant-cyan)' }}>{systemStatus ? `${systemStatus.min_confidence_threshold}%` : '—'}</span>
+          <div>
+            <dt>Minimum confidence</dt>
+            <dd>{systemStatus ? `${systemStatus.min_confidence_threshold}%` : '—'}</dd>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Current Detected Regime:</span>
-            <span style={{ color: 'var(--quant-amber)', fontWeight: 600 }}>{signal?.regime || '—'}</span>
+          <div>
+            <dt>Detected regime</dt>
+            <dd className="text-amber">{signal?.regime || '—'}</dd>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Server Heartbeat:</span>
-            <span style={{ color: 'var(--text-dim)', fontSize: '10.5px' }}>{systemStatus?.server_time || '—'}</span>
+          <div>
+            <dt>Server heartbeat</dt>
+            <dd className="operations-time"><strong>{heartbeat.time}</strong>{heartbeat.date && <small>{heartbeat.date}</small>}</dd>
           </div>
-        </div>
+        </dl>
       </div>
     </div>
   );

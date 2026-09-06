@@ -1,11 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Wifi,
   WifiOff,
   RefreshCw,
   Clock,
   Layers,
+  Search,
 } from 'lucide-react';
+
+const SYMBOL_OPTIONS = [
+  { value: 'XAUUSD', label: 'XAUUSD (Gold)', search: 'xauusd gold' },
+  { value: 'EURUSD', label: 'EURUSD', search: 'eurusd euro dollar' },
+  { value: 'GBPUSD', label: 'GBPUSD', search: 'gbpusd pound dollar' },
+  { value: 'USDJPY', label: 'USDJPY', search: 'usdjpy dollar yen' },
+  { value: 'BTCUSD', label: 'BTCUSD', search: 'btcusd bitcoin dollar' },
+];
 import { SystemStatusResponse } from '../types/api';
 
 interface HeaderProps {
@@ -17,6 +26,7 @@ interface HeaderProps {
   selectedTimeframe: string;
   onTimeframeChange: (tf: string) => void;
   telemetryStale?: boolean;
+  pageTitle: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,9 +38,14 @@ export const Header: React.FC<HeaderProps> = ({
   selectedTimeframe,
   onTimeframeChange,
   telemetryStale,
+  pageTitle,
 }) => {
   const [time, setTime] = useState<string>('');
   const [utcTime, setUtcTime] = useState<string>('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlighted, setHighlighted] = useState(0);
+  const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const update = () => {
@@ -43,6 +58,30 @@ export const Header: React.FC<HeaderProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return SYMBOL_OPTIONS.filter(option => !query || option.search.includes(query));
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    searchInput.current?.focus();
+    setHighlighted(0);
+  }, [searchOpen]);
+
+  const selectSymbol = (symbol: string) => {
+    onSymbolChange(symbol);
+    setSearchOpen(false);
+    setSearchQuery('');
+  };
+
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') { event.preventDefault(); setSearchOpen(false); return; }
+    if (event.key === 'ArrowDown') { event.preventDefault(); setHighlighted(index => Math.min(index + 1, Math.max(searchResults.length - 1, 0))); return; }
+    if (event.key === 'ArrowUp') { event.preventDefault(); setHighlighted(index => Math.max(index - 1, 0)); return; }
+    if (event.key === 'Enter' && searchResults[highlighted]) { event.preventDefault(); selectSymbol(searchResults[highlighted].value); }
+  };
+
   const env = systemStatus?.environment?.toUpperCase() || 'UNKNOWN';
   const broker = systemStatus?.broker?.toUpperCase() || 'UNKNOWN';
   const isConnected = systemStatus?.broker_connected;
@@ -54,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header
+    <header className="application-header"
       style={{
         height: 'var(--header-height)',
         backgroundColor: 'var(--bg-dark-header)',
@@ -67,10 +106,11 @@ export const Header: React.FC<HeaderProps> = ({
         flexShrink: 0,
       }}
     >
+      <strong className="header-page-title">{pageTitle}</strong>
       {/* Left Group: Environment & Market / Timeframe Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {/* Environment Badge */}
-        <div className={`badge ${getEnvBadgeClass()}`} style={{ height: '24px', fontSize: '10px' }}>
+        <div className={`header-environment badge ${getEnvBadgeClass()}`} style={{ height: '24px', fontSize: '10px' }}>
           <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'currentColor' }} />
           <span>{env}</span>
           <span style={{ opacity: 0.65, fontSize: '9px', marginLeft: '2px' }}>[{broker}]</span>
@@ -91,6 +131,10 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <Layers size={12} color="var(--quant-cyan)" />
+            <button className="symbol-search-button" type="button" aria-label="Search symbols" aria-expanded={searchOpen}
+              aria-controls="symbol-search-popover" onClick={() => setSearchOpen(open => !open)} title="Search symbols">
+              <Search size={14} />
+            </button>
             <select
               value={selectedSymbol}
               onChange={(e) => onSymbolChange(e.target.value)}
@@ -108,12 +152,17 @@ export const Header: React.FC<HeaderProps> = ({
                 height: '100%',
               }}
             >
-              <option value="XAUUSD" style={{ background: '#171a22', color: '#f8fafc' }}>XAUUSD (Gold)</option>
-              <option value="EURUSD" style={{ background: '#171a22', color: '#f8fafc' }}>EURUSD</option>
-              <option value="GBPUSD" style={{ background: '#171a22', color: '#f8fafc' }}>GBPUSD</option>
-              <option value="USDJPY" style={{ background: '#171a22', color: '#f8fafc' }}>USDJPY</option>
-              <option value="BTCUSD" style={{ background: '#171a22', color: '#f8fafc' }}>BTCUSD</option>
+              {SYMBOL_OPTIONS.map(option => <option key={option.value} value={option.value} style={{ background: '#1c1c1c', color: '#fafafa' }}>{option.label}</option>)}
             </select>
+            {searchOpen && <div id="symbol-search-popover" className="symbol-search-popover" role="dialog" aria-label="Search symbols">
+              <label htmlFor="symbol-search-input">Find a symbol</label>
+              <input id="symbol-search-input" ref={searchInput} value={searchQuery} onChange={event => setSearchQuery(event.target.value)} onKeyDown={handleSearchKeyDown} placeholder="Search symbol or name" autoComplete="off" />
+              <div role="listbox" aria-label="Symbol results">
+                {searchResults.map((option, index) => <button type="button" role="option" aria-selected={option.value === selectedSymbol} key={option.value} className={index === highlighted ? 'symbol-search-result highlighted' : 'symbol-search-result'} onMouseEnter={() => setHighlighted(index)} onClick={() => selectSymbol(option.value)}><strong>{option.value}</strong><span>{option.label.replace(`${option.value} `, '').replace(/[()]/g, '') || 'Currency pair'}</span></button>)}
+                {!searchResults.length && <p className="symbol-search-empty">No matching symbols.</p>}
+              </div>
+              <small>↑ ↓ navigate · Enter select · Esc close</small>
+            </div>}
           </div>
 
           <div style={{ width: '1px', height: '14px', backgroundColor: 'var(--border-dark-medium)' }} />
@@ -135,13 +184,13 @@ export const Header: React.FC<HeaderProps> = ({
               height: '100%',
             }}
           >
-            <option value="M1" style={{ background: '#171a22', color: '#f8fafc' }}>M1</option>
-            <option value="M5" style={{ background: '#171a22', color: '#f8fafc' }}>M5</option>
-            <option value="M15" style={{ background: '#171a22', color: '#f8fafc' }}>M15</option>
-            <option value="M30" style={{ background: '#171a22', color: '#f8fafc' }}>M30</option>
-            <option value="H1" style={{ background: '#171a22', color: '#f8fafc' }}>H1</option>
-            <option value="H4" style={{ background: '#171a22', color: '#f8fafc' }}>H4</option>
-            <option value="D1" style={{ background: '#171a22', color: '#f8fafc' }}>D1</option>
+            <option value="M1" style={{ background: '#1c1c1c', color: '#fafafa' }}>M1</option>
+            <option value="M5" style={{ background: '#1c1c1c', color: '#fafafa' }}>M5</option>
+            <option value="M15" style={{ background: '#1c1c1c', color: '#fafafa' }}>M15</option>
+            <option value="M30" style={{ background: '#1c1c1c', color: '#fafafa' }}>M30</option>
+            <option value="H1" style={{ background: '#1c1c1c', color: '#fafafa' }}>H1</option>
+            <option value="H4" style={{ background: '#1c1c1c', color: '#fafafa' }}>H4</option>
+            <option value="D1" style={{ background: '#1c1c1c', color: '#fafafa' }}>D1</option>
           </select>
         </div>
       </div>
@@ -158,7 +207,7 @@ export const Header: React.FC<HeaderProps> = ({
             fontFamily: 'var(--font-mono)',
             padding: '2px 8px',
             borderRadius: 'var(--radius-xs)',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+            backgroundColor: 'rgba(0,0,0, 0.2)',
           }}
         >
           {telemetryStale ? (
@@ -174,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
           ) : isConnected ? (
             <>
               <Wifi size={12} color="var(--quant-green)" />
-              <span style={{ color: 'var(--quant-green)', fontWeight: 600 }}>ONLINE</span>
+              <span style={{ color: 'var(--status-green)', fontWeight: 600 }}>ONLINE</span>
             </>
           ) : (
             <>
@@ -185,7 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Grouped Clocks (Local & UTC) */}
-        <div
+        <div className="header-clocks"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -208,13 +257,13 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Refresh / Sync Button */}
         <button
           onClick={onRefresh}
-          className="btn-quant"
+          className="btn-quant header-refresh"
           title="Refresh All Engine Feeds"
           style={{
             height: '28px',
             padding: '0 10px',
             fontSize: '11px',
-            backgroundColor: '#202532',
+            backgroundColor: '#282828',
             borderColor: 'var(--border-dark-strong)',
             color: '#ffffff',
           }}

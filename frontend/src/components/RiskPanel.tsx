@@ -33,26 +33,28 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
     && risk.authorized_risk_percent !== null
       ? `${risk.currency} ${risk.authorized_risk_amount.toFixed(2)} (${risk.authorized_risk_percent.toFixed(2)}%)`
       : 'Unavailable';
-  const executionQuantity = risk?.observation_fresh
+  const executionQuantityAvailable = risk?.observation_fresh
     && risk?.execution_quantity_available
     && risk.execution_quantity_value !== null
-    && risk.execution_quantity_unit !== null
-      ? `${risk.execution_quantity_value.toFixed(4)} ${risk.execution_quantity_unit.replace(/_/g, ' ').toLowerCase()}`
-      : `Unavailable — ${observationStale ? 'risk observation is stale' : risk?.execution_quantity_reason || 'risk observation unavailable'}`;
+    && risk.execution_quantity_unit !== null;
+  const executionQuantity = executionQuantityAvailable
+    ? `${risk.execution_quantity_value!.toFixed(4)} ${risk.execution_quantity_unit!.replace(/_/g, ' ').toLowerCase()}`
+    : 'Unavailable';
+  const executionQuantityReason = executionQuantityAvailable
+    ? null
+    : observationStale ? 'Risk observation is stale' : risk?.execution_quantity_reason || 'Risk observation unavailable';
   const observationMetadata = risk?.observation_timestamp
     ? `${risk.observation_status.toLowerCase()} · ${risk.observation_age_seconds?.toFixed(1) ?? '—'}s old · ${risk.observation_timestamp}`
     : risk?.observation_reason || 'No durable-cycle risk observation';
 
   // Calculate percentage of daily loss limit consumed
   const lossProgress = Math.min(100, Math.max(0, (currentLoss / (maxLoss || 1)) * 100));
-  const remainingAllowance = Math.max(0, maxLoss - currentLoss);
-
   const getRiskBanner = () => {
     if (observationStale) {
       return {
         text: 'RISK STATE STALE',
         sub: 'The durable-cycle observation is stale; no quantity is currently executable',
-        bg: 'var(--quant-amber-subtle)', border: 'rgba(255, 171, 0, 0.3)', color: 'var(--quant-amber)', icon: AlertTriangle,
+        bg: 'var(--quant-amber-subtle)', border: 'rgba(142,142,142, 0.3)', color: 'var(--quant-amber)', icon: AlertTriangle,
       };
     }
     if (observationUnavailable || brokerConnected === undefined) {
@@ -87,7 +89,7 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
         text: 'TRADE FREQUENCY CAPPED',
         sub: `Reached max execution limit of ${maxTrades} trades/day`,
         bg: 'var(--quant-amber-subtle)',
-        border: 'rgba(255, 171, 0, 0.3)',
+        border: 'rgba(142,142,142, 0.3)',
         color: 'var(--quant-amber)',
         icon: AlertTriangle,
       };
@@ -120,123 +122,62 @@ export const RiskPanel: React.FC<RiskPanelProps> = ({ risk, brokerConnected, sta
       <div className="quant-panel-header">
         <div className="quant-panel-title">
           <ShieldAlert size={14} color="var(--quant-amber)" />
-          <span>Stateless Risk Controller & Capital Guard</span>
+          <span>Risk Control</span>
         </div>
         <span className="badge badge-neutral">API RISK SNAPSHOT</span>
       </div>
 
-      <div className="quant-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Prominent Risk State Banner */}
-        <div
-          style={{
-            backgroundColor: banner.bg,
-            border: `1px solid ${banner.border}`,
-            borderRadius: 'var(--radius-sm)',
-            padding: '10px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}
-        >
+      <div className="quant-panel-body operations-panel-body">
+        <div className="risk-notice" style={{ backgroundColor: banner.bg, color: banner.color }}>
           <BannerIcon size={18} color={banner.color} />
           <div>
-            <div
-              className="font-mono"
-              style={{
-                fontSize: '12px',
-                fontWeight: 800,
-                color: banner.color,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {banner.text}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{banner.sub}</div>
+            <strong>{banner.text}</strong>
+            <span>{banner.sub}</span>
           </div>
         </div>
 
-        {/* Daily Loss Meter */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Daily Loss Used:</span>
-            <span>
-              <strong style={{ color: currentLoss > 0 ? 'var(--quant-red)' : 'var(--text-primary)' }}>
-                {currentLoss.toFixed(2)}%
-              </strong>
-              <span style={{ color: 'var(--text-dim)' }}> / {maxLoss.toFixed(1)}% max</span>
-            </span>
+        <div className="risk-utilization">
+          <span className="operations-eyebrow">Daily loss utilization</span>
+          <div className="risk-utilization-value font-mono" style={{ color: currentLoss > 0 ? 'var(--quant-red)' : 'var(--text-primary)' }}>
+            {currentLoss.toFixed(2)}%
           </div>
-
-          <div
-            style={{
-              height: '6px',
-              backgroundColor: 'var(--bg-app)',
-              borderRadius: '3px',
-              overflow: 'hidden',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
+          <span className="risk-utilization-limit">of <span className="font-mono">{maxLoss.toFixed(2)}%</span> maximum</span>
+          <div className="risk-meter" aria-label={`${currentLoss.toFixed(2)}% daily loss used of ${maxLoss.toFixed(2)}% maximum`}>
             <div
+              className="risk-meter-fill"
               style={{
-                height: '100%',
                 width: `${lossProgress}%`,
                 backgroundColor: lossProgress > 80 ? 'var(--quant-red)' : lossProgress > 50 ? 'var(--quant-amber)' : 'var(--quant-cyan)',
-                transition: 'width 0.3s ease',
               }}
             />
           </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-            <span>0.0%</span>
-            <span>Remaining: {remainingAllowance.toFixed(2)}%</span>
-            <span>{maxLoss.toFixed(1)}% Limit</span>
+          <div className="risk-meter-scale">
+            <span><strong className="font-mono">{currentLoss.toFixed(2)}%</strong> current utilization</span>
+            <span><strong className="font-mono">{maxLoss.toFixed(2)}%</strong> maximum</span>
           </div>
         </div>
 
-        {/* Frequency & broker-neutral risk authorization metrics */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: '8px',
-            backgroundColor: 'var(--bg-app)',
-            padding: '10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
-            fontSize: '11.5px',
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>TRADES TODAY</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>
-              {currentTrades} <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>/ {maxTrades} max</span>
-            </div>
+        <div className="operations-metric-grid risk-metric-grid">
+          <div className="operations-metric-cell">
+            <span>Trades today</span>
+            <strong className="font-mono">{currentTrades} <small>/ {maxTrades}</small></strong>
           </div>
-
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>RISK STATUS</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: riskStatus === 'Authorized' ? 'var(--quant-green)' : 'var(--quant-amber)', marginTop: '2px' }}>
-              {riskStatus}
-            </div>
+          <div className="operations-metric-cell">
+            <span>Risk status</span>
+            <strong style={{ color: riskStatus === 'Authorized' ? 'var(--quant-green)' : riskStatus === 'Blocked' ? 'var(--quant-red)' : 'var(--quant-amber)' }}>{riskStatus}</strong>
           </div>
-
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>AUTHORIZED RISK</div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--quant-cyan)', marginTop: '2px' }}>
-              {authorizedRisk}
-            </div>
+          <div className="operations-metric-cell">
+            <span>Authorized risk</span>
+            <strong className="font-mono">{authorizedRisk}</strong>
           </div>
-
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>EXECUTION QUANTITY</div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: risk?.execution_quantity_available && !stale ? 'var(--quant-cyan)' : 'var(--text-muted)', marginTop: '2px' }}>
-              {executionQuantity}
-            </div>
+          <div className="operations-metric-cell">
+            <span>Execution quantity</span>
+            <strong className="font-mono">{executionQuantity}</strong>
+            {executionQuantityReason && <small>{executionQuantityReason}</small>}
           </div>
         </div>
-        <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-          OBSERVATION: {observationMetadata}
+        <div className="operations-metadata">
+          Observation · <span className="font-mono">{observationMetadata}</span>
         </div>
       </div>
     </div>
