@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
+MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "UNAVAILABLE"]
+
 
 class MarketSummaryResponse(BaseModel):
     """Current market summary and latest indicator snapshot."""
@@ -19,13 +21,14 @@ class MarketSummaryResponse(BaseModel):
     latest_high: float
     latest_low: float
     latest_open: float
-    spread: float
-    atr: float
-    rsi: float
+    spread: float | None = None
+    atr: float | None = None
+    rsi: float | None = None
     ema50: float | None = None
     ema200: float | None = None
     timestamp: str | None = None
     price_decimals: int = Field(default=5, ge=0, le=10)
+    market_data_source: MarketDataProvenance = "UNAVAILABLE"
 
 
 class CandleItemDTO(BaseModel):
@@ -36,7 +39,7 @@ class CandleItemDTO(BaseModel):
     high: float
     low: float
     close: float
-    volume: float = 0.0
+    volume: float | None = None
     EMA50: float | None = None
     EMA200: float | None = None
     RSI: float | None = None
@@ -51,6 +54,7 @@ class CandlesResponse(BaseModel):
     count: int
     candles: list[CandleItemDTO] = Field(default_factory=list)
     price_decimals: int = Field(default=5, ge=0, le=10)
+    market_data_source: MarketDataProvenance = "UNAVAILABLE"
 
 
 class ConfidenceBreakdownDTO(BaseModel):

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
             :func:`broker.factory.get_gateway` constructs. Defaults to
             ``"simulation"`` so the platform runs out of the box with
             no credentials or live broker connection required.
+        market_data_source: Independent read-only source for dashboard candles.
+            Defaults to offline simulation; ``"deriv_public"`` selects the
+            unauthenticated public Deriv candle adapter without changing the
+            execution broker.
         mt5_login: MetaTrader 5 account number used to authenticate with
             the terminal. ``None`` when using an already-logged-in
             terminal instance.
@@ -110,6 +114,7 @@ class Settings(BaseSettings):
     environment: Environment = "development"
 
     broker: Literal["simulation", "mt5", "deriv"] = "simulation"
+    market_data_source: Literal["simulation", "deriv_public"] = "simulation"
 
     mt5_login: int | None = None
     mt5_password: str | None = None

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -30,6 +30,7 @@ from api.routes import (
 )
 from api.service import ApplicationService, _maximum_realized_drawdown
 from broker.simulation_gateway import SimulationGateway
+from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
 from config.settings import Settings, settings
 from execution.safety import (
     DailyStateAuthority,
@@ -99,7 +100,31 @@ def sim_service(test_settings: Settings, tmp_path, monkeypatch) -> ApplicationSe
         settings, "execution_safety_store_path", tmp_path / "execution-safety.sqlite3"
     )
     gateway = SimulationGateway(starting_balance=100.0)
-    return ApplicationService(gateway=gateway)
+    return ApplicationService(gateway=gateway, market_data_source=FakePublicMarketData())
+
+
+class FakePublicMarketData:
+    """Offline-only stand-in for the unauthenticated public candle adapter."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[str, Timeframe, int]] = []
+
+    async def get_candles(self, symbol, timeframe, count, end=None):
+        del end
+        self.requests.append((symbol, timeframe, count))
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [
+            Candle(
+                time=start + timedelta(seconds=TIMEFRAME_SECONDS[timeframe] * index),
+                open=1900.0 + index,
+                high=1902.0 + index,
+                low=1899.0 + index,
+                close=1901.0 + index,
+                volume=None,
+                source="deriv",
+            )
+            for index in range(count)
+        ]
 
 
 @pytest.mark.asyncio
@@ -196,6 +221,70 @@ class TestApplicationService:
         assert 0 <= signal_resp.confidence_breakdown.total <= 100
         assert signal_resp.trade_plan is not None
         assert signal_resp.price_decimals == 2
+
+    async def test_public_market_source_is_independent_and_read_only(self) -> None:
+        execution_gateway = SimulationGateway(starting_balance=321.0)
+        public_source = FakePublicMarketData()
+        service = ApplicationService(
+            gateway=execution_gateway, market_data_source=public_source
+        )
+
+        summary = await service.get_market_summary("XAUUSD", "M15", 40)
+        candles = await service.get_market_candles("XAUUSD", "M15", 40)
+        signal = await service.get_strategy_signal("XAUUSD", "M15", 40)
+
+        assert summary.symbol == candles.symbol == signal.symbol == "XAUUSD"
+        assert summary.market_data_source == "DERIV_PUBLIC"
+        assert candles.market_data_source == "DERIV_PUBLIC"
+        assert candles.candles[-1].volume is None
+        assert summary.spread is None
+        assert all(request[0] == "XAUUSD" for request in public_source.requests)
+
+        public_source.get_candles = AsyncMock(side_effect=AssertionError("market source used"))
+        execution = await service.get_execution_state()
+        assert execution.broker == "simulation"
+        public_source.get_candles.assert_not_called()
+
+    async def test_configured_deriv_public_maps_canonical_symbol(
+        self, monkeypatch
+    ) -> None:
+        public_source = FakePublicMarketData()
+        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
+        monkeypatch.setattr(settings, "deriv_api_token", None)
+        with patch("api.service.DerivPublicMarketData", return_value=public_source), \
+             patch("api.service.get_gateway", side_effect=AssertionError("execution gateway constructed")) as gateway_factory, \
+             patch("broker.deriv_gateway.DerivGateway") as authenticated_deriv, \
+             patch("broker.mt5_gateway.MT5Gateway") as mt5_gateway:
+            response = await ApplicationService().get_market_candles(
+                "XAUUSD", "M15", 5
+            )
+        assert public_source.requests[0][0] == "frxXAUUSD"
+        assert response.symbol == "XAUUSD"
+        assert response.market_data_source == "DERIV_PUBLIC"
+        gateway_factory.assert_not_called()
+        authenticated_deriv.assert_not_called()
+        mt5_gateway.assert_not_called()
+
+    async def test_public_market_failure_does_not_fall_back_to_execution(self) -> None:
+        public_source = FakePublicMarketData()
+        public_source.get_candles = AsyncMock(side_effect=RuntimeError("public source unavailable"))
+        service = ApplicationService(market_data_source=public_source)
+        with patch("api.service.get_gateway", side_effect=AssertionError("execution fallback")) as gateway_factory:
+            with pytest.raises(RuntimeError, match="public source unavailable"):
+                await service.get_market_candles("XAUUSD", "M15", 5)
+        gateway_factory.assert_not_called()
+
+    async def test_simulation_market_default_never_constructs_deriv_execution(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(settings, "broker", "deriv")
+        monkeypatch.setattr(settings, "market_data_source", "simulation")
+        with patch("api.service.get_gateway") as get_execution_gateway:
+            response = await ApplicationService().get_market_candles(
+                "XAUUSD", "M15", 5
+            )
+        assert response.market_data_source == "SIMULATION"
+        get_execution_gateway.assert_not_called()
 
     async def test_fresh_simulation_risk_observation_exposes_typed_quantity(
         self, tmp_path, monkeypatch
@@ -526,6 +615,13 @@ class TestApiEndpointsDirect:
     async def test_candles_endpoint(self, sim_service: ApplicationService) -> None:
         resp = await get_market_candles(symbol="XAUUSD", timeframe="H1", count=20, service=sim_service)
         assert resp.count == 20
+        assert resp.symbol == "XAUUSD"
+        assert resp.timeframe == "H1"
+        assert len(resp.candles) == 20
+        assert [candle.time for candle in resp.candles] == sorted(candle.time for candle in resp.candles)
+        assert resp.candles[0].model_dump().keys() == {
+            "time", "open", "high", "low", "close", "volume", "EMA50", "EMA200", "RSI", "ATR"
+        }
 
     async def test_signal_endpoint(self, sim_service: ApplicationService) -> None:
         resp = await get_strategy_signal(symbol="XAUUSD", service=sim_service)

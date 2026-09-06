@@ -8,6 +8,7 @@ Encapsulates all domain coordination so the API router remains a thin HTTP layer
 from __future__ import annotations
 
 import datetime
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,8 @@ from api.dto import (
 )
 from broker.base import BrokerGateway
 from broker.factory import get_gateway
+from broker.deriv_public_data import DerivPublicMarketData
+from broker.simulation_gateway import SimulationGateway
 from broker.types import Timeframe
 from config.settings import settings
 from core.data_validator import validate_market_data
@@ -44,8 +47,10 @@ from execution.persistence import SQLiteIntentRecordStore
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
+from data.historical import CandleDataSource
 
 _TIMEFRAME_MAP: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
+_DERIV_PUBLIC_SYMBOLS = {"XAUUSD": "frxXAUUSD"}
 
 
 def _price_decimals(symbol: str) -> int:
@@ -76,10 +81,12 @@ class ApplicationService:
     def __init__(
         self,
         gateway: BrokerGateway | None = None,
+        market_data_source: CandleDataSource | None = None,
         strategy_engine: StrategyEngine | None = None,
         risk_engine: RiskEngine | None = None,
     ) -> None:
         self._gateway = gateway
+        self._market_data_source = market_data_source
         self.strategy_engine = strategy_engine or StrategyEngine()
         self.risk_engine = risk_engine or RiskEngine()
 
@@ -87,6 +94,61 @@ class ApplicationService:
         if self._gateway is not None:
             return self._gateway
         return get_gateway(settings)
+
+    def _get_market_data_source(self) -> tuple[CandleDataSource, str]:
+        """Resolve telemetry independently from the execution gateway."""
+        if self._market_data_source is not None:
+            if isinstance(self._market_data_source, DerivPublicMarketData):
+                return self._market_data_source, "DERIV_PUBLIC"
+            return self._market_data_source, "UNAVAILABLE"
+        if settings.market_data_source == "deriv_public":
+            return DerivPublicMarketData(
+                app_id=settings.deriv_app_id, endpoint=settings.deriv_public_endpoint
+            ), "DERIV_PUBLIC"
+        if isinstance(self._gateway, SimulationGateway):
+            return self._gateway, "SIMULATION"
+        return SimulationGateway(starting_balance=settings.account_balance), "SIMULATION"
+
+    @asynccontextmanager
+    async def _market_source(self):
+        source, provenance = self._get_market_data_source()
+        connect = getattr(source, "connect", None)
+        disconnect = getattr(source, "disconnect", None)
+        if connect is not None:
+            await connect()
+        try:
+            yield source, provenance
+        finally:
+            if disconnect is not None:
+                await disconnect()
+
+    @staticmethod
+    def _provider_symbol(symbol: str, provenance: str) -> str:
+        if provenance == "DERIV_PUBLIC":
+            return _DERIV_PUBLIC_SYMBOLS.get(symbol.upper(), symbol)
+        return symbol
+
+    @staticmethod
+    def _provenance(configured: str, candles: list[Any]) -> str:
+        if configured != "UNAVAILABLE":
+            return configured
+        sources = {str(c.source).lower() for c in candles}
+        if sources == {"simulation"}:
+            return "SIMULATION"
+        if sources in ({"deriv"}, {"deriv_public"}):
+            return "DERIV_PUBLIC"
+        return "UNAVAILABLE"
+
+    async def _get_market_candle_data(
+        self, symbol: str, timeframe: Timeframe, count: int
+    ) -> tuple[list[Any], str]:
+        async with self._market_source() as (source, configured):
+            candles = await source.get_candles(
+                symbol=self._provider_symbol(symbol, configured),
+                timeframe=timeframe,
+                count=count,
+            )
+        return candles, self._provenance(configured, candles)
 
     async def get_market_summary(
         self,
@@ -100,11 +162,9 @@ class ApplicationService:
         tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
         candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
 
-        gateway = self._get_gateway()
-        async with gateway:
-            candles = await gateway.get_candles(
-                symbol=target_symbol, timeframe=tf, count=candle_count
-            )
+        candles, provenance = await self._get_market_candle_data(
+            target_symbol, tf, candle_count
+        )
 
         if not candles:
             raise MarketDataError("Market data unavailable", symbol=target_symbol)
@@ -128,13 +188,14 @@ class ApplicationService:
             latest_high=float(latest["high"]),
             latest_low=float(latest["low"]),
             latest_open=float(latest["open"]),
-            spread=float(latest.get("spread", 1.0)),
-            atr=float(latest.get("ATR", 0.0)),
-            rsi=float(latest.get("RSI", 50.0)),
+            spread=float(latest["spread"]) if "spread" in latest and pd.notna(latest["spread"]) else None,
+            atr=float(latest["ATR"]) if "ATR" in latest and pd.notna(latest["ATR"]) else None,
+            rsi=float(latest["RSI"]) if "RSI" in latest and pd.notna(latest["RSI"]) else None,
             ema50=float(latest["EMA50"]) if "EMA50" in latest and pd.notna(latest["EMA50"]) else None,
             ema200=float(latest["EMA200"]) if "EMA200" in latest and pd.notna(latest["EMA200"]) else None,
             timestamp=timestamp,
             price_decimals=_price_decimals(target_symbol),
+            market_data_source=provenance,
         )
 
     async def get_market_candles(
@@ -149,9 +210,9 @@ class ApplicationService:
         tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
         candle_count = count if isinstance(count, int) and count > 0 else 50
 
-        gateway = self._get_gateway()
-        async with gateway:
-            candles = await gateway.get_candles(symbol=target_symbol, timeframe=tf, count=candle_count)
+        candles, provenance = await self._get_market_candle_data(
+            target_symbol, tf, candle_count
+        )
 
         if not candles:
             return CandlesResponse(
@@ -160,6 +221,7 @@ class ApplicationService:
                 count=0,
                 candles=[],
                 price_decimals=_price_decimals(target_symbol),
+                market_data_source=provenance,
             )
 
         df = pd.DataFrame([c.model_dump() for c in candles])
@@ -179,7 +241,7 @@ class ApplicationService:
                     high=float(row["high"]),
                     low=float(row["low"]),
                     close=float(row["close"]),
-                    volume=float(row.get("volume", 0.0)),
+                    volume=float(row["volume"]) if "volume" in row and pd.notna(row["volume"]) else None,
                     EMA50=float(row["EMA50"]) if "EMA50" in row and pd.notna(row["EMA50"]) else None,
                     EMA200=float(row["EMA200"]) if "EMA200" in row and pd.notna(row["EMA200"]) else None,
                     RSI=float(row["RSI"]) if "RSI" in row and pd.notna(row["RSI"]) else None,
@@ -193,6 +255,7 @@ class ApplicationService:
             count=len(candle_items),
             candles=candle_items,
             price_decimals=_price_decimals(target_symbol),
+            market_data_source=provenance,
         )
 
     async def get_strategy_signal(
@@ -207,11 +270,9 @@ class ApplicationService:
         tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
         candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
 
-        gateway = self._get_gateway()
-        async with gateway:
-            candles = await gateway.get_candles(
-                symbol=target_symbol, timeframe=tf, count=candle_count
-            )
+        candles, _provenance = await self._get_market_candle_data(
+            target_symbol, tf, candle_count
+        )
 
         if not candles:
             raise MarketDataError("Market data unavailable", symbol=target_symbol)
