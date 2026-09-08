@@ -7,6 +7,7 @@ import json
 import socket
 import ssl
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from http.client import InvalidURL
 from typing import Awaitable, Callable, Protocol
@@ -57,7 +58,29 @@ class DerivAuthConfig:
 class DerivAuthSession:
     account_id: str
     environment: str
-    websocket_url: str
+    websocket_url: str = field(repr=False)
+
+
+class DerivIdentityState(str, Enum):
+    UNVERIFIED = "UNVERIFIED"
+    VERIFIED_DEMO = "VERIFIED_DEMO"
+    MISMATCH = "MISMATCH"
+    AMBIGUOUS = "AMBIGUOUS"
+    LIVE_ACCOUNT = "LIVE_ACCOUNT"
+    AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
+    SESSION_CLOSED = "SESSION_CLOSED"
+
+
+@dataclass(frozen=True, slots=True)
+class DerivAccountIdentity:
+    """Factual identity proof for one authenticated socket lifecycle."""
+
+    account_id: str
+    environment: str
+    endpoint: str
+    authenticated: bool
+    verified_at: datetime
+    state: DerivIdentityState
 
 
 class DerivAuthState(str, Enum):
@@ -312,6 +335,11 @@ class DerivPATOTPSession:
     @property
     def session(self) -> DerivAuthSession | None:
         return self._session
+
+    @property
+    def connection(self) -> object | None:
+        """Return the verified session socket without exposing credentials."""
+        return self._connection
 
     async def connect(self) -> DerivAuthSession:
         self._session = None

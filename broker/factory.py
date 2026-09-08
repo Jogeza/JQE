@@ -10,6 +10,7 @@ concern, not a code-path concern.
 from __future__ import annotations
 
 from broker.base import BrokerGateway
+from broker.deriv_auth import DerivAuthConfig, DerivPATOTPSession, DerivPATOTPTransport
 from broker.deriv_gateway import DerivGateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
@@ -48,11 +49,25 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             raise ConfigurationError(
                 "JQE_DERIV_EXPECTED_ENVIRONMENT=demo is required for Deriv read-only access"
             )
+        if not settings.deriv_options_account_id:
+            raise ConfigurationError(
+                "JQE_DERIV_OPTIONS_ACCOUNT_ID is required for exact Deriv DEMO identity verification"
+            )
+        auth_session = DerivPATOTPSession(
+            DerivAuthConfig(
+                app_id=settings.deriv_app_id,
+                pat=settings.deriv_api_token,
+                options_account_id=settings.deriv_options_account_id,
+                expected_environment="demo",
+            ),
+            DerivPATOTPTransport(),
+        )
         return DerivGateway(
             api_token=settings.deriv_api_token,
             app_id=settings.deriv_app_id,
             endpoint=settings.deriv_endpoint,
             expected_environment=settings.deriv_expected_environment,
+            auth_session=auth_session,
         )
 
     if settings.broker == "mt5":

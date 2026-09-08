@@ -31,7 +31,7 @@ class TestGetGateway:
         assert isinstance(gateway, MT5Gateway)
 
     def test_deriv_broker_returns_deriv_gateway(self) -> None:
-        gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_expected_environment="demo"))
+        gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_options_account_id="CR1", deriv_expected_environment="demo"))
         assert isinstance(gateway, DerivGateway)
 
     def test_deriv_broker_without_token_raises(self) -> None:
@@ -45,6 +45,7 @@ class TestGetGateway:
                 deriv_api_token="test-token",
                 deriv_app_id="9999",
                 deriv_endpoint="wss://example.test/v3",
+                deriv_options_account_id="CR1",
                 deriv_expected_environment="demo",
             )
         )
@@ -56,3 +57,7 @@ class TestGetGateway:
     def test_deriv_requires_explicit_demo_environment(self, environment) -> None:
         with pytest.raises(ConfigurationError, match="EXPECTED_ENVIRONMENT=demo"):
             get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_expected_environment=environment))
+
+    def test_deriv_requires_exact_account_identity(self) -> None:
+        with pytest.raises(ConfigurationError, match="OPTIONS_ACCOUNT_ID"):
+            get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_expected_environment="demo"))

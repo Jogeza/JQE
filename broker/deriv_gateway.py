@@ -37,10 +37,18 @@ import math
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import websockets
 
 from broker.base import BrokerGateway
+from broker.deriv_auth import (
+    DerivAccountIdentity,
+    DerivAuthErrorCode,
+    DerivAuthFailure,
+    DerivIdentityState,
+    DerivPATOTPSession,
+)
 from broker.types import (
     TIMEFRAME_SECONDS,
     AccountInfo,
@@ -149,6 +157,7 @@ class DerivGateway(BrokerGateway):
         endpoint: str = DEFAULT_ENDPOINT,
         request_timeout: float = _REQUEST_TIMEOUT_SECONDS,
         expected_environment: str | None = None,
+        auth_session: DerivPATOTPSession | None = None,
     ) -> None:
         if not api_token:
             raise BrokerAuthenticationError("Deriv API token is required")
@@ -157,6 +166,9 @@ class DerivGateway(BrokerGateway):
         self.endpoint = endpoint
         self._request_timeout = request_timeout
         self.expected_environment = expected_environment
+        self._auth_session = auth_session
+        self._identity: DerivAccountIdentity | None = None
+        self._identity_state = DerivIdentityState.UNVERIFIED
 
         self._connection: websockets.ClientConnection | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -168,6 +180,10 @@ class DerivGateway(BrokerGateway):
         self._currency: str | None = None
 
     async def connect(self) -> None:
+        self._clear_identity(DerivIdentityState.UNVERIFIED)
+        if self._auth_session is not None:
+            await self._connect_verified_demo_session()
+            return
         url = f"{self.endpoint}?app_id={self.app_id}"
         try:
             self._connection = await websockets.connect(url)
@@ -210,6 +226,56 @@ class DerivGateway(BrokerGateway):
         self._connected = True
         logger.info("DerivGateway connected and authorized (account={})", self._account_id)
 
+    async def _connect_verified_demo_session(self) -> None:
+        if self.expected_environment != "demo":
+            self._clear_identity(DerivIdentityState.LIVE_ACCOUNT)
+            raise BrokerAuthenticationError(
+                "Deriv gateway requires an explicitly configured DEMO environment"
+            )
+        try:
+            session = await self._auth_session.connect()
+        except DerivAuthFailure as exc:
+            state = (
+                DerivIdentityState.MISMATCH
+                if exc.code is DerivAuthErrorCode.ACCOUNT_MISMATCH
+                else DerivIdentityState.AMBIGUOUS
+                if exc.code in {
+                    DerivAuthErrorCode.MISSING_ACCOUNT_ID,
+                    DerivAuthErrorCode.MISSING_ENVIRONMENT,
+                    DerivAuthErrorCode.MALFORMED_ACCOUNT_RESPONSE,
+                }
+                else DerivIdentityState.AUTHENTICATION_FAILED
+            )
+            self._clear_identity(state)
+            raise BrokerAuthenticationError(
+                "Deriv DEMO identity verification failed", reason=exc.code.value
+            ) from exc
+        if session.environment != "demo":
+            await self._auth_session.close()
+            self._clear_identity(DerivIdentityState.LIVE_ACCOUNT)
+            raise BrokerAuthenticationError("Deriv authenticated account is not DEMO")
+        connection = self._auth_session.connection
+        if connection is None or not session.account_id.strip():
+            await self._auth_session.close()
+            self._clear_identity(DerivIdentityState.AMBIGUOUS)
+            raise BrokerAuthenticationError("Deriv authenticated identity is ambiguous")
+        parsed = urlsplit(session.websocket_url)
+        safe_endpoint = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+        self._connection = connection
+        self._account_id = session.account_id.strip()
+        self._identity = DerivAccountIdentity(
+            account_id=self._account_id,
+            environment="demo",
+            endpoint=safe_endpoint,
+            authenticated=True,
+            verified_at=datetime.now(timezone.utc),
+            state=DerivIdentityState.VERIFIED_DEMO,
+        )
+        self._identity_state = DerivIdentityState.VERIFIED_DEMO
+        self._connected = True
+        self._reader_task = asyncio.create_task(self._read_loop())
+        logger.info("DerivGateway authenticated DEMO identity verified")
+
     async def disconnect(self) -> None:
         await self._teardown()
         logger.info("DerivGateway disconnected")
@@ -217,6 +283,20 @@ class DerivGateway(BrokerGateway):
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+    @property
+    def account_identity(self) -> DerivAccountIdentity | None:
+        return self._identity
+
+    @property
+    def identity_state(self) -> DerivIdentityState:
+        return self._identity_state
+
+    def _clear_identity(self, state: DerivIdentityState) -> None:
+        self._identity = None
+        self._identity_state = state
+        self._account_id = None
+        self._currency = None
 
     async def get_account_info(self) -> AccountInfo:
         self._require_connected()
@@ -228,10 +308,14 @@ class DerivGateway(BrokerGateway):
         balance = response.get("balance", {})
         if not isinstance(balance, dict) or balance.get("loginid") != self._account_id:
             raise BrokerConnectionError("Deriv balance account identity mismatch")
+        currency = balance.get("currency", self._currency)
+        if not isinstance(currency, str) or not currency.strip():
+            raise BrokerConnectionError("Deriv balance currency is missing")
+        self._currency = currency.strip()
         return AccountInfo(
             account_id=self._account_id,
             balance=float(balance["balance"]),
-            currency=str(balance.get("currency", self._currency)),
+            currency=self._currency,
             equity=float(balance["balance"]),
         )
 
@@ -507,6 +591,9 @@ class DerivGateway(BrokerGateway):
             self._fail_pending("Deriv WebSocket reader failed", exc)
         finally:
             self._connected = False
+            self._clear_identity(DerivIdentityState.SESSION_CLOSED)
+            if self._auth_session is not None:
+                self._auth_session.mark_expired()
             if self._pending:
                 self._fail_pending(
                     "Deriv WebSocket reader ended before responses arrived",
@@ -559,7 +646,10 @@ class DerivGateway(BrokerGateway):
         if self._reader_task is not None:
             self._reader_task.cancel()
             self._reader_task = None
-        if self._connection is not None:
+        if self._auth_session is not None:
+            await self._auth_session.close()
+            self._connection = None
+        elif self._connection is not None:
             await self._connection.close()
             self._connection = None
         for future in self._pending.values():
@@ -567,6 +657,7 @@ class DerivGateway(BrokerGateway):
                 future.cancel()
         self._pending.clear()
         self._tick_queues.clear()
+        self._clear_identity(DerivIdentityState.SESSION_CLOSED)
 
     def _require_connected(self) -> None:
         if not self._connected:
