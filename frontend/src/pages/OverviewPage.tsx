@@ -9,6 +9,8 @@ import { StrategySignalPanel } from '../components/StrategySignalPanel';
 import { PerformanceSection } from '../components/PerformanceSection';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { ExecutionSafetyPanel } from '../components/ExecutionSafetyPanel';
+import { PaperRuntimePanel } from '../components/PaperRuntimePanel';
+import { PaperDiagnosticsPanel } from '../components/PaperDiagnosticsPanel';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -19,6 +21,8 @@ import {
   ExecutionSafetyResponse,
   PerformanceSummaryResponse,
   RecoveryDiagnosticsResponse,
+  PaperRuntimeStatusResponse,
+  PaperDiagnosticsResponse,
 } from '../types/api';
 import { formatMoney } from '../utils/format';
 
@@ -36,6 +40,11 @@ interface OverviewPageProps {
   recoveryData: RecoveryDiagnosticsResponse | null;
   recoveryUnavailable: boolean;
   recoveryStale: boolean;
+  paperRuntimeData: PaperRuntimeStatusResponse | null;
+  paperRuntimeUnavailable: boolean;
+  paperDiagnosticsData: PaperDiagnosticsResponse | null;
+  paperDiagnosticsUnavailable: boolean;
+  paperDiagnosticsStale: boolean;
   loading: boolean;
   selectedSymbol: string;
   selectedTimeframe: string;
@@ -57,6 +66,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   recoveryData,
   recoveryUnavailable,
   recoveryStale,
+  paperRuntimeData,
+  paperRuntimeUnavailable,
+  paperDiagnosticsData,
+  paperDiagnosticsUnavailable,
+  paperDiagnosticsStale,
   loading,
   selectedSymbol,
   selectedTimeframe,
@@ -176,6 +190,18 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             loading={loading && !safetyData}
             unavailable={safetyUnavailable}
             stale={safetyStale}
+          />
+
+          <PaperRuntimePanel
+            runtime={paperRuntimeData}
+            telegramStatus={systemStatus?.telegram_status}
+            unavailable={paperRuntimeUnavailable}
+          />
+
+          <PaperDiagnosticsPanel
+            diagnostics={paperDiagnosticsData}
+            unavailable={paperDiagnosticsUnavailable}
+            stale={paperDiagnosticsStale}
           />
 
           <RecoveryPanel

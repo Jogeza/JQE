@@ -12,6 +12,8 @@ import {
   ExecutionStateResponse,
   ExecutionSafetyResponse,
   RecoveryDiagnosticsResponse,
+  PaperRuntimeStatusResponse,
+  PaperDiagnosticsResponse,
   PerformanceSummaryResponse,
   ExperimentListFilters,
   ExperimentListResponse,
@@ -116,6 +118,14 @@ export const jqeApi = {
   /** Read-only durable startup recovery diagnostics; never triggers recovery */
   async getRecoveryDiagnostics(signal?: AbortSignal): Promise<RecoveryDiagnosticsResponse> {
     return fetchJson(`${API_BASE}/execution/recovery`, { signal });
+  },
+
+  async getPaperRuntimeStatus(signal?: AbortSignal): Promise<PaperRuntimeStatusResponse> {
+    return fetchJson(`${API_BASE}/execution/paper-runtime`, { signal });
+  },
+
+  async getPaperDiagnostics(signal?: AbortSignal): Promise<PaperDiagnosticsResponse> {
+    return fetchJson(`${API_BASE}/research/paper-diagnostics`, { signal });
   },
 
   /** Quantitative performance summary derived from closed trade executions */

@@ -21,6 +21,8 @@ import {
   ExecutionSafetyResponse,
   PerformanceSummaryResponse,
   RecoveryDiagnosticsResponse,
+  PaperRuntimeStatusResponse,
+  PaperDiagnosticsResponse,
   ResourceState,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
@@ -41,6 +43,8 @@ export const App: React.FC = () => {
     safety: ResourceState<ExecutionSafetyResponse>;
     performance: ResourceState<PerformanceSummaryResponse>;
     recovery: ResourceState<RecoveryDiagnosticsResponse>;
+    paperRuntime: ResourceState<PaperRuntimeStatusResponse>;
+    paperDiagnostics: ResourceState<PaperDiagnosticsResponse>;
   };
   const emptyResource = <T,>(): ResourceState<T> => ({
     data: null, loading: true, error: null, lastUpdated: null, stale: false,
@@ -49,6 +53,7 @@ export const App: React.FC = () => {
     system: emptyResource(), market: emptyResource(), candles: emptyResource(),
     strategy: emptyResource(), risk: emptyResource(), execution: emptyResource(),
     safety: emptyResource(), performance: emptyResource(), recovery: emptyResource(),
+    paperRuntime: emptyResource(), paperDiagnostics: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const requestIdRef = useRef(0);
@@ -83,10 +88,12 @@ export const App: React.FC = () => {
         jqeApi.getExecutionSafety(controller.signal),
         jqeApi.getPerformanceSummary(controller.signal),
         jqeApi.getRecoveryDiagnostics(controller.signal),
+        jqeApi.getPaperRuntimeStatus(controller.signal),
+        jqeApi.getPaperDiagnostics(controller.signal),
       ]);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
 
-      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery'];
+      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery', 'paperRuntime', 'paperDiagnostics'];
       const updatedAt = new Date();
       setResources(previous => {
         const next = { ...previous };
@@ -141,6 +148,8 @@ export const App: React.FC = () => {
   const safetyData = resources.safety.data;
   const performanceData = resources.performance.data;
   const recoveryData = resources.recovery.data;
+  const paperRuntimeData = resources.paperRuntime.data;
+  const paperDiagnosticsData = resources.paperDiagnostics.data;
   const loading = Object.values(resources).some(resource => resource.loading);
   const failedResources = Object.entries(resources).filter(([, resource]) => resource.error);
   const apiError = failedResources.length
@@ -165,6 +174,11 @@ export const App: React.FC = () => {
             recoveryData={recoveryData}
             recoveryUnavailable={resources.recovery.error !== null}
             recoveryStale={resources.recovery.stale}
+            paperRuntimeData={paperRuntimeData}
+            paperRuntimeUnavailable={resources.paperRuntime.error !== null}
+            paperDiagnosticsData={paperDiagnosticsData}
+            paperDiagnosticsUnavailable={resources.paperDiagnostics.error !== null}
+            paperDiagnosticsStale={resources.paperDiagnostics.stale}
             loading={loading}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedTimeframe}

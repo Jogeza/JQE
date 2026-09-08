@@ -12,6 +12,9 @@ export interface SystemStatusResponse {
   min_confidence_threshold: number;
   server_time: string;
   status: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | string;
+  telegram_enabled: boolean;
+  telegram_configured: boolean;
+  telegram_status: 'READY' | 'DISABLED' | 'UNAVAILABLE' | string;
 }
 
 export interface MarketSummaryResponse {
@@ -219,6 +222,69 @@ export interface RecoveryDiagnosticsResponse {
   execution_blocked: boolean;
   reason: string;
   intents: RecoveryIntentDiagnostic[];
+}
+
+export interface PaperRuntimeStatusResponse {
+  runtime_mode: string;
+  running: boolean;
+  started_at: string | null;
+  last_cycle_at: string | null;
+  last_processed_observation: string | null;
+  symbols_monitored: string[];
+  open_paper_positions: number;
+  cycles_completed: number;
+  last_signal: string | null;
+  last_action: string;
+  last_error: string | null;
+  notification_state: string;
+  shutdown_state: string;
+  paper_execution_enabled: boolean;
+  broker_execution_enabled: boolean;
+}
+
+export interface PaperDiagnosticsResponse {
+  status: string;
+  sample_size_insufficient: boolean;
+  session?: {
+    session_id: string;
+    started_at: string;
+    ended_at: string | null;
+    runtime_mode: string;
+    source_mode: string;
+    symbols: string[];
+    timeframes: string[];
+    dataset_identity: string | null;
+  };
+  metrics?: {
+    observations: number;
+    signals: number;
+    confirmations: number;
+    authorized_entries: number;
+    opened_positions: number;
+    closed_positions: number;
+    directions: Record<string, number>;
+    block_reasons: Record<string, number>;
+    net_pnl: string | null;
+    average_r: string | null;
+    max_drawdown: string | null;
+    by_regime: Record<string, { observations: number; signals: number; entries: number; closed_trades: number; net_pnl: string; average_r: string | null; block_reasons: Record<string, number> }>;
+    by_volatility: Record<string, { count: number }>;
+    by_momentum: Record<string, { count: number }>;
+    rejection_layers: Record<string, number>;
+    sample_sufficiency: Record<string, boolean>;
+    funnel: {
+      observations: number;
+      raw_signals: number;
+      confirmed: number;
+      risk_authorized: number;
+      opened: number;
+      closed: number;
+      raw_signal_rate: string | null;
+      confirmation_rate: string | null;
+      authorization_rate: string | null;
+      entry_rate: string | null;
+    };
+  };
 }
 
 export interface PerformanceSummaryResponse {
