@@ -12,6 +12,8 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, Mapping
 
+from execution.contract_lifecycle import ContractLifecycleState
+
 
 class SemanticsVerification(str, Enum):
     UNVERIFIED = "UNVERIFIED"
@@ -34,19 +36,6 @@ class MaximumLossBasis(str, Enum):
     UNKNOWN = "UNKNOWN"
     STAKE = "STAKE"
     BROKER_STOP_LOSS_AMOUNT = "BROKER_STOP_LOSS_AMOUNT"
-
-
-class ContractLifecycleState(str, Enum):
-    SUBMISSION_UNKNOWN = "SUBMISSION_UNKNOWN"
-    PURCHASED_OPEN = "PURCHASED_OPEN"
-    SELLABLE = "SELLABLE"
-    CLOSE_REQUESTED = "CLOSE_REQUESTED"
-    CLOSED = "CLOSED"
-    EXPIRED = "EXPIRED"
-    CANCELLED = "CANCELLED"
-    REJECTED = "REJECTED"
-    RECONCILIATION_MISMATCH = "RECONCILIATION_MISMATCH"
-    BROKER_STATE_UNAVAILABLE = "BROKER_STATE_UNAVAILABLE"
 
 
 def _text(value: Any, name: str) -> str:

@@ -52,3 +52,17 @@ class JQENotificationEvents:
             "JQE EMERGENCY STOP",
             {"State": state},
         ))
+
+    async def paper_event(self, *, kind: str, facts: dict[str, str]) -> bool:
+        mapping = {
+            "OPENED": (NotificationType.PAPER_POSITION_OPENED, "JQE PAPER POSITION OPENED"),
+            "CLOSED": (NotificationType.PAPER_POSITION_CLOSED, "JQE PAPER POSITION CLOSED"),
+            "BLOCKED": (NotificationType.PAPER_TRADE_BLOCKED, "JQE PAPER TRADE BLOCKED"),
+            "STOP_LOSS": (NotificationType.PAPER_STOP_LOSS, "JQE PAPER STOP LOSS"),
+            "TAKE_PROFIT": (NotificationType.PAPER_TAKE_PROFIT, "JQE PAPER TAKE PROFIT"),
+            "PERFORMANCE": (NotificationType.PAPER_PERFORMANCE, "JQE PAPER PERFORMANCE"),
+        }
+        if kind not in mapping:
+            raise ValueError("unknown paper notification event")
+        notification_type, title = mapping[kind]
+        return await self._service.publish(Notification(notification_type, title, facts))
