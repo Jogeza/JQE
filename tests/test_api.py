@@ -640,7 +640,10 @@ class TestApiEndpointsDirect:
         resp = await get_performance_summary(service=sim_service)
         assert resp.total_trades == 0
 
-    async def test_system_endpoint(self, sim_service: ApplicationService) -> None:
+    async def test_system_endpoint(self, sim_service: ApplicationService, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "telegram_enabled", False)
+        monkeypatch.setattr(settings, "telegram_bot_token", None)
+        monkeypatch.setattr(settings, "telegram_allowed_chat_id", None)
         resp = await get_system_status(service=sim_service)
         assert resp.status == "ONLINE"
         assert resp.broker_identity_state == "NOT_APPLICABLE"

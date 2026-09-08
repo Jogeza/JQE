@@ -108,6 +108,39 @@ def test_storage_deduplicates_restart_and_keeps_source_modes_separate(tmp_path):
     }
 
 
+def test_campaign_summary_reports_funnel_regime_direction_and_layer_breakdown():
+    items = [
+        record(1, regime="TREND_UP", signal_direction="BUY", signal_confidence=Decimal("65"), confirmation_state="CONFIRMED", execution_decision="ALLOWED", entry_event="OPENED", block_reason=None),
+        record(2, regime="TREND_UP", signal_direction="BUY", signal_confidence=Decimal("75"), confirmation_state="CONFIRMED", execution_decision="ALLOWED", entry_event="OPENED", exit_event="CLOSED", exit_reason="TAKE_PROFIT", realized_pnl=Decimal("2"), realized_r=Decimal("2")),
+        record(3, regime="RANGE", signal_direction="NO_SIGNAL", signal_confidence=Decimal("35"), block_reason="LOW_VOLATILITY"),
+        record(4, regime="LOW_VOLATILITY", signal_direction="SELL", signal_confidence=Decimal("80"), confirmation_state="FAILED", block_reason="CONFIRMATION_FAILED"),
+    ]
+    result = summarize(items, minimum_sample=2)
+    assert result["funnel"]["raw_signals"] == 3
+    assert result["by_regime"]["TREND_UP"]["signals"] == 2
+    assert result["by_direction"]["BUY"]["observations"] == 2
+    assert result["confidence_distribution"]["61-80"]["count"] == 3
+    assert result["rejection_layers"]["STRATEGY_FILTERS"] == 1
+    assert result["rejection_layers"]["CONFIRMATION_FILTERS"] == 1
+    assert result["sample_sufficiency"]["observations_sufficient"] is True
+    assert result["sample_sufficiency"]["signals_sufficient"] is True
+
+
+def test_get_paper_diagnostics_accepts_explicit_session_id(tmp_path, monkeypatch):
+    first = PaperDiagnosticsStore(tmp_path / "diagnostics.sqlite3")
+    first.start(session(session_id="session-a"))
+    first.append(record(session_id="session-a"))
+    second = session(session_id="session-b", started_at=NOW + timedelta(hours=1))
+    first.start(second)
+    first.append(record(session_id="session-b", cycle_number=2, signal_direction="SELL", confirmation_state="CONFIRMED"))
+    first.finish(replace(second, ended_at=NOW + timedelta(hours=2), status="COMPLETED"))
+    monkeypatch.setattr(settings, "paper_diagnostics_path", tmp_path / "diagnostics.sqlite3")
+    response = get_paper_diagnostics(session_id="session-b")
+    assert response["status"] == "COMPLETED"
+    assert response["metrics"]["signals"] == 1
+    assert response["session"]["session_id"] == "session-b"
+
+
 def test_incompatible_session_context_cannot_be_merged(tmp_path):
     store = PaperDiagnosticsStore(tmp_path / "diagnostics.sqlite3")
     store.start(session())

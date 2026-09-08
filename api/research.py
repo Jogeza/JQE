@@ -381,14 +381,14 @@ _experiment_catalog = ExperimentCatalog(settings.research_experiment_path)
 
 
 @router.get("/paper-diagnostics", response_model=None)
-def get_paper_diagnostics():
-    """Return a read-only aggregate of the latest paper observation session."""
+def get_paper_diagnostics(session_id: str | None = None):
+    """Return a read-only aggregate of the latest paper observation session or an explicit session."""
     path = Path(settings.paper_diagnostics_path).expanduser().resolve()
     if not path.is_file():
         return {"status": "NOT_OBSERVED", "sample_size_insufficient": True}
     try:
         store = PaperDiagnosticsStore(path, initialize=False)
-        session = store.latest_session()
+        session = store.session(session_id) if session_id else store.latest_session()
         if session is None:
             return {"status": "NOT_OBSERVED", "sample_size_insufficient": True}
         return {

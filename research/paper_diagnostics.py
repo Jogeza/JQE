@@ -171,6 +171,17 @@ class PaperDiagnosticsStore:
             rows = connection.execute(query, args).fetchall()
         return tuple(_decode_record(row[0]) for row in rows)
 
+    def session(self, session_id: str) -> PaperObservationSession | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT payload FROM sessions WHERE session_id=?", (session_id,)).fetchone()
+        if row is None:
+            return None
+        values = json.loads(row[0])
+        values["started_at"] = datetime.fromisoformat(values["started_at"])
+        values["ended_at"] = datetime.fromisoformat(values["ended_at"]) if values["ended_at"] else None
+        values["symbols"], values["timeframes"] = tuple(values["symbols"]), tuple(values["timeframes"])
+        return PaperObservationSession(**values)
+
     def latest_session(self) -> PaperObservationSession | None:
         with self._connect() as connection:
             row = connection.execute("SELECT payload FROM sessions ORDER BY rowid DESC LIMIT 1").fetchone()
@@ -192,6 +203,40 @@ def _maximum_drawdown(values: Iterable[Decimal]) -> Decimal:
     return maximum
 
 
+def _confidence_bucket(confidence: Decimal | None) -> str:
+    if confidence is None:
+        return "UNKNOWN"
+    value = int(confidence)
+    if value <= 20:
+        return "0-20"
+    if value <= 40:
+        return "21-40"
+    if value <= 60:
+        return "41-60"
+    if value <= 80:
+        return "61-80"
+    return "81-100"
+
+
+def _classify_block_reason(reason: str | None) -> str:
+    if not reason:
+        return "NO_BLOCK"
+    normalized = reason.upper()
+    if any(token in normalized for token in ("NO_SIGNAL", "LOW_CONFIDENCE", "CONFIDENCE", "VOLATILITY", "MOMENTUM", "RSI")):
+        return "STRATEGY_FILTERS"
+    if "CONFIRMATION" in normalized:
+        return "CONFIRMATION_FILTERS"
+    if any(token in normalized for token in ("RISK", "POSITION", "LIMIT", "AUTHORIZATION", "CAP", "EXPOSURE")):
+        return "RISK_BLOCKS"
+    if any(token in normalized for token in ("POLICY", "EXECUTION", "EMERGENCY", "IDEMPOTENCY", "BROKER", "INVALID_TRADE")):
+        return "EXECUTION_POLICY_BLOCKS"
+    if any(token in normalized for token in ("STALE", "MISSING", "DUPLICATE", "OUT_OF_ORDER", "FORMING", "SOURCE", "AVAILABILITY", "DATA")):
+        return "DATA_QUALITY_BLOCKS"
+    if any(token in normalized for token in ("STATE", "RESTART", "RECONSTRUCT", "OPEN_POSITION")):
+        return "RESTART_STATE_BLOCKS"
+    return "STRATEGY_FILTERS"
+
+
 def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int = 100) -> dict[str, Any]:
     items = tuple(records)
     trades = tuple(item for item in items if item.realized_pnl is not None)
@@ -204,6 +249,7 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
         current_wins = current_wins + 1 if pnl > 0 else 0
         current_losses = current_losses + 1 if pnl < 0 else 0
         longest_wins, longest_losses = max(longest_wins, current_wins), max(longest_losses, current_losses)
+
     def group(field: str) -> dict[str, dict[str, Any]]:
         result: dict[str, dict[str, Any]] = {}
         for name in sorted({str(getattr(item, field) or "UNKNOWN") for item in items}):
@@ -217,6 +263,7 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
                 "block_reasons": dict(Counter(item.block_reason for item in subset if item.block_reason)),
             }
         return result
+
     exit_distribution = {}
     for reason in sorted({item.exit_reason or "OTHER" for item in trades}):
         subset = tuple(item for item in trades if (item.exit_reason or "OTHER") == reason)
@@ -228,13 +275,59 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
             "average_r": str(sum(category_rs, Decimal("0")) / len(category_rs)) if category_rs else None,
             "median_r": str(median(category_rs)) if category_rs else None,
         }
+
+    signals = sum(item.signal_direction != "NO_SIGNAL" for item in items)
+    confirmations = sum(item.confirmation_state == "CONFIRMED" for item in items)
+    authorized_entries = sum(item.execution_decision == "ALLOWED" for item in items)
+    opened_positions = sum(item.entry_event is not None for item in items)
+    closed_positions = len(trades)
+    raw_signal_rate = (Decimal(signals) / Decimal(len(items))) if items else None
+    confirmation_rate = (Decimal(confirmations) / Decimal(signals)) if signals else None
+    authorization_rate = (Decimal(authorized_entries) / Decimal(confirmations)) if confirmations else None
+    entry_rate = (Decimal(opened_positions) / Decimal(authorized_entries)) if authorized_entries else None
+    confidence_distribution = {}
+    for bucket in ("0-20", "21-40", "41-60", "61-80", "81-100"):
+        subset = tuple(item for item in items if _confidence_bucket(item.signal_confidence) == bucket)
+        if not subset:
+            continue
+        confidence_distribution[bucket] = {
+            "count": len(subset),
+            "signal_directions": dict(Counter(item.signal_direction for item in subset)),
+            "confirmations": sum(item.confirmation_state == "CONFIRMED" for item in subset),
+            "confirmation_rate": str((Decimal(sum(item.confirmation_state == "CONFIRMED" for item in subset)) / Decimal(len(subset))) * 100) if subset else None,
+        }
+
+    rejection_layers = {}
+    for layer in ("STRATEGY_FILTERS", "CONFIRMATION_FILTERS", "RISK_BLOCKS", "EXECUTION_POLICY_BLOCKS", "DATA_QUALITY_BLOCKS", "RESTART_STATE_BLOCKS"):
+        count = sum(1 for item in items if item.block_reason and _classify_block_reason(item.block_reason) == layer)
+        if count:
+            rejection_layers[layer] = count
+
+    by_volatility = {
+        "LOW_VOLATILITY": {"count": sum(1 for item in items if item.block_reason and "LOW_VOLATILITY" in item.block_reason.upper())},
+        "HIGH_VOLATILITY": {"count": sum(1 for item in items if item.block_reason and "HIGH_VOLATILITY" in item.block_reason.upper())},
+        "UNKNOWN": {"count": sum(1 for item in items if not item.block_reason or ("VOLATILITY" not in item.block_reason.upper()))},
+    }
+    by_momentum = {
+        "BUY": {"count": sum(1 for item in items if item.signal_direction == "BUY")},
+        "SELL": {"count": sum(1 for item in items if item.signal_direction == "SELL")},
+        "NO_SIGNAL": {"count": sum(1 for item in items if item.signal_direction == "NO_SIGNAL")},
+    }
+    sample_sufficiency = {
+        "observations_sufficient": len(items) >= minimum_sample,
+        "signals_sufficient": signals >= max(3, minimum_sample // 10),
+        "confirmations_sufficient": confirmations >= max(1, minimum_sample // 20),
+        "closed_trades_sufficient": closed_positions >= max(1, minimum_sample // 25),
+        "regime_coverage_sufficient": len({item.regime for item in items if item.regime}) >= 2,
+    }
+
     return {
         "schema_version": SCHEMA_VERSION, "observations": len(items),
         "strategy_evaluations": len(items),
-        "signals": sum(item.signal_direction != "NO_SIGNAL" for item in items),
-        "confirmations": sum(item.confirmation_state == "CONFIRMED" for item in items),
-        "authorized_entries": sum(item.execution_decision == "ALLOWED" for item in items),
-        "opened_positions": sum(item.entry_event is not None for item in items), "closed_positions": len(trades),
+        "signals": signals,
+        "confirmations": confirmations,
+        "authorized_entries": authorized_entries,
+        "opened_positions": opened_positions, "closed_positions": closed_positions,
         "directions": dict(Counter(item.signal_direction for item in items)),
         "block_reasons": dict(Counter(item.block_reason for item in items if item.block_reason)),
         "wins": len(wins), "losses": len(losses), "breakeven": sum(pnl == 0 for pnl in pnls),
@@ -254,4 +347,23 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
         "source_modes": dict(Counter(item.source_mode for item in items)),
         "stale_data_events": sum(item.block_reason == "STALE_DATA" for item in items),
         "sample_size_insufficient": len(items) < minimum_sample,
+        "funnel": {
+            "observations": len(items),
+            "raw_signals": signals,
+            "confirmation_evaluated": sum(item.confirmation_state != "NOT_EVALUATED" for item in items),
+            "confirmed": confirmations,
+            "risk_authorized": authorized_entries,
+            "policy_admitted": authorized_entries,
+            "opened": opened_positions,
+            "closed": closed_positions,
+            "raw_signal_rate": str(raw_signal_rate * 100) if raw_signal_rate is not None else None,
+            "confirmation_rate": str(confirmation_rate * 100) if confirmation_rate is not None else None,
+            "authorization_rate": str(authorization_rate * 100) if authorization_rate is not None else None,
+            "entry_rate": str(entry_rate * 100) if entry_rate is not None else None,
+        },
+        "confidence_distribution": confidence_distribution,
+        "rejection_layers": rejection_layers,
+        "by_volatility": by_volatility,
+        "by_momentum": by_momentum,
+        "sample_sufficiency": sample_sufficiency,
     }
