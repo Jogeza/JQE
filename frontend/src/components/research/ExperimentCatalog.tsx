@@ -51,6 +51,21 @@ function FactGrid({ values }: { values: Record<string, unknown> }) {
   );
 }
 
+function SimulationAccount({ detail }: { detail: ExperimentDetailDTO }) {
+  if (detail.configuration.execution_mode !== 'SIMULATION') return null;
+  const metric = (name: string) => typeof detail.metrics[name] === 'number' ? detail.metrics[name] as number : 0;
+  const curve = Array.isArray(detail.metrics['Equity Curve'])
+    ? detail.metrics['Equity Curve'].filter((value): value is number => typeof value === 'number') : [];
+  const min = Math.min(...curve, 0), max = Math.max(...curve, 1), span = Math.max(max - min, 1e-9);
+  const points = curve.map((value, index) => `${curve.length < 2 ? 0 : index * 100 / (curve.length - 1)},${40 - (value - min) * 40 / span}`).join(' ');
+  const pnl = metric('Net P&L');
+  return <section className={`simulation-account ${pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral'}`}>
+    <h3>Simulation account</h3>
+    <FactGrid values={{ start: metric('Starting Balance'), final: metric('Ending Balance'), pnl, return_percent: metric('Return %'), max_dd_percent: metric('Maximum Drawdown %'), trades: metric('Total Trades'), wins: metric('Winning Trades'), losses: metric('Losing Trades') }} />
+    {curve.length > 0 && <svg viewBox="0 0 100 40" role="img" aria-label="Realized balance equity curve" preserveAspectRatio="none"><polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></svg>}
+  </section>;
+}
+
 function DetailPanel({ detail, loading, error, onClose }: {
   detail: ExperimentDetailDTO | null; loading: boolean; error: string | null; onClose: () => void;
 }) {
@@ -68,6 +83,7 @@ function DetailPanel({ detail, loading, error, onClose }: {
           <section><h3>Dataset</h3><FactGrid values={{ symbol: detail.symbol, timeframe: detail.timeframe, partition: detail.partition, effective_range: dateRange(detail.partition_first_candle, detail.partition_last_candle), candle_count: detail.partition_candle_count }} /><IdentityRow label="Dataset" value={detail.dataset_hash} /></section>
           <section><h3>Run configuration</h3><FactGrid values={{ strategy_name: detail.strategy_name, ...detail.configuration }} /><IdentityRow label="Run" value={detail.run_fingerprint} /></section>
           <section><h3>Result identity</h3><IdentityRow label="Result" value={detail.result_hash} /></section>
+          <SimulationAccount detail={detail} />
           <section><h3>Versioning</h3><FactGrid values={{ persistence_schema: detail.schema_version, engine_version: detail.engine_version, identity_schema_version: detail.identity_schema_version }} /></section>
           <section><h3>Factual metrics</h3><FactGrid values={detail.metrics} /></section>
           <section><h3>Provenance</h3><FactGrid values={detail.provenance} /></section>

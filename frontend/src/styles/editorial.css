@@ -319,3 +319,7 @@ input, select { border-color: var(--border); min-height: 36px; border-radius: 6p
   .experiment-detail { inset: 64px 0 0; width: 100%; }
   .experiment-fact-grid { grid-template-columns: 1fr; }
 }
+.simulation-account { color: #2563eb; }
+.simulation-account.positive { color: #16a34a; }
+.simulation-account.negative { color: #dc2626; }
+.simulation-account svg { width: 100%; height: 8rem; margin-top: 1rem; }
