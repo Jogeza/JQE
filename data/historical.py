@@ -23,6 +23,7 @@ from core.exceptions import MarketDataError
 from core.logger import logger
 from data.storage import CandleStore, find_gaps
 from data.types import SyncReport
+from data.coverage import validate_historical_coverage
 
 #: A cache is considered "already current" if its latest candle is
 #: within this many candle-widths of now — avoids an unnecessary
@@ -126,10 +127,21 @@ class HistoricalDataService:
         cached = self.store.load_candles(symbol, timeframe, start, end, provider=provider)
         step = TIMEFRAME_SECONDS[timeframe]
         expected = count or int((end - start).total_seconds() // step) + 1
-        complete = (
+        coverage = None
+        if provider is not None and source_symbol is not None:
+            try:
+                coverage = validate_historical_coverage(
+                    cached, provider=provider, canonical_symbol=symbol,
+                    provider_symbol=source_symbol, timeframe=timeframe,
+                    start=start, end=end,
+                )
+            except MarketDataError as exc:
+                if "Unsupported historical coverage policy" not in str(exc):
+                    raise
+        complete = (coverage.is_complete if coverage is not None else (
             bool(cached) and cached[0].time <= start and cached[-1].time >= end
             and len(cached) >= expected and not find_gaps(cached, step)
-        )
+        ))
         if complete or cached_only:
             if not complete:
                 raise MarketDataError("Requested historical range is incomplete in cache")
@@ -142,7 +154,15 @@ class HistoricalDataService:
             fetched = await self.gateway.get_candles(requested_symbol, timeframe, expected, end=end)
         self.store.save_candles(symbol, timeframe, fetched, provider=provider)
         refreshed = self.store.load_candles(symbol, timeframe, start, end, provider=provider)
-        if not refreshed or refreshed[0].time > start or refreshed[-1].time < end or find_gaps(refreshed, step):
+        if coverage is not None:
+            refreshed_complete = validate_historical_coverage(
+                refreshed, provider=provider, canonical_symbol=symbol,
+                provider_symbol=source_symbol, timeframe=timeframe,
+                start=start, end=end,
+            ).is_complete
+        else:
+            refreshed_complete = bool(refreshed) and refreshed[0].time <= start and refreshed[-1].time >= end and not find_gaps(refreshed, step)
+        if not refreshed_complete:
             raise MarketDataError("Historical provider did not produce a complete requested range")
         return refreshed
 

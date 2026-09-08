@@ -6,7 +6,7 @@ import asyncio
 import itertools
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import websockets
@@ -179,7 +179,10 @@ class DerivPublicMarketData:
         requested = count or span_count
         if requested <= 0:
             raise MarketDataError("Historical candle count must be positive")
-        candles = await self.get_candles(symbol, timeframe, requested, end=end)
+        candles = await self.get_candles(
+            symbol, timeframe, requested + 1, start=start,
+            end=end + timedelta(seconds=TIMEFRAME_SECONDS[timeframe]),
+        )
         start_utc, end_utc = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
         return [candle for candle in candles if start_utc <= candle.time <= end_utc]
 

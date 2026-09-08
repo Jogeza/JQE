@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -144,6 +145,20 @@ def test_public_adapter_has_no_account_or_execution_api() -> None:
     assert not hasattr(gateway, "submit_order")
     assert not hasattr(gateway, "get_positions")
     assert not hasattr(gateway, "get_trade_history")
+
+
+@pytest.mark.asyncio
+async def test_public_range_request_preserves_both_utc_bounds() -> None:
+    connection = FakePublicConnection()
+    gateway = DerivPublicMarketData()
+    with patch("broker.deriv_public_data.websockets.connect", new=AsyncMock(return_value=connection)):
+        await gateway.connect()
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    await gateway.get_candles_range("frxXAUUSD", Timeframe.M15, start, end, count=2)
+    assert connection.sent[0]["start"] == int(start.timestamp())
+    assert connection.sent[0]["end"] == int(end.timestamp()) + 900
+    await gateway.disconnect()
 
 
 @pytest.mark.asyncio

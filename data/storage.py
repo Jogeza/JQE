@@ -340,13 +340,26 @@ class CandleStore:
             timeframe = Timeframe(row["timeframe"])
             candles = self.load_candles(row["symbol"], timeframe, provider=row["provider"])
             provenance = self.load_provenance(row["provider"], row["symbol"], timeframe)
+            gap_count = len(find_gaps(candles, TIMEFRAME_SECONDS[timeframe]))
+            if provenance is not None and candles:
+                try:
+                    from data.coverage import validate_historical_coverage
+                    gap_count = validate_historical_coverage(
+                        candles, provider=row["provider"], canonical_symbol=row["symbol"],
+                        provider_symbol=provenance.provider_symbol, timeframe=timeframe,
+                        start=candles[0].time, end=candles[-1].time,
+                    ).missing_count
+                except CacheError:
+                    raise
+                except Exception:
+                    pass
             summaries.append(CachedDatasetSummary(row["provider"], row["symbol"],
                 provenance.provider_symbol if provenance else row["symbol"], timeframe.value,
                 datetime.fromtimestamp(row["first_time"], tz=timezone.utc),
                 datetime.fromtimestamp(row["last_time"], tz=timezone.utc), int(row["count"]),
                 candle_content_hash(candles), provenance.volume_type if provenance else VolumeType.UNKNOWN,
                 provenance.source if provenance else "unknown",
-                len(find_gaps(candles, TIMEFRAME_SECONDS[timeframe]))))
+                gap_count))
         return tuple(summaries)
 
     def validate(self, symbol: str, timeframe: Timeframe, provider: str | None = None) -> CacheValidationResult:

@@ -443,16 +443,19 @@ def _acquisition_outcome(store: CandleStore, spec: AcquisitionSpec, cached_befor
     timeframe = Timeframe(spec.timeframe)
     candles = store.load_candles(spec.canonical_symbol, timeframe, spec.requested_start,
                                  spec.requested_end, provider=spec.provider)
-    gaps = find_gaps(candles, TIMEFRAME_SECONDS[timeframe])
-    complete = (len(candles) >= spec.requested_max_candles and bool(candles)
-                and candles[0].time <= spec.requested_start
-                and candles[-1].time >= spec.requested_end and not gaps)
+    from data.coverage import validate_historical_coverage
+    coverage = validate_historical_coverage(
+        candles, provider=spec.provider, canonical_symbol=spec.canonical_symbol,
+        provider_symbol=spec.provider_symbol, timeframe=timeframe,
+        start=spec.requested_start, end=spec.requested_end,
+    )
+    complete = coverage.is_complete
     return AcquisitionOutcome(
         cached_before=cached_before, stored_after=len(candles),
         inserted=max(0, len(candles) - cached_before),
         duplicates=(max(0, provider_received - max(0, len(candles) - cached_before))
                     if provider_received is not None else None),
-        gap_count=len(gaps), coverage_complete=complete,
+        gap_count=coverage.missing_count, coverage_complete=complete,
         first_timestamp=candles[0].time if candles else None,
         last_timestamp=candles[-1].time if candles else None,
         dataset_hash=candle_content_hash(candles) if candles else None,
