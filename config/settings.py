@@ -160,6 +160,11 @@ class Settings(BaseSettings):
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)
     risk_observation_freshness_seconds: int = Field(default=15, gt=0)
     execution_reservation_lease_seconds: int = Field(default=120, gt=0)
+    runtime_mode: Literal["disabled", "paper_continuous"] = "disabled"
+    paper_runtime_enabled: bool = False
+    paper_runtime_poll_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
+    paper_runtime_max_backoff_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
+    paper_runtime_state_path: Path = Path("state/paper_runtime.sqlite3")
 
     @field_validator("log_level", mode="before")
     @classmethod

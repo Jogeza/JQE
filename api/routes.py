@@ -17,6 +17,7 @@ from api.dto import (
     RiskStatusResponse,
     SignalResponse,
     SystemStatusResponse,
+    PaperRuntimeStatusResponse,
 )
 from api.service import ApplicationService
 from core.exceptions import JQEError
@@ -110,6 +111,14 @@ def get_recovery_diagnostics(
 ) -> RecoveryDiagnosticsResponse:
     """Returns read-only durable startup recovery diagnostics."""
     return service.get_recovery_diagnostics()
+
+
+@router.get("/execution/paper-runtime", response_model=PaperRuntimeStatusResponse)
+def get_paper_runtime_status(
+    service: ApplicationService = Depends(get_service),
+) -> PaperRuntimeStatusResponse:
+    """Returns the read-only continuous paper-runtime heartbeat."""
+    return service.get_paper_runtime_status()
 
 
 @router.get("/performance", response_model=PerformanceSummaryResponse)

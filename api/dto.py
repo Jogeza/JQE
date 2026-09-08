@@ -294,3 +294,21 @@ class SystemStatusResponse(BaseModel):
     telegram_enabled: bool = False
     telegram_configured: bool = False
     telegram_status: str = "DISABLED"
+
+
+class PaperRuntimeStatusResponse(BaseModel):
+    runtime_mode: str
+    running: bool
+    started_at: str | None = None
+    last_cycle_at: str | None = None
+    last_processed_observation: str | None = None
+    symbols_monitored: list[str] = Field(default_factory=list)
+    open_paper_positions: int = 0
+    cycles_completed: int = 0
+    last_signal: str | None = None
+    last_action: str
+    last_error: str | None = None
+    notification_state: str
+    shutdown_state: str
+    paper_execution_enabled: bool
+    broker_execution_enabled: bool = False

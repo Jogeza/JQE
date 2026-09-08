@@ -62,7 +62,7 @@ async def run_cycle() -> int:
             del records
             gc.collect()
             return 1
-        position = engine._positions[result.order_id]
+        position = engine.get_position(result.order_id)
         await events.paper_event(
             kind="OPENED", facts={"Contract": position.contract_id, "Execution": "OFFLINE"}
         )

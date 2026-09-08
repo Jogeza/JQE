@@ -125,6 +125,20 @@ class PaperContractEngine:
         self._positions: dict[str, PaperPosition] = {}
         self._closes: dict[str, PaperClose] = {}
 
+    @property
+    def positions(self) -> tuple[PaperPosition, ...]:
+        return tuple(self._positions.values())
+
+    def get_position(self, contract_id: str) -> PaperPosition:
+        return self._positions[contract_id]
+
+    @property
+    def positions(self) -> tuple[PaperPosition, ...]:
+        return tuple(self._positions.values())
+
+    def get_position(self, contract_id: str) -> PaperPosition:
+        return self._positions[contract_id]
+
     @staticmethod
     def _d(value: float) -> Decimal:
         return Decimal(str(value))

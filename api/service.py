@@ -8,6 +8,7 @@ Encapsulates all domain coordination so the API router remains a thin HTTP layer
 from __future__ import annotations
 
 import datetime
+from dataclasses import asdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ from api.dto import (
     RiskStatusResponse,
     SignalResponse,
     SystemStatusResponse,
+    PaperRuntimeStatusResponse,
     TradeHistoryDTO,
     TradePlanDTO,
 )
@@ -44,6 +46,7 @@ from core.indicators import calculate_indicators
 from core.regime import detect_regime
 from execution.safety import RiskEvaluationState, SQLiteExecutionSafetyStore, utc_now
 from execution.persistence import SQLiteIntentRecordStore
+from execution.paper_runtime import PaperRuntimeStateStore
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
@@ -697,6 +700,26 @@ class ApplicationService:
             gross_loss=round(gross_loss, 2),
             net_profit=round(net_profit, 2),
         )
+
+    def get_paper_runtime_status(self) -> PaperRuntimeStatusResponse:
+        """Read the durable paper-runtime heartbeat without mutating it."""
+        path = Path(settings.paper_runtime_state_path).expanduser().resolve()
+        if not path.is_file():
+            return PaperRuntimeStatusResponse(
+                runtime_mode=settings.runtime_mode, running=False, last_action="NOT_OBSERVED",
+                notification_state="DISABLED", shutdown_state="STOPPED",
+                paper_execution_enabled=False, broker_execution_enabled=False,
+            )
+        try:
+            heartbeat = PaperRuntimeStateStore(path, initialize=False).read()
+            return PaperRuntimeStatusResponse(**asdict(heartbeat))
+        except Exception:
+            return PaperRuntimeStatusResponse(
+                runtime_mode=settings.runtime_mode, running=False, last_action="UNAVAILABLE",
+                last_error="RUNTIME_STATE_UNAVAILABLE", notification_state="UNAVAILABLE",
+                shutdown_state="UNKNOWN", paper_execution_enabled=False,
+                broker_execution_enabled=False,
+            )
 
     async def get_system_status(self) -> SystemStatusResponse:
         """Retrieves system status, broker name, and active settings."""

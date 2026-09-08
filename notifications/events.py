@@ -19,6 +19,10 @@ class JQENotificationEvents:
     def __init__(self, service: NotificationService) -> None:
         self._service = service
 
+    @property
+    def service(self) -> NotificationService:
+        return self._service
+
     async def deriv_identity_verified(self, *, account_id: str) -> bool:
         return await self._service.publish(Notification(
             NotificationType.DERIV_IDENTITY_VERIFIED,
@@ -61,6 +65,10 @@ class JQENotificationEvents:
             "STOP_LOSS": (NotificationType.PAPER_STOP_LOSS, "JQE PAPER STOP LOSS"),
             "TAKE_PROFIT": (NotificationType.PAPER_TAKE_PROFIT, "JQE PAPER TAKE PROFIT"),
             "PERFORMANCE": (NotificationType.PAPER_PERFORMANCE, "JQE PAPER PERFORMANCE"),
+            "RUNTIME_STARTED": (NotificationType.PAPER_RUNTIME_STARTED, "JQE PAPER RUNTIME STARTED"),
+            "SIGNAL": (NotificationType.PAPER_SIGNAL, "JQE PAPER SIGNAL"),
+            "RUNTIME_ERROR": (NotificationType.PAPER_RUNTIME_ERROR, "JQE PAPER RUNTIME ERROR"),
+            "RUNTIME_STOPPED": (NotificationType.PAPER_RUNTIME_STOPPED, "JQE PAPER RUNTIME STOPPED"),
         }
         if kind not in mapping:
             raise ValueError("unknown paper notification event")
