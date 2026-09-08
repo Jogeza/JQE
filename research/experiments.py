@@ -19,6 +19,7 @@ SCHEMA_VERSION = 2
 
 class ResearchPartition(str, Enum):
     TRAIN = "TRAIN"
+    FULL = "FULL"
     VALIDATION = "VALIDATION"
     OOS = "OOS"
 

@@ -1,0 +1,122 @@
+{
+  "configuration": {
+    "cost_scenario": "IDEALIZED_ZERO_COST",
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "execution_mode": "SIMULATION",
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "signal_logic_version": "directional-momentum-v2",
+    "starting_balance": {
+      "amount": 50.0,
+      "currency": "USD"
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-08-31T00:00:00.000000+00:00",
+  "dataset_hash": "sha256:075a4c889639c615575029d39fc69e4b4174ac88ed9103dabe8cee89a7476afd",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "simulation-baseline-idealized-zero-cost-e879c201de86",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Actual Opened Trades": 0,
+    "Authorized Trades": 0,
+    "Average Loser": null,
+    "Average Realized Loss %": null,
+    "Average Trade Duration": 0.0,
+    "Average Win Loss Ratio": null,
+    "Average Winner": null,
+    "BUY": {
+      "expectancy": null,
+      "losses": 0,
+      "net_pnl": 0,
+      "profit_factor": null,
+      "trades": 0,
+      "win_rate_percent": null,
+      "wins": 0
+    },
+    "Balance Curve": [
+      50.0
+    ],
+    "Ending Balance": 50.0,
+    "Exit Reasons": {},
+    "Expectancy": 0.0,
+    "Fell Below 10": false,
+    "Fell Below 25": false,
+    "Fell Below 30": false,
+    "Fell Below 40": false,
+    "Gross Loss": 0,
+    "Gross Profit": 0,
+    "Largest Loser": null,
+    "Largest Winner": null,
+    "Losing Trades": 0,
+    "Max Authorized Risk %": null,
+    "Max Realized Single Trade Loss %": null,
+    "Maximum Consecutive Losses": 0,
+    "Maximum Consecutive Wins": 0,
+    "Maximum Drawdown %": 0.0,
+    "Median Trade Duration": null,
+    "Negative Balance": false,
+    "Net P&L": 0.0,
+    "Peak Balance": 50.0,
+    "Position State Suppressions": 98,
+    "Profit Factor": null,
+    "Quantity Rejections": 0,
+    "Raw BUY Signals": 0,
+    "Raw SELL Signals": 98,
+    "Return %": 0.0,
+    "Risk Model Validation": "PASS",
+    "Risk Rejections": 0,
+    "SELL": {
+      "expectancy": null,
+      "losses": 0,
+      "net_pnl": 0,
+      "profit_factor": null,
+      "trades": 0,
+      "win_rate_percent": null,
+      "wins": 0
+    },
+    "Starting Balance": 50.0,
+    "Top 1 Profit Concentration %": null,
+    "Top 5 Profit Concentration %": null,
+    "Trade Proposals": 0,
+    "Transaction Costs": 0,
+    "Win Rate %": 0.0,
+    "Winning Trades": 0
+  },
+  "partition": "FULL",
+  "partition_candle_count": 453,
+  "partition_first_candle": "2026-08-24T00:00:00.000000+00:00",
+  "partition_last_candle": "2026-08-31T00:00:00.000000+00:00",
+  "provenance": {
+    "frozen_window": "BASELINE",
+    "provider": "deriv",
+    "provider_symbol": "frxXAUUSD",
+    "source": "Deriv public historical WebSocket"
+  },
+  "result_hash": "sha256:e879c201de86e7ce684d7fefe37ccae2a4f00bb58be6e904c4107ee86760c69f",
+  "run_fingerprint": "sha256:0e19ef2fb838503d98eb56556245d069197fbf28eff662c23d5a441502785ec7",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "XAUUSD",
+  "timeframe": "M15"
+}

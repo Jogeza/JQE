@@ -9,6 +9,7 @@ import pandas as pd
 from backtesting.models import BacktestDecision, BacktestExecutionAssumptions, BacktestExitReason, BacktestRiskConfiguration, BacktestTrade, BacktestResult
 from broker.types import ExecutionQuantity, ExecutionQuantityUnit, Timeframe
 from risk.risk_engine import RiskEngine
+from risk.position_sizing import authorize_execution_quantity
 from execution.simulator import calculate_stop_target
 
 
@@ -163,7 +164,20 @@ class BacktestEngine:
         risk_amount = self.balance * self.risk_configuration.risk_percent / 100.0
         if stop_distance <= 0 or risk_amount <= self.execution_assumptions.fee_per_trade or risk_amount > self.balance:
             return
-        quantity = ExecutionQuantity(value=risk_amount / stop_distance, unit=ExecutionQuantityUnit.SIMULATION_UNITS)
+        sizing = authorize_execution_quantity(
+            broker="simulation", balance=self.balance,
+            risk_percent=self.risk_configuration.risk_percent,
+            entry=entry,
+            stop_loss=(entry - stop_distance if self._pending.direction == "BUY" else entry + stop_distance),
+        )
+        if not sizing.risk_verifiable or sizing.quantity is None:
+            self.decisions.append(BacktestDecision(
+                candle_index=index, timestamp=row["time"], signal=self._pending.direction,
+                confidence=self._pending.confidence, state="EXECUTION_REJECTED",
+                reasons=(sizing.reason,),
+            ))
+            return
+        quantity = sizing.quantity
         if self._pending.direction == "BUY":
             stop, target = entry - stop_distance, entry + self._pending.atr * self.execution_assumptions.target_atr_multiple
         else:
@@ -190,7 +204,10 @@ class BacktestEngine:
         gross = ((exit_price - p.entry_price) if p.direction == "BUY" else (p.entry_price - exit_price)) * p.quantity.value
         costs, before = self.execution_assumptions.fee_per_trade, p.balance_before
         net = gross - costs
-        self.balance += net
+        # A simulation account is cash-limited. A pathological gap or cost can
+        # exhaust it, but must never make the persisted balance silently negative.
+        self.balance = max(0.0, self.balance + net)
+        net = self.balance - before
         self.trades.append(BacktestTrade(len(self.trades) + 1, self.symbol, self.timeframe, p.direction, dataframe.iloc[p.signal_index]["time"], dataframe.iloc[p.entry_index]["time"], p.entry_price, dataframe.iloc[index]["time"], exit_price, p.stop, p.target, p.quantity, gross, costs, net, before, self.balance, index - p.entry_index + 1, reason))
         self.equity_curve.append(self.balance)
         self.total_trades += 1

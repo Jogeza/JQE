@@ -1,0 +1,70 @@
+{
+  "artifact_hash": "sha256:05be6e09036c422aad5bd0c47d3e5211efd416818c913aebcd12e7ee22434869",
+  "hypotheses": [
+    {
+      "description": "Trend entries require a counter-trend pullback followed by close-based continuation.",
+      "direction_rule": "BUY when EMA50 > EMA200; SELL when EMA50 < EMA200.",
+      "entry_features": [
+        "EMA50",
+        "EMA200",
+        "previous_3_bar_return",
+        "close"
+      ],
+      "entry_rule": "At candle close, prior three-bar return is counter-trend and close is back beyond EMA50.",
+      "exit_rule": "Stop/target are canonical ATR multiples; close at stop, target, or timeout.",
+      "expected_failure_mode": "Pullbacks persist or trend regime changes before continuation.",
+      "hypothesis_hash": "sha256:b35052023147f3f89887a80a27a1e0aa0e0eafa9b5c02244114c559a4b9d43fe",
+      "hypothesis_id": "V2_TREND_PULLBACK",
+      "invalidation_criteria": "Reject if conservative expectancy is non-positive in at least three development windows.",
+      "market_behavior_assumption": "Established EMA direction resumes after a temporary counter-trend move.",
+      "max_holding_period": 19,
+      "stop_rule": "Canonical engine stop at 1.5 ATR from next-open entry.",
+      "target_rule": "Canonical engine target at 3.0 ATR from next-open entry.",
+      "version": 1
+    },
+    {
+      "description": "Compression resolves through a close beyond the prior twenty-bar range.",
+      "direction_rule": "BUY above prior high; SELL below prior low, with EMA context only as a direction tie-breaker.",
+      "entry_features": [
+        "ATR",
+        "recent_20_bar_range",
+        "close",
+        "EMA50",
+        "EMA200"
+      ],
+      "entry_rule": "At candle close, current close breaks the prior twenty-bar high/low after range compression.",
+      "exit_rule": "Stop/target are canonical ATR multiples; close at stop, target, or timeout.",
+      "expected_failure_mode": "Breakout is false or expansion is already exhausted at entry.",
+      "hypothesis_hash": "sha256:f46e2bae4e3b0837f1744bd6907b4a50961d8a52ba2264684f4ac00f81acc98c",
+      "hypothesis_id": "V2_VOLATILITY_BREAKOUT",
+      "invalidation_criteria": "Reject if positive gross expectancy does not survive conservative friction.",
+      "market_behavior_assumption": "Low recent range relative to ATR precedes directional expansion.",
+      "max_holding_period": 19,
+      "stop_rule": "Canonical engine stop at 1.5 ATR from next-open entry.",
+      "target_rule": "Canonical engine target at 3.0 ATR from next-open entry.",
+      "version": 1
+    },
+    {
+      "description": "Extreme ATR-normalized displacement reverts when EMA trend separation is small.",
+      "direction_rule": "BUY oversold downside displacement; SELL overbought upside displacement.",
+      "entry_features": [
+        "RSI",
+        "EMA50",
+        "EMA200",
+        "ATR",
+        "close"
+      ],
+      "entry_rule": "At candle close, RSI is extreme and price displacement from EMA50 exceeds one ATR while EMA separation is modest.",
+      "exit_rule": "Stop/target are canonical ATR multiples; close at stop, target, or timeout.",
+      "expected_failure_mode": "Trend persistence overwhelms reversion or extremes are too rare.",
+      "hypothesis_hash": "sha256:16dac944b970ba4aeb24db6397a908985240ffe5c2eb7847efe9ebaaf8e47185",
+      "hypothesis_id": "V2_MEAN_REVERSION",
+      "invalidation_criteria": "Reject if fewer than ten total development trades or if any window breaches risk validation.",
+      "market_behavior_assumption": "Non-trending markets mean-revert after sufficiently stretched closes.",
+      "max_holding_period": 19,
+      "stop_rule": "Canonical engine stop at 1.5 ATR from next-open entry.",
+      "target_rule": "Canonical engine target at 3.0 ATR from next-open entry.",
+      "version": 1
+    }
+  ]
+}

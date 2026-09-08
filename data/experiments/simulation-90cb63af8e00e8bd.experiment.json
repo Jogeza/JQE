@@ -1,0 +1,86 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "execution_mode": "SIMULATION",
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "starting_balance": {
+      "amount": 50.0,
+      "currency": "USD"
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-08-31T00:00:00.000000+00:00",
+  "dataset_hash": "sha256:075a4c889639c615575029d39fc69e4b4174ac88ed9103dabe8cee89a7476afd",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "simulation-90cb63af8e00e8bd",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Average Loser": null,
+    "Average Winner": null,
+    "Cost Model Status": "COST_MODEL_INCOMPLETE",
+    "Ending Balance": 50.0,
+    "Equity Curve": [
+      50.0
+    ],
+    "Expectancy": 0.0,
+    "Gross Loss": 0,
+    "Gross Profit": 0,
+    "Largest Loser": null,
+    "Largest Winner": null,
+    "Losing Trades": 0,
+    "Maximum Consecutive Losses": 0,
+    "Maximum Consecutive Wins": 0,
+    "Maximum Drawdown": 0.0,
+    "Maximum Drawdown %": 0.0,
+    "Net P&L": 0.0,
+    "No-signal Candles": 253,
+    "Peak Balance": 50.0,
+    "Profit Factor": null,
+    "Profit Factor Status": "UNDEFINED_NO_PROFIT_OR_LOSS",
+    "Return %": 0.0,
+    "Risk Authorization Rejections": 0,
+    "Starting Balance": 50.0,
+    "Total Trades": 0,
+    "Transaction Costs": 0,
+    "Win Rate %": 0.0,
+    "Winning Trades": 0
+  },
+  "partition": "FULL",
+  "partition_candle_count": 453,
+  "partition_first_candle": "2026-08-24T00:00:00.000000+00:00",
+  "partition_last_candle": "2026-08-31T00:00:00.000000+00:00",
+  "provenance": {
+    "cost_model_status": "COST_MODEL_INCOMPLETE",
+    "provider": "deriv",
+    "provider_symbol": "frxXAUUSD",
+    "selection_policy": "largest_local_cache_then_lexical",
+    "source": "Deriv public historical WebSocket"
+  },
+  "result_hash": "sha256:90cb63af8e00e8bdf9b293fa3199af8b77028811f5cc0b79c513b56e2aea5f36",
+  "run_fingerprint": "sha256:0e19ef2fb838503d98eb56556245d069197fbf28eff662c23d5a441502785ec7",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "XAUUSD",
+  "timeframe": "M15"
+}
