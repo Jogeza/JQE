@@ -522,10 +522,8 @@ class ConfirmedEntryBacktestEngine(BacktestEngine):
 
         history = dataframe.iloc[: index + 1]
         regime = str(detect_regime(history))
-        expected_regime = (
-            "TREND_UP" if self._pending.direction == "BUY" else "TREND_DOWN"
-        )
-        if index == confirmation_index and regime == expected_regime:
+        expected_regime = confirmation_expected_regime(self._pending.direction)
+        if index == confirmation_index and confirmation_regime_passes(self._pending.direction, regime):
             self._confirmed_entry_index = index + 1
             self.decisions.append(BacktestDecision(
                 candle_index=index,
@@ -559,6 +557,19 @@ class ConfirmedEntryBacktestEngine(BacktestEngine):
     def finish(self, final_index: int, dataframe: pd.DataFrame) -> None:
         super().finish(final_index, dataframe)
         self._confirmed_entry_index = None
+
+
+def confirmation_expected_regime(direction: str) -> str:
+    """Single confirmation rule shared by historical research paths."""
+    if direction == "BUY":
+        return "TREND_UP"
+    if direction == "SELL":
+        return "TREND_DOWN"
+    raise ValueError("confirmation direction must be BUY or SELL")
+
+
+def confirmation_regime_passes(direction: str, observed_regime: str) -> bool:
+    return observed_regime == confirmation_expected_regime(direction)
 
 
 async def run_variant_backtest(

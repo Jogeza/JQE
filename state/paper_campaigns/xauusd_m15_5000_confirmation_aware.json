@@ -1,0 +1,464 @@
+{
+  "boundary_reason": "CAMPAIGN_BOUNDARY",
+  "boundary_state": "INCOMPLETE_CONFIRMATION",
+  "metrics": {
+    "authorized_entries": 55,
+    "average_pnl": "0.1224648404392697354545454545",
+    "average_r": "0.4898593617911785115261089349",
+    "best_r": "3.377916701151571260569222271",
+    "block_reasons": {
+      "Confidence too low": 273,
+      "Confirmation candle regime NO_TRADE failed TREND_UP requirement": 23,
+      "MAX_OPEN_POSITIONS": 124,
+      "MISSING_CONFIRMATION_CANDLE": 6,
+      "MISSING_ENTRY_CANDLE": 3,
+      "NO_SIGNAL": 3675
+    },
+    "breakeven": 0,
+    "by_direction": {
+      "BUY": {
+        "average_r": "1.944987487463363867007521761",
+        "block_reasons": {
+          "Confidence too low": 196,
+          "MAX_OPEN_POSITIONS": 98,
+          "MISSING_CONFIRMATION_CANDLE": 4,
+          "MISSING_ENTRY_CANDLE": 2
+        },
+        "closed_trades": 28,
+        "entries": 37,
+        "net_pnl": "13.61491241136422673",
+        "observations": 1196,
+        "signals": 1196
+      },
+      "NO_SIGNAL": {
+        "average_r": "-1.019162398165161857121282144",
+        "block_reasons": {
+          "Confidence too low": 77,
+          "Confirmation candle regime NO_TRADE failed TREND_UP requirement": 23,
+          "MAX_OPEN_POSITIONS": 26,
+          "MISSING_CONFIRMATION_CANDLE": 2,
+          "MISSING_ENTRY_CANDLE": 1,
+          "NO_SIGNAL": 3675
+        },
+        "closed_trades": 27,
+        "entries": 18,
+        "net_pnl": "-6.87934618720439128",
+        "observations": 3804,
+        "signals": 0
+      }
+    },
+    "by_momentum": {
+      "BUY": {
+        "count": 1196
+      },
+      "NO_SIGNAL": {
+        "count": 3804
+      },
+      "SELL": {
+        "count": 0
+      }
+    },
+    "by_regime": {
+      "NO_TRADE": {
+        "average_r": "-1.016276841914434806107821300",
+        "block_reasons": {
+          "Confidence too low": 26,
+          "Confirmation candle regime NO_TRADE failed TREND_UP requirement": 23,
+          "MAX_OPEN_POSITIONS": 4,
+          "NO_SIGNAL": 2028
+        },
+        "closed_trades": 23,
+        "entries": 9,
+        "net_pnl": "-5.84359184063682925",
+        "observations": 2081,
+        "signals": 0
+      },
+      "RANGE": {
+        "average_r": null,
+        "block_reasons": {
+          "Confidence too low": 1,
+          "NO_SIGNAL": 354
+        },
+        "closed_trades": 0,
+        "entries": 1,
+        "net_pnl": "0",
+        "observations": 355,
+        "signals": 0
+      },
+      "TREND_DOWN": {
+        "average_r": "-1",
+        "block_reasons": {
+          "NO_SIGNAL": 677
+        },
+        "closed_trades": 1,
+        "entries": 0,
+        "net_pnl": "-0.24999999999316713",
+        "observations": 677,
+        "signals": 0
+      },
+      "TREND_UP": {
+        "average_r": "1.655375234275703828206963914",
+        "block_reasons": {
+          "Confidence too low": 246,
+          "MAX_OPEN_POSITIONS": 120,
+          "MISSING_CONFIRMATION_CANDLE": 6,
+          "MISSING_ENTRY_CANDLE": 3,
+          "NO_SIGNAL": 616
+        },
+        "closed_trades": 31,
+        "entries": 45,
+        "net_pnl": "12.82915806478983183",
+        "observations": 1887,
+        "signals": 1196
+      }
+    },
+    "by_volatility": {
+      "HIGH_VOLATILITY": {
+        "count": 0
+      },
+      "LOW_VOLATILITY": {
+        "count": 0
+      },
+      "UNKNOWN": {
+        "count": 5000
+      }
+    },
+    "closed_positions": 55,
+    "confidence_distribution": {
+      "41-60": {
+        "confirmation_rate": "2.325581395348837209302325581",
+        "confirmations": 57,
+        "count": 2451,
+        "signal_directions": {
+          "NO_SIGNAL": 2451
+        }
+      },
+      "61-80": {
+        "confirmation_rate": "15.61396626127893291486857591",
+        "confirmations": 398,
+        "count": 2549,
+        "signal_directions": {
+          "BUY": 1196,
+          "NO_SIGNAL": 1353
+        }
+      }
+    },
+    "confirmation_analysis": {
+      "BUY": {
+        "block_reasons": {
+          "Confidence too low": 196,
+          "MAX_OPEN_POSITIONS": 98,
+          "MISSING_CONFIRMATION_CANDLE": 4,
+          "MISSING_ENTRY_CANDLE": 2
+        },
+        "confirmations": 374,
+        "observations": 1196,
+        "signals": 1196
+      }
+    },
+    "confirmation_failures": [
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "WEAK",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "70",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "HIGH"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "50",
+        "direction": "NO_SIGNAL",
+        "momentum": "WEAK",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      },
+      {
+        "confidence": "60",
+        "direction": "NO_SIGNAL",
+        "momentum": "NEUTRAL",
+        "reason": "Confirmation candle regime NO_TRADE failed TREND_UP requirement",
+        "regime": "NO_TRADE",
+        "volatility": "NORMAL"
+      }
+    ],
+    "confirmations": 455,
+    "consecutive_losses": 5,
+    "consecutive_wins": 4,
+    "directions": {
+      "BUY": 1196,
+      "NO_SIGNAL": 3804
+    },
+    "exit_distribution": {
+      "STOP_LOSS": {
+        "average_pnl": "-0.2825683741299191281481481481",
+        "average_r": "-1.130273496589875375745288059",
+        "count": 27,
+        "median_r": "-1"
+      },
+      "TAKE_PROFIT": {
+        "average_pnl": "0.5130325830595589967857142857",
+        "average_r": "2.052130332372909045680670321",
+        "count": 28,
+        "median_r": "2"
+      }
+    },
+    "expectancy": "0.1224648404392697354545454545",
+    "funnel": {
+      "authorization_rate": "12.08791208791208791208791209",
+      "closed": 55,
+      "confirmation_evaluated": 478,
+      "confirmation_evaluation_rate": "39.96655518394648829431438127",
+      "confirmation_failed": 23,
+      "confirmation_pass_rate": "95.18828451882845188284518828",
+      "confirmation_rate": "38.04347826086956521739130435",
+      "confirmed": 455,
+      "entry_rate": "100",
+      "observations": 5000,
+      "opened": 55,
+      "open_rate": "30.72625698324022346368715084",
+      "policy_admitted": 55,
+      "policy_admission_rate": "30.72625698324022346368715084",
+      "policy_evaluated": 179,
+      "policy_evaluation_rate": "100",
+      "raw_signal_rate": "23.9200",
+      "raw_signals": 1196,
+      "risk_authorized": 179,
+      "risk_authorization_rate": "39.60176991150442477876106195",
+      "risk_evaluated": 452,
+      "risk_evaluation_rate": "99.34065934065934065934065934",
+      "strategy_candidate_rate": "23.9200",
+      "strategy_candidates": 1196,
+      "close_rate": "100"
+    },
+    "gross_loss": "7.62934610150781646",
+    "gross_profit": "14.36491232566765191",
+    "losses": 27,
+    "max_drawdown": "1.33657512833504906",
+    "median_pnl": "0.49999982677736478",
+    "median_r": "1.999999307136631270586702843",
+    "net_pnl": "6.73556622415983545",
+    "observations": 5000,
+    "opened_positions": 55,
+    "profit_factor": "1.882849740271798664358857321",
+    "rejection_layers": {
+      "CONFIRMATION_FILTERS": 29,
+      "DATA_QUALITY_BLOCKS": 3,
+      "RISK_BLOCKS": 124,
+      "STRATEGY_FILTERS": 3948
+    },
+    "safety_contexts": {
+      "HISTORICAL_RESEARCH": 5000
+    },
+    "sample_size_insufficient": false,
+    "sample_sufficiency": {
+      "buy_sample_sufficient": true,
+      "closed_trades_sufficient": true,
+      "confirmations_sufficient": true,
+      "observations_sufficient": true,
+      "regime_coverage_sufficient": true,
+      "sell_sample_sufficient": false,
+      "signals_sufficient": true
+    },
+    "schema_version": 2,
+    "signals": 1196,
+    "source_modes": {
+      "DERIV_CANDLESTORE_READ_ONLY": 5000
+    },
+    "stale_data_events": 0,
+    "strategy_evaluations": 5000,
+    "win_rate": "50.90909090909090909090909091",
+    "wins": 28,
+    "worst_r": "-2.562275449101796407185628743"
+  },
+  "research_safety_assumptions": {
+    "broker_execution_enabled": false,
+    "daily_loss_percent": 0.0,
+    "daily_trade_count": 0,
+    "emergency_stop": "CLEAR_DETERMINISTIC_RESEARCH_ASSUMPTION",
+    "idempotency_source": "DURABLE_RESEARCH_INTENT_STORE",
+    "offline_local_only": true,
+    "position_source": "DETERMINISTIC_PAPER_CONTRACT_ENGINE"
+  },
+  "safety_context": "HISTORICAL_RESEARCH",
+  "schema_version": 1,
+  "session": {
+    "completed_at": "2026-09-08T20:33:17.175042+00:00",
+    "configuration_hash": "214e4ac087a18260d0d967f1de3e972f626a05b4b281be5db1dacd10d11831ca",
+    "created_at": "2026-09-08T20:30:25.420692+00:00",
+    "dataset_identity": "sha256:410f0fdf77b6ad64fc3488cb6b32b742d4039ccb8c0fdae3ff2684c1adc3ec40",
+    "first_candle": "2025-11-10T12:15:00+00:00",
+    "gaps_encountered": 62,
+    "gaps_skipped": 0,
+    "git_commit": "c7a9b594c6f0c7141bda83d4b89456b7d1c0f2c0",
+    "last_candle": "2026-02-27T14:30:00+00:00",
+    "processed_observations": 5000,
+    "requested_observations": 5000,
+    "session_id": "5c21eedef7684bdd980bd1378eb92662",
+    "status": "COMPLETED",
+    "strategy_id": "strategy.pipeline.generate_trading_signal",
+    "symbol": "XAUUSD",
+    "termination_reason": "TARGET_REACHED",
+    "timeframe": "M15"
+  }
+}

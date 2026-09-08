@@ -8,6 +8,14 @@ from dataclasses import replace
 from broker.types import ClosedMarketObservation, Timeframe
 from tools import paper_campaign
 from research.paper_diagnostics import PaperDiagnosticsStore
+from research.historical_safety import ExecutionContextKind, HistoricalResearchSafetyContext
+
+
+def _safety():
+    return HistoricalResearchSafetyContext(
+        kind=ExecutionContextKind.HISTORICAL_RESEARCH, symbol="XAUUSD",
+        max_daily_loss_percent=5.0, max_daily_trades=20,
+    )
 
 
 def _observations(count: int) -> list[ClosedMarketObservation]:
@@ -23,14 +31,14 @@ def _observations(count: int) -> list[ClosedMarketObservation]:
 def test_campaign_is_local_only_and_writes_atomic_summary(monkeypatch, tmp_path, capsys):
     observations = _observations(503)
     monkeypatch.setattr(paper_campaign, "_campaign_observations", lambda symbol, timeframe, count: (observations, "sha256:test", []))
-    async def decide(_window):
+    async def decide(_window, **_kwargs):
         return None, {"signal_direction": "NO_TRADE", "regime": "TEST"}
     monkeypatch.setattr(paper_campaign, "evaluate_production_decision", decide)
 
     output = tmp_path / "campaign.json"
     summary = asyncio.run(paper_campaign.run_campaign(
         symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=output, diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
+        output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
     ))
 
     assert summary["session"]["status"] == "COMPLETED"
@@ -43,14 +51,14 @@ def test_campaign_is_local_only_and_writes_atomic_summary(monkeypatch, tmp_path,
 def test_campaign_resume_does_not_duplicate_records(monkeypatch, tmp_path):
     observations = _observations(503)
     monkeypatch.setattr(paper_campaign, "_campaign_observations", lambda symbol, timeframe, count: (observations, "sha256:test", []))
-    async def decide(_window):
+    async def decide(_window, **_kwargs):
         return None, {"signal_direction": "NO_TRADE", "regime": "TEST"}
     monkeypatch.setattr(paper_campaign, "evaluate_production_decision", decide)
 
     output = tmp_path / "campaign.json"
     first = asyncio.run(paper_campaign.run_campaign(
         symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=output, diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
+        output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
     ))
     store = PaperDiagnosticsStore(tmp_path / "diagnostics.sqlite3")
     session = store.session(first["session"]["session_id"])
@@ -58,7 +66,7 @@ def test_campaign_resume_does_not_duplicate_records(monkeypatch, tmp_path):
     store.finish(replace(session, ended_at=None, status="RUNNING", termination_reason=None))
     resumed = asyncio.run(paper_campaign.run_campaign(
         symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=output, diagnostics_path=tmp_path / "diagnostics.sqlite3", session_id=first["session"]["session_id"], resume=True, quiet=True,
+        output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", session_id=first["session"]["session_id"], resume=True, quiet=True,
     ))
 
     assert resumed["session"]["processed_observations"] == 3
@@ -68,18 +76,18 @@ def test_campaign_resume_does_not_duplicate_records(monkeypatch, tmp_path):
 def test_new_campaign_session_does_not_reuse_prior_runtime_state(monkeypatch, tmp_path):
     observations = _observations(503)
     monkeypatch.setattr(paper_campaign, "_campaign_observations", lambda symbol, timeframe, count: (observations, "sha256:test", []))
-    async def decide(_window):
+    async def decide(_window, **_kwargs):
         return None, {"signal_direction": "NO_TRADE", "regime": "TEST"}
     monkeypatch.setattr(paper_campaign, "evaluate_production_decision", decide)
 
     output = tmp_path / "campaign.json"
     first = asyncio.run(paper_campaign.run_campaign(
         symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=output, diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
+        output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
     ))
     second = asyncio.run(paper_campaign.run_campaign(
         symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=tmp_path / "second.json", diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
+        output=tmp_path / "second.json", safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
     ))
 
     assert first["session"]["session_id"] != second["session"]["session_id"]
@@ -89,7 +97,7 @@ def test_new_campaign_session_does_not_reuse_prior_runtime_state(monkeypatch, tm
 def test_campaign_failure_marks_session_failed(monkeypatch, tmp_path):
     observations = _observations(501)
     monkeypatch.setattr(paper_campaign, "_campaign_observations", lambda symbol, timeframe, count: (observations, "sha256:test", []))
-    async def decide(_window):
+    async def decide(_window, **_kwargs):
         return None, {"signal_direction": "NO_TRADE", "regime": "TEST"}
     monkeypatch.setattr(paper_campaign, "evaluate_production_decision", decide)
     def fail_append(_store, _record):
@@ -100,7 +108,7 @@ def test_campaign_failure_marks_session_failed(monkeypatch, tmp_path):
     try:
         asyncio.run(paper_campaign.run_campaign(
             symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=1,
-            output=output, diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
+            output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", quiet=True,
         ))
     except RuntimeError:
         pass

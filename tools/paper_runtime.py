@@ -54,6 +54,9 @@ async def _source() -> list[ClosedMarketObservation]:
 
 async def evaluate_production_decision(
     observations: list[ClosedMarketObservation],
+    *, execution_context: ExecutionContext | None = None,
+    signal_override: dict[str, object] | None = None,
+    entry_price: float | None = None,
 ) -> tuple[PaperEntry | None, dict[str, object]]:
     frame = pd.DataFrame([{
         "time": item.candle_opened_at, "open": item.open, "high": item.high,
@@ -64,7 +67,7 @@ async def evaluate_production_decision(
     frame = calculate_indicators(frame)
     regime = detect_regime(frame)
     strategy_started = perf_counter()
-    signal = generate_trading_signal(frame, settings.default_symbol, regime=regime)
+    signal = signal_override or generate_trading_signal(frame, settings.default_symbol, regime=regime)
     facts: dict[str, object] = {
         "regime": str(regime),
         "signal_direction": str(signal.get("signal", "NO_TRADE")),
@@ -85,9 +88,10 @@ async def evaluate_production_decision(
     latest = frame.iloc[-1]
     intelligence = dict(signal.get("intelligence", {}))
     intelligence.setdefault("atr", latest.get("ATR", latest.get("ATR_14")))
+    effective_entry = float(latest["close"]) if entry_price is None else float(entry_price)
     plan = TradePlanBuilder(atr_sl_multiplier=2.0, target_rr=2.0).build(
         symbol=settings.default_symbol, intelligence=intelligence,
-        signal_dict=signal, price=float(latest["close"]),
+        signal_dict=signal, price=effective_entry,
     )
     if not plan.is_valid():
         facts["block_reason"] = "INVALID_TRADE_PLAN"
@@ -95,7 +99,7 @@ async def evaluate_production_decision(
     side = OrderSide(plan.signal)
     sizing = authorize_execution_quantity(
         broker="simulation", balance=settings.account_balance,
-        risk_percent=risk["risk_percent"], entry=float(latest["close"]),
+        risk_percent=risk["risk_percent"], entry=effective_entry,
         stop_loss=plan.stop_loss,
     )
     if sizing.quantity is None or sizing.quantity.unit is not ExecutionQuantityUnit.SIMULATION_UNITS:
@@ -104,31 +108,58 @@ async def evaluate_production_decision(
     facts["authorized_quantity"] = sizing.quantity.value
     key = build_execution_idempotency_key(
         symbol=settings.default_symbol, side=side.value, quantity=sizing.quantity,
-        entry=float(latest["close"]), stop_loss=plan.stop_loss,
+        entry=effective_entry, stop_loss=plan.stop_loss,
         take_profit=plan.take_profit, signal_time=latest["time"],
     )
     intent = ExecutionIntent(
         symbol=settings.default_symbol, side=side, quantity=sizing.quantity,
         authorized_risk_amount=sizing.authorized_risk_amount,
         expected_loss_at_stop=sizing.expected_loss_at_stop,
-        quantity_risk_verified=sizing.risk_verifiable, entry=float(latest["close"]),
+        quantity_risk_verified=sizing.risk_verifiable, entry=effective_entry,
         stop_loss=plan.stop_loss, take_profit=plan.take_profit,
         idempotency_key=key, risk_approved=True,
     )
-    context = ExecutionContext(
-        emergency_stop=settings.emergency_stop.value != "CLEAR",
-        daily_loss_percent=0.0, max_daily_loss_percent=settings.max_daily_loss,
-        daily_trade_count=0, max_daily_trades=settings.max_trades_daily,
-        open_positions=(), max_open_positions=1, used_idempotency_keys=frozenset(),
-        execution_enabled=True, dry_run=False, broker="simulation",
-        environment="paper_continuous", account_id="PAPER",
-        approved_brokers=frozenset({"simulation"}),
-        approved_environments=frozenset({"paper_continuous"}),
-        approved_accounts=frozenset({"PAPER"}),
-        approved_symbols=frozenset({settings.default_symbol.upper()}),
-        daily_state_authoritative=True,
-    )
+    context = execution_context or ExecutionContext(
+            emergency_stop=settings.emergency_stop.value != "CLEAR",
+            daily_loss_percent=0.0, max_daily_loss_percent=settings.max_daily_loss,
+            daily_trade_count=0, max_daily_trades=settings.max_trades_daily,
+            open_positions=(), max_open_positions=1, used_idempotency_keys=frozenset(),
+            execution_enabled=True, dry_run=False, broker="simulation",
+            environment="paper_continuous", account_id="PAPER",
+            approved_brokers=frozenset({"simulation"}),
+            approved_environments=frozenset({"paper_continuous"}),
+            approved_accounts=frozenset({"PAPER"}),
+            approved_symbols=frozenset({settings.default_symbol.upper()}),
+            daily_state_authoritative=True,
+        )
     return PaperEntry(intent, context), facts
+
+
+async def evaluate_strategy_candidate(
+    observations: list[ClosedMarketObservation],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Evaluate only the canonical strategy through the current closed candle."""
+    frame = pd.DataFrame([{
+        "time": item.candle_opened_at, "open": item.open, "high": item.high,
+        "low": item.low, "close": item.close, "volume": item.volume, "source": item.source,
+    } for item in observations])
+    if not validate_market_data(frame):
+        raise ValueError("paper runtime market data failed validation")
+    frame = calculate_indicators(frame)
+    regime = detect_regime(frame)
+    started = perf_counter()
+    signal = generate_trading_signal(frame, settings.default_symbol, regime=regime)
+    intelligence = dict(signal.get("intelligence", {}))
+    return signal, {
+        "regime": str(regime),
+        "signal_direction": str(signal.get("signal", "NO_TRADE")),
+        "signal_confidence": signal.get("confidence"),
+        "confirmation_state": "NOT_EVALUATED",
+        "risk_authorization_state": "NOT_EVALUATED",
+        "momentum": intelligence.get("momentum", intelligence.get("momentum_state")),
+        "volatility": intelligence.get("volatility", intelligence.get("volatility_state")),
+        "strategy_duration_ms": (perf_counter() - started) * 1000,
+    }
 
 
 async def _production_decision(observations: list[ClosedMarketObservation]) -> PaperEntry | None:

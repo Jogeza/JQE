@@ -154,9 +154,12 @@ class PaperContractEngine:
     def propose(
         self, *, idempotency_key: str, side: OrderSide, stake: Decimal,
         stop_loss: Decimal, take_profit: Decimal, observation: ClosedMarketObservation,
+        entry_price: Decimal | None = None,
     ) -> PaperProposal:
         self.specification.validate_stake(stake)
-        entry = self._d(observation.reference_price)
+        entry = self._d(observation.reference_price) if entry_price is None else _money(entry_price, "entry_price")
+        if entry <= 0:
+            raise ValueError("entry_price must be positive")
         if side is OrderSide.BUY and not stop_loss < entry < take_profit:
             raise ValueError("BUY paper levels are invalid")
         if side is OrderSide.SELL and not take_profit < entry < stop_loss:
@@ -323,6 +326,7 @@ class PaperContractExecutionGateway:
         *,
         observed_at: datetime,
         authorized_risk_amount: Decimal,
+        entry_price: Decimal | None = None,
     ) -> None:
         if not observation.is_closed_at(observed_at):
             raise ValueError("paper market observation is not closed")
@@ -332,6 +336,7 @@ class PaperContractExecutionGateway:
         self.authorized_risk_amount = _money(
             authorized_risk_amount, "authorized_risk_amount", nonnegative=True
         )
+        self.entry_price = entry_price
 
     async def get_positions(self) -> list[Position]:
         return [
@@ -359,6 +364,7 @@ class PaperContractExecutionGateway:
             stop_loss=Decimal(str(order.stop_loss)),
             take_profit=Decimal(str(order.take_profit)),
             observation=self.observation,
+            entry_price=self.entry_price,
         )
         if proposal.maximum_loss > self.authorized_risk_amount:
             raise ValueError("paper maximum loss exceeds authorized risk")

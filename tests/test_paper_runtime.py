@@ -135,6 +135,20 @@ async def test_open_position_updates_then_take_profit_closes_and_reconciles(tmp_
 
 
 @pytest.mark.asyncio
+async def test_closed_contract_is_not_observed_again_on_later_cycles(tmp_path):
+    source = AsyncMock(return_value=[obs(0)])
+    decide = AsyncMock(side_effect=[entry(), None, None])
+    subject = runtime(tmp_path, source, decide)
+    await subject.run_once()
+    source.return_value = [obs(1, high=103)]
+    closed = await subject.run_once()
+    assert closed.last_error is None and closed.open_paper_positions == 0
+    source.return_value = [obs(2)]
+    later = await subject.run_once()
+    assert later.last_error is None
+
+
+@pytest.mark.asyncio
 async def test_notification_failure_is_downstream_only(tmp_path):
     gateway = AsyncMock()
     gateway.send.side_effect = RuntimeError("telegram unavailable")

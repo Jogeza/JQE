@@ -14,7 +14,7 @@ from statistics import median
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STRATEGY_ID = "strategy.pipeline.generate_trading_signal"
 _DECIMAL_FIELDS = {
     "signal_confidence", "authorized_quantity", "realized_pnl", "realized_r",
@@ -38,6 +38,10 @@ class PaperObservationRecord:
     signal_direction: str = "NO_SIGNAL"
     signal_confidence: Decimal | None = None
     confirmation_state: str = "NOT_EVALUATED"
+    confirmation_reason: str | None = None
+    momentum: str | None = None
+    volatility: str | None = None
+    safety_context: str | None = None
     execution_decision: str = "NOT_EVALUATED"
     block_reason: str | None = None
     risk_authorization_state: str = "NOT_EVALUATED"
@@ -277,7 +281,13 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
         }
 
     signals = sum(item.signal_direction != "NO_SIGNAL" for item in items)
+    confirmation_evaluated = sum(
+        item.confirmation_state in {"CONFIRMED", "CONFIRMATION_FAILED"} for item in items
+    )
     confirmations = sum(item.confirmation_state == "CONFIRMED" for item in items)
+    risk_evaluated = sum(item.risk_authorization_state != "NOT_EVALUATED" for item in items)
+    risk_authorized = sum(item.risk_authorization_state == "AUTHORIZED" for item in items)
+    policy_evaluated = sum(item.execution_decision != "NOT_EVALUATED" for item in items)
     authorized_entries = sum(item.execution_decision == "ALLOWED" for item in items)
     opened_positions = sum(item.entry_event is not None for item in items)
     closed_positions = len(trades)
@@ -285,6 +295,13 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
     confirmation_rate = (Decimal(confirmations) / Decimal(signals)) if signals else None
     authorization_rate = (Decimal(authorized_entries) / Decimal(confirmations)) if confirmations else None
     entry_rate = (Decimal(opened_positions) / Decimal(authorized_entries)) if authorized_entries else None
+    confirmation_evaluation_rate = (Decimal(confirmation_evaluated) / Decimal(signals)) if signals else None
+    confirmation_pass_rate = (Decimal(confirmations) / Decimal(confirmation_evaluated)) if confirmation_evaluated else None
+    risk_evaluation_rate = (Decimal(risk_evaluated) / Decimal(confirmations)) if confirmations else None
+    risk_authorization_rate = (Decimal(risk_authorized) / Decimal(risk_evaluated)) if risk_evaluated else None
+    policy_evaluation_rate = (Decimal(policy_evaluated) / Decimal(risk_authorized)) if risk_authorized else None
+    policy_admission_rate = (Decimal(authorized_entries) / Decimal(policy_evaluated)) if policy_evaluated else None
+    close_rate = (Decimal(closed_positions) / Decimal(opened_positions)) if opened_positions else None
     confidence_distribution = {}
     for bucket in ("0-20", "21-40", "41-60", "61-80", "81-100"):
         subset = tuple(item for item in items if _confidence_bucket(item.signal_confidence) == bucket)
@@ -349,14 +366,27 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
         "sample_size_insufficient": len(items) < minimum_sample,
         "funnel": {
             "observations": len(items),
+            "strategy_candidates": signals,
             "raw_signals": signals,
-            "confirmation_evaluated": sum(item.confirmation_state != "NOT_EVALUATED" for item in items),
+            "confirmation_evaluated": confirmation_evaluated,
+            "confirmation_failed": sum(item.confirmation_state == "CONFIRMATION_FAILED" for item in items),
             "confirmed": confirmations,
-            "risk_authorized": authorized_entries,
+            "risk_evaluated": risk_evaluated,
+            "risk_authorized": risk_authorized,
+            "policy_evaluated": policy_evaluated,
             "policy_admitted": authorized_entries,
             "opened": opened_positions,
             "closed": closed_positions,
             "raw_signal_rate": str(raw_signal_rate * 100) if raw_signal_rate is not None else None,
+            "strategy_candidate_rate": str(raw_signal_rate * 100) if raw_signal_rate is not None else None,
+            "confirmation_evaluation_rate": str(confirmation_evaluation_rate * 100) if confirmation_evaluation_rate is not None else None,
+            "confirmation_pass_rate": str(confirmation_pass_rate * 100) if confirmation_pass_rate is not None else None,
+            "risk_evaluation_rate": str(risk_evaluation_rate * 100) if risk_evaluation_rate is not None else None,
+            "risk_authorization_rate": str(risk_authorization_rate * 100) if risk_authorization_rate is not None else None,
+            "policy_evaluation_rate": str(policy_evaluation_rate * 100) if policy_evaluation_rate is not None else None,
+            "policy_admission_rate": str(policy_admission_rate * 100) if policy_admission_rate is not None else None,
+            "open_rate": str(entry_rate * 100) if entry_rate is not None else None,
+            "close_rate": str(close_rate * 100) if close_rate is not None else None,
             "confirmation_rate": str(confirmation_rate * 100) if confirmation_rate is not None else None,
             "authorization_rate": str(authorization_rate * 100) if authorization_rate is not None else None,
             "entry_rate": str(entry_rate * 100) if entry_rate is not None else None,
@@ -366,4 +396,16 @@ def summarize(records: Iterable[PaperObservationRecord], *, minimum_sample: int 
         "by_volatility": by_volatility,
         "by_momentum": by_momentum,
         "sample_sufficiency": sample_sufficiency,
+        "safety_contexts": dict(Counter(item.safety_context or "UNSPECIFIED" for item in items)),
+        "confirmation_failures": [
+            {
+                "direction": item.signal_direction,
+                "regime": item.regime,
+                "confidence": str(item.signal_confidence) if item.signal_confidence is not None else None,
+                "momentum": item.momentum,
+                "volatility": item.volatility,
+                "reason": item.confirmation_reason,
+            }
+            for item in items if item.confirmation_state == "CONFIRMATION_FAILED"
+        ],
     }

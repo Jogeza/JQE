@@ -172,6 +172,8 @@ class ContinuousPaperRuntime:
                     return self.heartbeat
                 closed_count = 0
                 for position in self.engine.positions:
+                    if position.state.value == "CLOSED":
+                        continue
                     if observation.canonical_symbol == position.symbol and observation.closed_at > position.last_observed_at:
                         closed = self.engine.observe(position.contract_id, observation)
                         if closed is not None:
@@ -189,6 +191,7 @@ class ContinuousPaperRuntime:
                     venue = PaperContractExecutionGateway(
                         self.engine, observation, observed_at=now,
                         authorized_risk_amount=__import__("decimal").Decimal(str(entry.intent.authorized_risk_amount)),
+                        entry_price=__import__("decimal").Decimal(str(entry.intent.entry)),
                     )
                     result = await AsyncTradeExecutor(venue, self.records).submit(entry.intent, entry.context)
                     if result.state is ReconciliationState.ALREADY_EXECUTED and result.order_id:
