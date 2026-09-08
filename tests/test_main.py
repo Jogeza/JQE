@@ -9,6 +9,7 @@ the behavior of any specific broker or the strategy/risk logic itself.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -34,17 +35,20 @@ def _durable_simulation_settings(tmp_path):
         settings.intent_store_path,
         settings.execution_safety_store_path,
         settings.emergency_stop,
+        settings.market_data_source,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
+    settings.market_data_source = "simulation"
     yield
     (
         settings.broker,
         settings.intent_store_path,
         settings.execution_safety_store_path,
         settings.emergency_stop,
+        settings.market_data_source,
     ) = original
 
 
@@ -77,6 +81,9 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
             filled_price=100.0,
         )
     )
+    async def submit_from_observation(order, observation):
+        return await gateway.submit_order(order)
+    gateway.submit_order_from_market_observation = AsyncMock(side_effect=submit_from_observation)
     return gateway
 
 
@@ -94,13 +101,21 @@ def _valid_candle() -> MagicMock:
     return candle
 
 
+@asynccontextmanager
+async def _empty_market_source(_settings):
+    class Source:
+        async def get_candles(self, **_kwargs):
+            return []
+    yield Source(), "fixture"
+
+
 class TestRun:
     @patch("main.get_gateway")
     async def test_raises_market_data_error_when_no_candles(
         self, mock_get_gateway: MagicMock
     ) -> None:
         mock_get_gateway.return_value = _fake_gateway([])
-        with pytest.raises(MarketDataError):
+        with patch("main.resolved_market_source", _empty_market_source), pytest.raises(MarketDataError):
             await main.run()
 
     @patch("main.validate_market_data", return_value=False)
@@ -125,7 +140,7 @@ class TestRun:
     async def test_gateway_context_manager_always_exits(self, mock_get_gateway: MagicMock) -> None:
         gateway = _fake_gateway([])
         mock_get_gateway.return_value = gateway
-        with pytest.raises(MarketDataError):
+        with patch("main.resolved_market_source", _empty_market_source), pytest.raises(MarketDataError):
             await main.run()
         gateway.__aexit__.assert_called_once()
 

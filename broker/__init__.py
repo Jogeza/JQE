@@ -19,6 +19,7 @@ from broker.simulation_gateway import SimulationGateway
 from broker.types import (
     AccountInfo,
     Candle,
+    ClosedMarketObservation,
     OrderRequest,
     OrderResult,
     OrderSide,
@@ -36,6 +37,7 @@ __all__ = [
     "AccountInfo",
     "BrokerGateway",
     "Candle",
+    "ClosedMarketObservation",
     "DerivGateway",
     "MT5Gateway",
     "OrderRequest",

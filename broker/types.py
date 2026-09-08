@@ -12,8 +12,9 @@ broker is configured.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+import math
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -122,6 +123,58 @@ class Candle(BaseModel):
     close: float
     volume: float | None = None
     source: str = "unknown"
+
+
+class ClosedMarketObservation(BaseModel):
+    """An immutable, broker-neutral closed candle used by one execution cycle.
+
+    This is factual market context only.  It deliberately contains no account,
+    authority, strategy, or risk fields.  ``closed_at`` is the proven boundary
+    after which the provider candle may be evaluated.
+    """
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+    canonical_symbol: str
+    source: str
+    provider_symbol: str
+    timeframe: Timeframe
+    candle_opened_at: datetime
+    closed_at: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        for name in ("canonical_symbol", "source", "provider_symbol"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must be nonblank")
+        if self.candle_opened_at.tzinfo is None or self.closed_at.tzinfo is None:
+            raise ValueError("market observation timestamps must be timezone-aware")
+        if self.closed_at <= self.candle_opened_at:
+            raise ValueError("closed_at must be after candle_opened_at")
+        values = (self.open, self.high, self.low, self.close)
+        if not all(math.isfinite(value) and value > 0 for value in values):
+            raise ValueError("market observation OHLC values must be positive and finite")
+        if self.high < max(self.open, self.close) or self.low > min(self.open, self.close):
+            raise ValueError("market observation OHLC invariants failed")
+        if self.low > self.high:
+            raise ValueError("market observation low cannot exceed high")
+        if self.volume is not None and (not math.isfinite(self.volume) or self.volume < 0):
+            raise ValueError("market observation volume must be finite and nonnegative")
+
+    @property
+    def reference_price(self) -> float:
+        """Checkpoint-1 deterministic simulation reference: the candle close."""
+        return self.close
+
+    def is_closed_at(self, observed_at: datetime) -> bool:
+        """Return true only once the provider's candle interval has elapsed."""
+        if observed_at.tzinfo is None:
+            return False
+        return observed_at.astimezone(timezone.utc) >= self.closed_at.astimezone(timezone.utc)
 
 
 class Tick(BaseModel):

@@ -26,6 +26,7 @@ from datetime import datetime, time, timezone
 import pandas as pd
 
 from broker.factory import get_gateway
+from broker.simulation_gateway import ObservedSimulationExecutionGateway
 from broker.types import OrderSide, Timeframe
 from config import EmergencyStopState, settings
 from core.data_validator import validate_market_data
@@ -33,6 +34,11 @@ from core.exceptions import ConfigurationError, ExecutionError, JQEError, Market
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
+from data.market_observation import (
+    closed_observations_from_candles,
+    provider_symbol_for,
+    resolved_market_source,
+)
 from intelligence.trade_plan import TradePlanBuilder
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
@@ -208,15 +214,49 @@ async def run() -> None:
                 ),
             )
 
-        candles = await gateway.get_candles(
-            symbol=settings.default_symbol,
-            timeframe=timeframe,
-            count=settings.default_candle_count,
+        # Market acquisition is deliberately independent of the execution
+        # gateway.  This prevents a simulation fill price from silently
+        # becoming the input to strategy/risk evaluation.
+        provider_symbol = provider_symbol_for(
+            canonical_symbol=settings.default_symbol,
+            source=settings.market_data_source,
         )
-        if not candles:
-            raise MarketDataError("Market data unavailable", symbol=settings.default_symbol)
-
-        df = pd.DataFrame([candle.model_dump() for candle in candles])
+        async with resolved_market_source(settings) as (market_source, source_name):
+            candles = await market_source.get_candles(
+                symbol=provider_symbol,
+                timeframe=timeframe,
+                # Ask for one extra candle because the provider's latest
+                # interval can still be forming and must be excluded.
+                count=settings.default_candle_count + 1,
+            )
+        observations = closed_observations_from_candles(
+            candles=candles,
+            canonical_symbol=settings.default_symbol,
+            provider_symbol=provider_symbol,
+            source=source_name,
+            timeframe=timeframe,
+        )
+        if len(observations) < settings.default_candle_count:
+            raise MarketDataError(
+                "Insufficient provably closed market candles",
+                symbol=settings.default_symbol,
+            )
+        observations = observations[-settings.default_candle_count :]
+        market_observation = observations[-1]
+        df = pd.DataFrame(
+            [
+                {
+                    "time": observation.candle_opened_at,
+                    "open": observation.open,
+                    "high": observation.high,
+                    "low": observation.low,
+                    "close": observation.close,
+                    "volume": observation.volume,
+                    "source": observation.source,
+                }
+                for observation in observations
+            ]
+        )
 
         if not validate_market_data(df):
             raise MarketDataError("Market data failed validation", symbol=settings.default_symbol)
@@ -266,6 +306,10 @@ async def run() -> None:
             return
 
         latest = df.iloc[-1]
+        if (
+            plan_symbol := signal.get("symbol", settings.default_symbol)
+        ) and str(plan_symbol).strip().upper() != market_observation.canonical_symbol:
+            raise ExecutionError("Signal symbol does not match the market observation")
         builder = TradePlanBuilder(atr_sl_multiplier=2.0, target_rr=2.0)
 
         # Fallback to df for intelligence if missing ATR
@@ -322,6 +366,8 @@ async def run() -> None:
         )
 
         normalized_symbol = plan.symbol.strip().upper()
+        if normalized_symbol != market_observation.canonical_symbol:
+            raise ExecutionError("Trade plan symbol does not match the market observation")
         idempotency_key = build_execution_idempotency_key(
             symbol=normalized_symbol,
             side=side.value,
@@ -379,8 +425,9 @@ async def run() -> None:
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
         )
+        execution_gateway = ObservedSimulationExecutionGateway(gateway, market_observation)
         executor = AsyncTradeExecutor(
-            gateway,
+            execution_gateway,
             records,
             reconciler=reconciler,
             reservation_lease_seconds=settings.execution_reservation_lease_seconds,

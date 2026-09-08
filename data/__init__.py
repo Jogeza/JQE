@@ -11,6 +11,7 @@ design.
 """
 
 from data.historical import HistoricalDataService
+from data.market_observation import closed_observations_from_candles, resolved_market_source
 from data.storage import CandleStore, find_gaps
 from data.types import CacheValidationResult, SyncReport
 
@@ -18,6 +19,8 @@ __all__ = [
     "CacheValidationResult",
     "CandleStore",
     "HistoricalDataService",
+    "closed_observations_from_candles",
+    "resolved_market_source",
     "SyncReport",
     "find_gaps",
 ]

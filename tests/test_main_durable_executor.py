@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -42,12 +43,14 @@ def _restore_execution_settings(tmp_path):
         settings.environment,
         settings.emergency_stop,
         settings.execution_safety_store_path,
+        settings.market_data_source,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.environment = "development"
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
+    settings.market_data_source = "simulation"
     yield
     (
         settings.broker,
@@ -55,6 +58,7 @@ def _restore_execution_settings(tmp_path):
         settings.environment,
         settings.emergency_stop,
         settings.execution_safety_store_path,
+        settings.market_data_source,
     ) = original
 
 
@@ -94,6 +98,9 @@ def _gateway() -> MagicMock:
             side=OrderSide.BUY, volume=1.0,
         )
     )
+    async def submit_from_observation(order, observation):
+        return await gateway.submit_order(order)
+    gateway.submit_order_from_market_observation = AsyncMock(side_effect=submit_from_observation)
     return gateway
 
 
@@ -130,6 +137,14 @@ def _expected_key() -> str:
         take_profit=105.0,
         signal_time=pd.Timestamp("2026-08-29T12:00:00Z"),
     )
+
+
+@asynccontextmanager
+async def _empty_market_source(_settings):
+    class Source:
+        async def get_candles(self, **_kwargs):
+            return []
+    yield Source(), "fixture"
 
 
 def _persist_record(
@@ -264,9 +279,10 @@ async def test_failed_new_cycle_invalidates_previous_authorized_risk_observation
     assert store.read_risk().execution_quantity_available is True
 
     failed_gateway = _gateway()
-    failed_gateway.get_candles.return_value = []
-    with patch("main.get_gateway", return_value=failed_gateway):
-        with pytest.raises(Exception, match="Market data unavailable"):
+    with patch("main.get_gateway", return_value=failed_gateway), patch(
+        "main.resolved_market_source", _empty_market_source
+    ):
+        with pytest.raises(Exception, match="No provider candles are provably closed"):
             await main.run()
 
     risk = store.read_risk()
@@ -820,5 +836,5 @@ async def test_startup_continues_after_all_unresolved_intents_are_proven_accepte
         await main.run()
 
     assert store.get(_expected_key()).status is IntentRecordStatus.ACCEPTED
-    gateway.get_candles.assert_awaited_once()
+    gateway.get_candles.assert_not_awaited()
     gateway.submit_order.assert_not_awaited()

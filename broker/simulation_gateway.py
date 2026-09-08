@@ -29,6 +29,7 @@ from broker.types import (
     TIMEFRAME_SECONDS,
     AccountInfo,
     Candle,
+    ClosedMarketObservation,
     OrderRequest,
     OrderResult,
     OrderStatus,
@@ -137,11 +138,29 @@ class SimulationGateway(BrokerGateway):
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         self._require_connected()
+        return self._fill_order(order, self._price_for(order.symbol))
+
+    async def submit_order_from_market_observation(
+        self, order: OrderRequest, observation: ClosedMarketObservation
+    ) -> OrderResult:
+        """Fill a simulation-only order at its exact closed-candle context.
+
+        The checkpoint convention is explicitly *not* a quote claim: a market
+        order is filled at the supplied observation's close, with zero spread
+        and zero slippage.  The normal synthetic price state is not mutated.
+        """
+        self._require_connected()
+        if order.symbol.strip().upper() != observation.canonical_symbol.strip().upper():
+            raise ExecutionError("Simulation order symbol does not match market observation")
+        if not observation.is_closed_at(datetime.now(timezone.utc)):
+            raise ExecutionError("Simulation market observation is not closed")
+        return self._fill_order(order, observation.reference_price)
+
+    def _fill_order(self, order: OrderRequest, price: float) -> OrderResult:
         from broker.types import ExecutionQuantityUnit
         if order.quantity.unit is not ExecutionQuantityUnit.SIMULATION_UNITS:
             raise ExecutionError("Simulation requires SIMULATION_UNITS")
         quantity = order.quantity.value
-        price = self._price_for(order.symbol)
         order_id = f"SIM-{next(self._order_ids)}"
         self._positions[order_id] = Position(
             position_id=order_id,
@@ -226,3 +245,21 @@ class SimulationGateway(BrokerGateway):
     def _require_connected(self) -> None:
         if not self._connected:
             raise BrokerConnectionError("SimulationGateway is not connected — call connect() first")
+
+
+class ObservedSimulationExecutionGateway:
+    """Execution-only adapter binding one order path to one market observation.
+
+    It intentionally exposes just the executor protocol.  It never changes the
+    wrapped simulation gateway's synthetic price state.
+    """
+
+    def __init__(self, gateway: SimulationGateway, observation: ClosedMarketObservation) -> None:
+        self._gateway = gateway
+        self._observation = observation
+
+    async def get_positions(self) -> list[Position]:
+        return await self._gateway.get_positions()
+
+    async def submit_order(self, order: OrderRequest) -> OrderResult:
+        return await self._gateway.submit_order_from_market_observation(order, self._observation)

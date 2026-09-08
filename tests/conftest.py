@@ -22,7 +22,11 @@ real or mocked package to be importable at all) is tracked as Milestone
 from __future__ import annotations
 
 import sys
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def _install_mt5_stub_if_needed() -> None:
@@ -39,3 +43,37 @@ def _install_mt5_stub_if_needed() -> None:
 
 
 _install_mt5_stub_if_needed()
+
+
+@pytest.fixture(autouse=True)
+def _offline_main_market_source(monkeypatch, request):
+    """Keep orchestration tests offline after market/execution decoupling."""
+    if not request.module.__name__.startswith("tests.test_main"):
+        return
+    import main
+    from broker.types import Candle
+
+    class Source:
+        async def get_candles(self, symbol, timeframe, count):
+            # Fixed historical fixture keeps durable idempotency keys stable.
+            anchor = datetime(2026, 8, 29, 12, tzinfo=timezone.utc) - timedelta(
+                seconds=3600 * (count - 1)
+            )
+            return [
+                Candle(
+                    time=anchor + timedelta(seconds=3600 * index),
+                    open=100.0,
+                    high=102.0,
+                    low=99.0,
+                    close=101.0,
+                    volume=1.0,
+                    source="fixture",
+                )
+                for index in range(count)
+            ]
+
+    @asynccontextmanager
+    async def source_factory(settings):
+        yield Source(), "fixture"
+
+    monkeypatch.setattr(main, "resolved_market_source", source_factory)

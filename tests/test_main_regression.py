@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -76,13 +77,25 @@ class TestMainRegression:
         # Construct actual gateway
         gateway = SimulationGateway(starting_balance=10000.0, seed=42)
 
-        # Inject deterministic candles to force a BUY signal
+        # Inject deterministic market data through the independent source.
         deterministic_candles = _generate_uptrend_candles(settings.default_candle_count)
-        gateway.get_candles = AsyncMock(return_value=deterministic_candles)
+
+        @asynccontextmanager
+        async def market_source(_settings):
+            class Source:
+                async def get_candles(self, **_kwargs):
+                    return deterministic_candles
+            yield Source(), "fixture"
 
         # Spy on the gateway to verify submission
-        with patch.object(gateway, "submit_order", wraps=gateway.submit_order) as spy_submit_order:
-            with patch("main.get_gateway", return_value=gateway):
+        with patch.object(
+            gateway,
+            "submit_order_from_market_observation",
+            wraps=gateway.submit_order_from_market_observation,
+        ) as spy_submit_order:
+            with patch("main.get_gateway", return_value=gateway), patch(
+                "main.resolved_market_source", market_source
+            ):
                 # Run the actual production pipeline
                 await main.run()
 
