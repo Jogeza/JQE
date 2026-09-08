@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     deriv_options_account_id: str | None = None
     deriv_expected_environment: Literal["demo", "real"] | None = None
 
+    telegram_enabled: bool = False
+    telegram_bot_token: str | None = Field(default=None, repr=False)
+    telegram_allowed_chat_id: int | None = None
+    telegram_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
+
     default_symbol: str = "XAUUSD"
     default_timeframe: str = "M5"
     default_candle_count: int = Field(default=500, gt=0)

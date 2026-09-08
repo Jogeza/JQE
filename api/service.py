@@ -703,6 +703,14 @@ class ApplicationService:
         gateway = self._get_gateway()
         async with gateway:
             is_conn = gateway.is_connected
+            identity = getattr(gateway, "account_identity", None)
+            identity_state = getattr(gateway, "identity_state", None)
+
+        telegram_configured = bool(
+            settings.telegram_enabled
+            and settings.telegram_bot_token
+            and settings.telegram_allowed_chat_id is not None
+        )
 
         return SystemStatusResponse(
             environment=settings.environment,
@@ -713,4 +721,22 @@ class ApplicationService:
             min_confidence_threshold=settings.min_confidence_threshold,
             server_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             status="ONLINE",
+            broker_identity_state=(
+                identity_state.value
+                if identity_state is not None
+                else "NOT_APPLICABLE"
+            ),
+            broker_identity_verified_at=(
+                identity.verified_at.isoformat() if identity is not None else None
+            ),
+            broker_identity_environment=(
+                identity.environment if identity is not None else None
+            ),
+            telegram_enabled=settings.telegram_enabled,
+            telegram_configured=telegram_configured,
+            telegram_status=(
+                "READY" if telegram_configured else
+                "UNAVAILABLE" if settings.telegram_enabled else
+                "DISABLED"
+            ),
         )

@@ -288,3 +288,9 @@ class SystemStatusResponse(BaseModel):
     min_confidence_threshold: int
     server_time: str
     status: str = "ONLINE"
+    broker_identity_state: str = "NOT_APPLICABLE"
+    broker_identity_verified_at: str | None = None
+    broker_identity_environment: str | None = None
+    telegram_enabled: bool = False
+    telegram_configured: bool = False
+    telegram_status: str = "DISABLED"

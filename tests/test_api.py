@@ -643,6 +643,9 @@ class TestApiEndpointsDirect:
     async def test_system_endpoint(self, sim_service: ApplicationService) -> None:
         resp = await get_system_status(service=sim_service)
         assert resp.status == "ONLINE"
+        assert resp.broker_identity_state == "NOT_APPLICABLE"
+        assert resp.telegram_status == "DISABLED"
+        assert resp.telegram_configured is False
 
 
 class TestAppFactory:
