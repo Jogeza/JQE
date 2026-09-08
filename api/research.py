@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from pathlib import Path
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -39,6 +40,7 @@ from research.experiments import (
     ExperimentCatalog, ExperimentNotFoundError, ExperimentStatus,
     compare_experiment_records, experiment_record_dict,
 )
+from research.paper_diagnostics import PaperDiagnosticsStore, summarize
 from data.storage import find_gaps
 
 
@@ -376,6 +378,29 @@ async def _load_deriv_catalogue():
 _market_catalogue = MarketCatalogueService(_load_deriv_catalogue)
 _acquisition_jobs = AcquisitionJobRegistry()
 _experiment_catalog = ExperimentCatalog(settings.research_experiment_path)
+
+
+@router.get("/paper-diagnostics", response_model=None)
+def get_paper_diagnostics():
+    """Return a read-only aggregate of the latest paper observation session."""
+    path = Path(settings.paper_diagnostics_path).expanduser().resolve()
+    if not path.is_file():
+        return {"status": "NOT_OBSERVED", "sample_size_insufficient": True}
+    try:
+        store = PaperDiagnosticsStore(path, initialize=False)
+        session = store.latest_session()
+        if session is None:
+            return {"status": "NOT_OBSERVED", "sample_size_insufficient": True}
+        return {
+            "status": session.status,
+            "session": asdict(session),
+            "metrics": summarize(
+                store.records(session.session_id),
+                minimum_sample=settings.paper_diagnostics_minimum_sample,
+            ),
+        }
+    except Exception:
+        return {"status": "UNAVAILABLE", "sample_size_insufficient": True}
 
 
 @router.get("/experiments", response_model=ExperimentListDTO)

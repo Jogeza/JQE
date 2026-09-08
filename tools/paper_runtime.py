@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import signal as process_signal
+from time import perf_counter
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -26,14 +27,14 @@ from risk.risk_controller import approve_trade, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
 
 
-def _offline_observations() -> list[ClosedMarketObservation]:
+def _offline_observations(count: int = 510) -> list[ClosedMarketObservation]:
     """Deterministic local fixture; it performs no market or broker I/O."""
     now = datetime.now(timezone.utc)
     anchor = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
-    start = anchor - timedelta(minutes=5 * 520)
+    start = anchor - timedelta(minutes=5 * (count + 10))
     result = []
     price = 100.0
-    for index in range(510):
+    for index in range(count):
         opened = start + timedelta(minutes=5 * index)
         close = price + (0.02 if index % 3 else -0.01)
         result.append(ClosedMarketObservation(
@@ -51,7 +52,9 @@ async def _source() -> list[ClosedMarketObservation]:
     return _offline_observations()
 
 
-async def _production_decision(observations: list[ClosedMarketObservation]) -> PaperEntry | None:
+async def evaluate_production_decision(
+    observations: list[ClosedMarketObservation],
+) -> tuple[PaperEntry | None, dict[str, object]]:
     frame = pd.DataFrame([{
         "time": item.candle_opened_at, "open": item.open, "high": item.high,
         "low": item.low, "close": item.close, "volume": item.volume, "source": item.source,
@@ -60,13 +63,25 @@ async def _production_decision(observations: list[ClosedMarketObservation]) -> P
         raise ValueError("paper runtime market data failed validation")
     frame = calculate_indicators(frame)
     regime = detect_regime(frame)
+    strategy_started = perf_counter()
     signal = generate_trading_signal(frame, settings.default_symbol, regime=regime)
+    facts: dict[str, object] = {
+        "regime": str(regime),
+        "signal_direction": str(signal.get("signal", "NO_TRADE")),
+        "signal_confidence": signal.get("confidence"),
+        "confirmation_state": signal.get("confirmation_state", "NOT_EVALUATED"),
+        "strategy_duration_ms": (perf_counter() - strategy_started) * 1000,
+    }
+    risk_started = perf_counter()
     risk = approve_trade(
         {"signal": signal["signal"], "confidence": signal["confidence"]}, frame,
         balance=settings.account_balance, enforce_limits=True,
     )
+    facts["risk_duration_ms"] = (perf_counter() - risk_started) * 1000
     if not risk["approved"]:
-        return None
+        facts.update(risk_authorization_state="BLOCKED", block_reason=risk.get("reason"))
+        return None, facts
+    facts["risk_authorization_state"] = "AUTHORIZED"
     latest = frame.iloc[-1]
     intelligence = dict(signal.get("intelligence", {}))
     intelligence.setdefault("atr", latest.get("ATR", latest.get("ATR_14")))
@@ -75,7 +90,8 @@ async def _production_decision(observations: list[ClosedMarketObservation]) -> P
         signal_dict=signal, price=float(latest["close"]),
     )
     if not plan.is_valid():
-        return None
+        facts["block_reason"] = "INVALID_TRADE_PLAN"
+        return None, facts
     side = OrderSide(plan.signal)
     sizing = authorize_execution_quantity(
         broker="simulation", balance=settings.account_balance,
@@ -83,7 +99,9 @@ async def _production_decision(observations: list[ClosedMarketObservation]) -> P
         stop_loss=plan.stop_loss,
     )
     if sizing.quantity is None or sizing.quantity.unit is not ExecutionQuantityUnit.SIMULATION_UNITS:
-        return None
+        facts["block_reason"] = sizing.reason
+        return None, facts
+    facts["authorized_quantity"] = sizing.quantity.value
     key = build_execution_idempotency_key(
         symbol=settings.default_symbol, side=side.value, quantity=sizing.quantity,
         entry=float(latest["close"]), stop_loss=plan.stop_loss,
@@ -110,7 +128,12 @@ async def _production_decision(observations: list[ClosedMarketObservation]) -> P
         approved_symbols=frozenset({settings.default_symbol.upper()}),
         daily_state_authoritative=True,
     )
-    return PaperEntry(intent, context)
+    return PaperEntry(intent, context), facts
+
+
+async def _production_decision(observations: list[ClosedMarketObservation]) -> PaperEntry | None:
+    decision, _ = await evaluate_production_decision(observations)
+    return decision
 
 
 async def run(*, once: bool) -> int:

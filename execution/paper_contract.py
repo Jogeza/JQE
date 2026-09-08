@@ -133,6 +133,14 @@ class PaperContractEngine:
         return self._positions[contract_id]
 
     @property
+    def closes(self) -> tuple[PaperClose, ...]:
+        return tuple(self._closes.values())
+
+    def maximum_loss_for(self, contract_id: str) -> Decimal:
+        position = self._positions[contract_id]
+        return self._proposals[position.idempotency_key].maximum_loss
+
+    @property
     def positions(self) -> tuple[PaperPosition, ...]:
         return tuple(self._positions.values())
 

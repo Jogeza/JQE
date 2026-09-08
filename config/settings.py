@@ -165,6 +165,8 @@ class Settings(BaseSettings):
     paper_runtime_poll_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
     paper_runtime_max_backoff_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
     paper_runtime_state_path: Path = Path("state/paper_runtime.sqlite3")
+    paper_diagnostics_path: Path = Path("state/paper_diagnostics.sqlite3")
+    paper_diagnostics_minimum_sample: int = Field(default=100, gt=0)
 
     @field_validator("log_level", mode="before")
     @classmethod

@@ -74,3 +74,11 @@ class JQENotificationEvents:
             raise ValueError("unknown paper notification event")
         notification_type, title = mapping[kind]
         return await self._service.publish(Notification(notification_type, title, facts))
+
+    async def paper_summary(self, *, facts: dict[str, str], public: bool = False) -> bool:
+        safe_keys = {"Observations", "Signals", "Confirmed", "Trades", "Net R", "Drawdown R"}
+        payload = {key: value for key, value in facts.items() if not public or key in safe_keys}
+        payload["Audience"] = "PUBLIC_SANITIZED" if public else "PRIVATE_OPERATIONAL"
+        return await self._service.publish(Notification(
+            NotificationType.PAPER_PERFORMANCE, "JQE PAPER SUMMARY", payload
+        ))
