@@ -91,7 +91,11 @@ async def run() -> None:
     )
 
     if settings.broker != "simulation":
-        raise ConfigurationError("Application execution is authorized for simulation only")
+        if not (
+            settings.broker_execution_enabled
+            and settings.broker in ("deriv", "deriv_demo", "mt5", "mt5_demo")
+        ):
+            raise ConfigurationError("Application execution is authorized for simulation only")
 
     safety_store = SQLiteExecutionSafetyStore(
         settings.execution_safety_store_path, initialize=True

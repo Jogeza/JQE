@@ -78,3 +78,8 @@ class StrategyError(JQEError):
 class ExecutionError(JQEError):
     """Raised when order placement, modification, or execution fails at
     the broker or simulator level."""
+
+
+class UnsafeBrokerAccountError(ExecutionError, BrokerConnectionError):
+    """Raised when an operation is attempted against a non-demo or unverified broker account."""
+

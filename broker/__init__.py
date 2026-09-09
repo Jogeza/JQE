@@ -12,8 +12,11 @@ outside of this package — see docs/architecture.md, "Broker layer".
 """
 
 from broker.base import BrokerGateway
+from broker.demo_guard import DemoAccountVerification, DemoOnlyGuard
+from broker.deriv_demo import DerivDemoGateway
 from broker.deriv_gateway import DerivGateway
 from broker.factory import get_gateway
+from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
 from broker.types import (
@@ -32,13 +35,18 @@ from broker.types import (
     TradeHistoryCompleteness,
     TradeHistorySnapshot,
 )
+from core.exceptions import UnsafeBrokerAccountError
 
 __all__ = [
     "AccountInfo",
     "BrokerGateway",
     "Candle",
     "ClosedMarketObservation",
+    "DemoAccountVerification",
+    "DemoOnlyGuard",
+    "DerivDemoGateway",
     "DerivGateway",
+    "MT5DemoGateway",
     "MT5Gateway",
     "OrderRequest",
     "OrderResult",
@@ -52,5 +60,6 @@ __all__ = [
     "TradeHistoryEntry",
     "TradeHistoryCompleteness",
     "TradeHistorySnapshot",
+    "UnsafeBrokerAccountError",
     "get_gateway",
 ]

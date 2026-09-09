@@ -113,7 +113,8 @@ class Settings(BaseSettings):
 
     environment: Environment = "development"
 
-    broker: Literal["simulation", "mt5", "deriv"] = "simulation"
+    broker: Literal["simulation", "mt5", "deriv", "mt5_demo", "deriv_demo"] = "simulation"
+    broker_execution_enabled: bool = False
     market_data_source: Literal["simulation", "deriv_public"] = "simulation"
 
     mt5_login: int | None = None

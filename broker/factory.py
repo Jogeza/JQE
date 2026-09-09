@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from broker.base import BrokerGateway
 from broker.deriv_auth import DerivAuthConfig, DerivPATOTPSession, DerivPATOTPTransport
+from broker.deriv_demo import DerivDemoGateway
 from broker.deriv_gateway import DerivGateway
+from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
 from config import Settings
@@ -42,7 +44,7 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
     if settings.broker == "simulation":
         return SimulationGateway(starting_balance=settings.account_balance)
 
-    if settings.broker == "deriv":
+    if settings.broker in ("deriv", "deriv_demo"):
         if not settings.deriv_api_token:
             raise ConfigurationError("JQE_DERIV_API_TOKEN is required when JQE_BROKER=deriv")
         if settings.deriv_expected_environment != "demo":
@@ -62,21 +64,25 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             ),
             DerivPATOTPTransport(),
         )
-        return DerivGateway(
+        return DerivDemoGateway(
             api_token=settings.deriv_api_token,
             app_id=settings.deriv_app_id,
             endpoint=settings.deriv_endpoint,
-            expected_environment=settings.deriv_expected_environment,
+            expected_environment="demo",
             auth_session=auth_session,
         )
 
-    if settings.broker == "mt5":
-        return MT5Gateway(
+    if settings.broker in ("mt5", "mt5_demo"):
+        if settings.mt5_expected_environment is not None and settings.mt5_expected_environment != "demo":
+            raise ConfigurationError(
+                "Live/real MT5 execution is prohibited; expected_environment must be 'demo'"
+            )
+        return MT5DemoGateway(
             terminal_path=settings.mt5_terminal_path,
             login=settings.mt5_login,
             password=settings.mt5_password,
             server=settings.mt5_server,
-            expected_environment=settings.mt5_expected_environment,
+            expected_environment="demo",
             strict_lifecycle=settings.environment == "production",
         )
 
