@@ -4,9 +4,10 @@ This runner operates in real-time or bounded test cycles, pulling market data
 from DerivDemoGateway or MT5DemoGateway, evaluating the canonical strategy and
 confirmation pipeline, and submitting real broker orders via AsyncTradeExecutor.
 
-All orders are tagged for scope isolation (MT5 magic number 20260809 + comment;
-Deriv passthrough metadata) and validated through DemoOnlyGuard before any
-submission occurs.
+Campaign-opened position identifiers are durably recorded in an instance-scoped
+SQLite ledger and reconciled with broker state after restart. MT5 tags remain a
+secondary recovery path for the narrow crash window between broker acceptance
+and the ledger write. Every submission is validated through DemoOnlyGuard.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ from core.exceptions import ConfigurationError, UnsafeBrokerAccountError
 from core.logger import logger
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
-from execution.persistence import SQLiteIntentRecordStore
+from execution.persistence import SQLiteIntentRecordStore, SQLitePositionLedger
 from execution.policy import (
     ExecutionContext,
     ExecutionDecisionCode,
@@ -212,6 +213,7 @@ async def run_live_paper_campaign(
     gateway: DerivDemoGateway | MT5DemoGateway | None = None,
     output: Path = Path("state/live_paper_campaigns/latest.json"),
     evidence_path: Path | None = None,
+    ledger_path: Path | None = None,
     session_id: str | None = None,
     max_candles: int | None = None,
     max_duration_seconds: float | None = None,
@@ -271,6 +273,7 @@ async def run_live_paper_campaign(
     output.parent.mkdir(parents=True, exist_ok=True)
     evidence_path = evidence_path or output.with_name(f"{output.stem}.{session_id}.evidence.sqlite3")
     intent_path = output.with_name(f"{output.stem}.{session_id}.intents.sqlite3")
+    ledger_path = ledger_path or output.with_name(f"{output.stem}.positions.sqlite3")
     pending_confirmation_path = output.with_name(f"{output.stem}.{session_id}.confirmation.json")
 
     stop_conditions: dict[str, Any] = {}
@@ -342,6 +345,7 @@ async def run_live_paper_campaign(
 
     # 6. Initialize executor and guards
     intent_store = SQLiteIntentRecordStore(intent_path)
+    position_ledger = SQLitePositionLedger(ledger_path)
     executor = AsyncTradeExecutor(gateway=gateway, records=intent_store)
     rate_guard = _OrderRateGuard(
         max_orders_per_session=settings.live_paper_max_orders_per_session,
@@ -353,68 +357,131 @@ async def run_live_paper_campaign(
     _open_trades: dict[str, dict[str, Any]] = {}
     _used_idempotency_keys: set[str] = set()
 
-    # 7a. Startup recovery: reconstruct any positions this campaign already
-    # opened (tagged with LIVE_MAGIC_NUMBER / JQE LivePaper comment prefix)
-    # so that rate limits and MAX_OPEN_POSITIONS are correct from the first
-    # policy check, even if the process was restarted mid-session.
+    # 7a. Startup recovery: broker state is authoritative; the stable local
+    # ledger identifies positions opened by this live-paper instance.
+    ledger_open = position_ledger.open_entries(broker=broker_name)
+    startup_query_succeeded = False
     try:
         startup_positions = tuple(await gateway.get_positions())
+        startup_query_succeeded = True
     except Exception as exc:
         logger.warning("Startup position query failed: {}", exc)
         startup_positions = ()
 
     _is_mt5 = isinstance(gateway, MT5DemoGateway)
-    _live_paper_comment_prefix = "JQE LivePaper"
+    startup_by_id = {position.position_id: position for position in startup_positions}
+    ledger_ids = {entry.position_id for entry in ledger_open}
 
-    for sp in startup_positions:
-        is_ours = False
-        if _is_mt5:
-            # MT5 positions carry magic number on the position record.
-            # We rely on the raw field if available; the Position model
-            # doesn't expose it, so we check via the gateway's underlying
-            # positions_get result — but that's not directly accessible here.
-            # As a practical proxy, we filter by comment prefix stored
-            # in the underlying deal comment. Since Position doesn't carry
-            # magic, we use comment prefix if present, otherwise we cannot
-            # distinguish; we err on the side of not claiming unknown positions.
-            # The comment field IS in the underlying mt5 position record.
-            raw_comment = getattr(sp, "_raw_comment", None) or ""
-            raw_magic = getattr(sp, "_raw_magic", None)
-            if raw_magic == LIVE_MAGIC_NUMBER:
-                is_ours = True
-            elif raw_comment.startswith(_live_paper_comment_prefix):
-                is_ours = True
-        else:
-            # Deriv: comment passthrough stored in contract metadata.
-            raw_comment = getattr(sp, "_raw_comment", None) or ""
-            if raw_comment.startswith(_live_paper_comment_prefix):
-                is_ours = True
+    if startup_query_succeeded:
+        for entry in ledger_open:
+            sp = startup_by_id.get(entry.position_id)
+            if sp is None:
+                closed_at = datetime.now(timezone.utc)
+                exit_reason = "CLOSED_WHILE_OFFLINE"
+                if _is_mt5:
+                    mt5_reason = await _fetch_mt5_close_reason(gateway, entry.position_id)
+                    if mt5_reason != "POSITION_NO_LONGER_OPEN":
+                        exit_reason = mt5_reason
+                position_ledger.mark_closed(
+                    broker=broker_name,
+                    position_id=entry.position_id,
+                    closed_at=closed_at,
+                )
+                emit("POSITION_CLOSED", closed_at, {
+                    "candidate_id": None,
+                    "symbol": entry.symbol,
+                    "side": "UNKNOWN",
+                    "position_id": entry.position_id,
+                    "broker_order_id": entry.order_id,
+                    "broker_fill_price": None,
+                    "broker_fill_time": closed_at.isoformat(),
+                    "exit_price": None,
+                    "pnl": None,
+                    "exit_reason": exit_reason,
+                    "closed_while_offline": True,
+                    "campaign_mode": "live_paper",
+                    "session_kind": "live_paper",
+                })
+                continue
 
-        if is_ours:
             _own_order_ids.add(sp.position_id)
             _open_trades[sp.position_id] = {
-                "candidate_id": None,  # not recoverable after restart
-                "symbol": sp.symbol,
-                "side": sp.side.value if hasattr(sp.side, "value") else str(sp.side),
+                "candidate_id": None,
+                "symbol": entry.symbol,
+                "side": sp.side.value,
                 "entry_price": float(sp.open_price),
+                "current_price": sp.current_price,
+                "stop_loss": sp.stop_loss,
+                "take_profit": sp.take_profit,
                 "volume": float(sp.volume),
-                "opened_at": sp.opened_at.isoformat() if sp.opened_at else None,
+                "opened_at": entry.opened_at,
                 "recovered": True,
             }
             emit("POLICY", datetime.now(timezone.utc), {
                 "result": "RECOVERED",
                 "reason_code": "POSITION_RECOVERED_ON_STARTUP",
+                "recovery_source": "LOCAL_POSITION_LEDGER",
                 "position_id": sp.position_id,
-                "symbol": sp.symbol,
-                "side": sp.side.value if hasattr(sp.side, "value") else str(sp.side),
+                "order_id": entry.order_id,
+                "symbol": entry.symbol,
+                "side": sp.side.value,
                 "volume": float(sp.volume),
                 "open_price": float(sp.open_price),
-                "note": "Inherited from prior session; counts toward open-position limits",
+                "current_price": sp.current_price,
+                "stop_loss": sp.stop_loss,
+                "take_profit": sp.take_profit,
+                "note": "Ledger-confirmed position; counts toward open-position limits",
             })
-            logger.info(
-                "Live-paper startup: recovered existing own position {} for {}",
-                sp.position_id, sp.symbol,
-            )
+
+        unmatched_positions = [
+            position for position in startup_positions
+            if position.position_id not in ledger_ids
+        ]
+        for sp in unmatched_positions:
+            if _is_mt5 and sp.magic == LIVE_MAGIC_NUMBER:
+                recovered_at = sp.opened_at or datetime.now(timezone.utc)
+                position_ledger.record_open(
+                    broker=broker_name,
+                    symbol=sp.symbol,
+                    position_id=sp.position_id,
+                    order_id=sp.position_id,
+                    opened_at=recovered_at,
+                )
+                _own_order_ids.add(sp.position_id)
+                _open_trades[sp.position_id] = {
+                    "candidate_id": None,
+                    "symbol": sp.symbol,
+                    "side": sp.side.value,
+                    "entry_price": float(sp.open_price),
+                    "current_price": sp.current_price,
+                    "stop_loss": sp.stop_loss,
+                    "take_profit": sp.take_profit,
+                    "volume": float(sp.volume),
+                    "opened_at": recovered_at.isoformat(),
+                    "recovered": True,
+                }
+                emit("POLICY", datetime.now(timezone.utc), {
+                    "result": "RECOVERED",
+                    "reason_code": "RECOVERED_VIA_MT5_TAG_FALLBACK",
+                    "recovery_source": "MT5_MAGIC_FALLBACK",
+                    "position_id": sp.position_id,
+                    "symbol": sp.symbol,
+                    "side": sp.side.value,
+                    "volume": float(sp.volume),
+                    "open_price": float(sp.open_price),
+                    "note": "Ledger row was missing; MT5 magic fallback was persisted",
+                })
+            elif not _is_mt5:
+                emit("POLICY", datetime.now(timezone.utc), {
+                    "result": "ATTENTION_REQUIRED",
+                    "reason_code": "UNMATCHED_DERIV_POSITION_ON_STARTUP",
+                    "position_id": sp.position_id,
+                    "symbol": sp.symbol,
+                    "side": sp.side.value,
+                    "volume": float(sp.volume),
+                    "ownership": "UNKNOWN",
+                    "action": "Manual review required; position was not modified or counted as campaign-owned",
+                })
 
     candles_processed = 0
     start_monotonic = time.monotonic()
@@ -519,13 +586,37 @@ async def run_live_paper_campaign(
             # Detect local vs broker mismatch
             mismatched = [oid for oid in list(_open_trades.keys()) if oid not in broker_pos_ids]
             for m_id in mismatched:
+                trade = _open_trades.pop(m_id)
                 emit("POLICY", now, {
                     "result": "MISMATCH",
                     "reason_code": "BROKER_POSITION_MISMATCH",
                     "order_id": m_id,
-                    "candidate_id": _open_trades[m_id].get("candidate_id"),
-                }, _open_trades[m_id].get("candidate_id"))
-                del _open_trades[m_id]
+                    "candidate_id": trade.get("candidate_id"),
+                }, trade.get("candidate_id"))
+                exit_reason = (
+                    await _fetch_mt5_close_reason(gateway, m_id)
+                    if _is_mt5
+                    else "POSITION_NO_LONGER_OPEN"
+                )
+                position_ledger.mark_closed(
+                    broker=broker_name,
+                    position_id=m_id,
+                    closed_at=now,
+                )
+                emit("POSITION_CLOSED", now, {
+                    "candidate_id": trade.get("candidate_id"),
+                    "symbol": trade["symbol"],
+                    "side": trade["side"],
+                    "position_id": m_id,
+                    "broker_order_id": trade.get("order_id", m_id),
+                    "broker_fill_price": float(latest.close),
+                    "broker_fill_time": now.isoformat(),
+                    "exit_price": float(latest.close),
+                    "pnl": 0.0,
+                    "exit_reason": exit_reason,
+                    "campaign_mode": "live_paper",
+                    "session_kind": "live_paper",
+                }, trade.get("candidate_id"))
 
             own_open = [p for p in broker_positions if p.position_id in _own_order_ids]
 
@@ -674,22 +765,44 @@ async def run_live_paper_campaign(
                 }, candidate_id)
             elif result.state == ReconciliationState.ALREADY_EXECUTED or result.order_id:
                 order_id = result.order_id or "ORDER_UNKNOWN"
-                _own_order_ids.add(order_id)
                 _used_idempotency_keys.add(idempotency_key)
 
                 # Look up fill details
                 cur_positions = tuple(await gateway.get_positions())
                 matched_pos = next((p for p in cur_positions if p.position_id == order_id), None)
+                if matched_pos is None:
+                    new_symbol_positions = [
+                        p for p in cur_positions
+                        if p.position_id not in broker_pos_ids
+                        and p.symbol.strip().upper() == symbol.strip().upper()
+                    ]
+                    if len(new_symbol_positions) == 1:
+                        matched_pos = new_symbol_positions[0]
+                position_id = matched_pos.position_id if matched_pos is not None else order_id
                 pos_price = getattr(matched_pos, "open_price", getattr(matched_pos, "entry_price", None)) if matched_pos else None
                 fill_price = float(pos_price) if pos_price is not None else entry_price
                 filled_vol = getattr(matched_pos, "volume", exec_quantity.value) if matched_pos else exec_quantity.value
                 filled_vol = float(filled_vol) if filled_vol else exec_quantity.value
                 is_partial = filled_vol < exec_quantity.value
 
+                # The broker fill necessarily precedes this durable write. A
+                # crash in that narrow interval can leave no ledger row; MT5's
+                # magic fallback can repair it, while Deriv requires manual
+                # review because its portfolio API returns no submission tag.
+                position_ledger.record_open(
+                    broker=broker_name,
+                    symbol=symbol,
+                    position_id=position_id,
+                    order_id=order_id,
+                    opened_at=now,
+                )
+                _own_order_ids.add(position_id)
+
                 emit("POSITION_OPENED", now, {
                     "candidate_id": candidate_id,
                     "symbol": symbol,
                     "side": side.value,
+                    "position_id": position_id,
                     "requested_price": entry_price,
                     "broker_order_id": order_id,
                     "broker_fill_price": fill_price,
@@ -702,10 +815,11 @@ async def run_live_paper_campaign(
                     "session_kind": "live_paper",
                 }, candidate_id)
 
-                _open_trades[order_id] = {
+                _open_trades[position_id] = {
                     "candidate_id": candidate_id,
                     "symbol": symbol,
                     "side": side.value,
+                    "order_id": order_id,
                     "entry_price": fill_price,
                     "volume": filled_vol,
                     "opened_at": now.isoformat(),
@@ -768,11 +882,17 @@ async def run_live_paper_campaign(
                 else:
                     exit_reason = "POSITION_NO_LONGER_OPEN"
 
+                position_ledger.mark_closed(
+                    broker=broker_name,
+                    position_id=open_oid,
+                    closed_at=now,
+                )
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
                     "symbol": trade["symbol"],
                     "side": trade["side"],
-                    "broker_order_id": open_oid,
+                    "position_id": open_oid,
+                    "broker_order_id": trade.get("order_id", open_oid),
                     "broker_fill_price": exit_price,
                     "broker_fill_time": now.isoformat(),
                     "exit_price": exit_price,
@@ -799,6 +919,7 @@ async def run_live_paper_campaign(
             "processed_candles": candles_processed,
             "orders_submitted": rate_guard._submitted,
             "evidence_path": str(evidence_path),
+            "position_ledger_path": str(ledger_path),
             "output_path": str(output),
         },
         "live_session_identity": live_identity.payload(),

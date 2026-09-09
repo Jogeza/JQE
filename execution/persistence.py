@@ -43,6 +43,137 @@ class IntentRecordInspection:
     recovery_reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PositionLedgerEntry:
+    """One campaign-opened broker position tracked across process restarts."""
+
+    broker: str
+    symbol: str
+    position_id: str
+    order_id: str
+    opened_at: str
+    closed_at: str | None = None
+
+
+class SQLitePositionLedger:
+    """Instance-scoped position identity ledger backed by durable SQLite writes.
+
+    This is recovery metadata, not authoritative position state. Every startup
+    reconciles its open rows against the broker's current position snapshot.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        resolved = Path(path).expanduser().resolve()
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        self._path = str(resolved)
+        with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS live_paper_positions (
+                    broker TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    position_id TEXT NOT NULL,
+                    order_id TEXT NOT NULL,
+                    opened_at TEXT NOT NULL,
+                    closed_at TEXT,
+                    PRIMARY KEY (broker, position_id)
+                )
+                """
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self._path, timeout=5.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=5000")
+        return connection
+
+    @staticmethod
+    def _required_text(name: str, value: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be a nonblank string")
+        return value.strip()
+
+    def record_open(
+        self,
+        *,
+        broker: str,
+        symbol: str,
+        position_id: str,
+        order_id: str,
+        opened_at: datetime,
+    ) -> None:
+        if opened_at.tzinfo is None or opened_at.utcoffset() is None:
+            raise ValueError("opened_at must be timezone-aware")
+        values = (
+            self._required_text("broker", broker),
+            self._required_text("symbol", symbol),
+            self._required_text("position_id", position_id),
+            self._required_text("order_id", order_id),
+            opened_at.astimezone(timezone.utc).isoformat(),
+        )
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute(
+                """
+                INSERT INTO live_paper_positions
+                    (broker, symbol, position_id, order_id, opened_at, closed_at)
+                VALUES (?, ?, ?, ?, ?, NULL)
+                ON CONFLICT(broker, position_id) DO UPDATE SET
+                    symbol=excluded.symbol,
+                    order_id=excluded.order_id,
+                    opened_at=excluded.opened_at,
+                    closed_at=NULL
+                """,
+                values,
+            )
+
+    def mark_closed(self, *, broker: str, position_id: str, closed_at: datetime) -> bool:
+        if closed_at.tzinfo is None or closed_at.utcoffset() is None:
+            raise ValueError("closed_at must be timezone-aware")
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            changed = connection.execute(
+                """
+                UPDATE live_paper_positions
+                SET closed_at=?
+                WHERE broker=? AND position_id=? AND closed_at IS NULL
+                """,
+                (
+                    closed_at.astimezone(timezone.utc).isoformat(),
+                    self._required_text("broker", broker),
+                    self._required_text("position_id", position_id),
+                ),
+            ).rowcount
+        return changed == 1
+
+    def open_entries(self, *, broker: str) -> tuple[PositionLedgerEntry, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT broker, symbol, position_id, order_id, opened_at, closed_at
+                FROM live_paper_positions
+                WHERE broker=? AND closed_at IS NULL
+                ORDER BY opened_at, position_id
+                """,
+                (self._required_text("broker", broker),),
+            ).fetchall()
+        return tuple(PositionLedgerEntry(**dict(row)) for row in rows)
+
+    def entries(self) -> tuple[PositionLedgerEntry, ...]:
+        """Return all rows for diagnostics and tests."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT broker, symbol, position_id, order_id, opened_at, closed_at
+                FROM live_paper_positions
+                ORDER BY opened_at, position_id
+                """
+            ).fetchall()
+        return tuple(PositionLedgerEntry(**dict(row)) for row in rows)
+
+
 _ALLOWED_TRANSITIONS: dict[IntentRecordStatus, frozenset[IntentRecordStatus]] = {
     IntentRecordStatus.PENDING: frozenset({IntentRecordStatus.ACCEPTED, IntentRecordStatus.REJECTED, IntentRecordStatus.UNKNOWN}),
     IntentRecordStatus.UNKNOWN: frozenset({IntentRecordStatus.ACCEPTED, IntentRecordStatus.REJECTED, IntentRecordStatus.UNKNOWN}),

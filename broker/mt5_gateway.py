@@ -535,6 +535,16 @@ class MT5Gateway(BrokerGateway):
                     p.time,
                     tz=timezone.utc,
                 ),
+                magic=(
+                    int(p.magic)
+                    if getattr(p, "magic", None) is not None
+                    else None
+                ),
+                comment=(
+                    str(p.comment)
+                    if getattr(p, "comment", None) is not None
+                    else None
+                ),
             )
             for p in positions
         ]

@@ -271,6 +271,8 @@ class Position(BaseModel):
     opened_at: datetime | None = None
     transaction_id: str | None = None
     contract_type: str | None = None
+    magic: int | None = None
+    comment: str | None = None
 
 
 class TradeHistoryEntry(BaseModel):

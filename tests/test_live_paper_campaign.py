@@ -8,6 +8,7 @@ from decimal import Decimal
 import json
 from pathlib import Path
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ import pytest
 from broker.demo_guard import DemoOnlyGuard
 from broker.deriv_demo import DerivDemoGateway
 from broker.mt5_demo import MT5DemoGateway
+from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
 from broker.types import (
     AccountInfo,
@@ -31,6 +33,7 @@ from broker.types import (
 from config import settings
 from core.exceptions import ConfigurationError, UnsafeBrokerAccountError
 from execution.executor import ReconciliationState
+from execution.persistence import SQLitePositionLedger
 from execution.policy import ExecutionDecisionCode
 from research.campaign_provenance import CampaignEvidenceStore
 from research.live_safety import LivePaperSafetyContext
@@ -133,6 +136,67 @@ class MockMT5DemoGateway(MT5DemoGateway):
         )
 
 
+class MockDerivDemoGateway(DerivDemoGateway):
+    """Deriv demo gateway with deterministic in-memory broker observations."""
+
+    def __init__(self, positions: list[Position] | None = None) -> None:
+        super().__init__(api_token="test-token", app_id="test-app")
+        self._connected = True
+        self._demo_verified = True
+        self._account_id = "VRTC90001"
+        self._currency = "USD"
+        self._mock_positions = list(positions or [])
+        self.submitted_orders: list[OrderRequest] = []
+        self._candle_call_count = 0
+
+    async def connect(self) -> None:
+        self._connected = True
+        self._demo_verified = True
+
+    async def disconnect(self) -> None:
+        self._connected = False
+
+    async def get_account_info(self) -> AccountInfo:
+        return AccountInfo(
+            account_id=self._account_id,
+            balance=10000.0,
+            currency="USD",
+            equity=10000.0,
+        )
+
+    async def get_candles(self, symbol, timeframe, count, end=None) -> list[Candle]:
+        self._candle_call_count += 1
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(
+            minutes=15 * self._candle_call_count
+        )
+        return _generate_candles(count, start=start)
+
+    async def get_positions(self) -> list[Position]:
+        return list(self._mock_positions)
+
+    async def submit_order(self, order: OrderRequest) -> OrderResult:
+        self.submitted_orders.append(order)
+        position_id = f"CONTRACT-{len(self.submitted_orders)}"
+        self._mock_positions.append(
+            Position(
+                position_id=position_id,
+                symbol=order.symbol,
+                side=order.side,
+                volume=order.quantity.value,
+                open_price=10.0,
+                current_price=10.0,
+            )
+        )
+        return OrderResult(
+            order_id=position_id,
+            status=OrderStatus.FILLED,
+            symbol=order.symbol,
+            side=order.side,
+            volume=order.quantity.value,
+            filled_price=10.0,
+        )
+
+
 @pytest.fixture(autouse=True)
 def configure_settings(monkeypatch):
     monkeypatch.setattr(settings, "campaign_mode", "live_paper")
@@ -188,6 +252,12 @@ async def test_happy_path_completes_and_records_position_opened(tmp_path, monkey
     assert facts["broker_fill_price"] == 2000.0
     assert facts["partial_fill"] is False
     assert facts["campaign_mode"] == "live_paper"
+    ledger_entries = SQLitePositionLedger(
+        summary["session"]["position_ledger_path"]
+    ).open_entries(broker="mt5_demo")
+    assert len(ledger_entries) == 1
+    assert ledger_entries[0].position_id == "ORDER-1"
+    assert ledger_entries[0].order_id == "ORDER-1"
 
 
 # 2. Non-demo gateway (SimulationGateway) raises ConfigurationError
@@ -685,20 +755,15 @@ async def test_mt5_close_reason_sl_confirmed(tmp_path, monkeypatch):
         return candles
     monkeypatch.setattr(gateway, "get_candles", advancing_candles)
 
-    # Pre-seed local state by patching _open_trades/_own_order_ids.
-    # We achieve this by injecting a recovered position via _raw_magic.
-    class TaggedPosition(Position):
-        _raw_magic: int = live_paper_campaign.LIVE_MAGIC_NUMBER
-
-    tagged = TaggedPosition(
+    tagged = Position(
         position_id=order_id,
         symbol="XAUUSD",
         side=OrderSide.BUY,
         volume=0.01,
         open_price=2000.0,
         current_price=2000.0,
+        magic=live_paper_campaign.LIVE_MAGIC_NUMBER,
     )
-    tagged._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER
     gateway._mock_positions = [tagged]
 
     summary = await run_live_paper_campaign(
@@ -715,6 +780,11 @@ async def test_mt5_close_reason_sl_confirmed(tmp_path, monkeypatch):
     assert len(closed_events) >= 1
     assert closed_events[0]["facts"]["exit_reason"] == "BROKER_SL"
     assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
+    ledger_entries = SQLitePositionLedger(
+        summary["session"]["position_ledger_path"]
+    ).entries()
+    assert len(ledger_entries) == 1
+    assert ledger_entries[0].closed_at is not None
 
 
 # 19. No history_deals_get result falls back to neutral label
@@ -740,8 +810,8 @@ async def test_close_reason_no_history_falls_back_to_neutral(tmp_path, monkeypat
         volume=0.01,
         open_price=2000.0,
         current_price=2000.0,
+        magic=live_paper_campaign.LIVE_MAGIC_NUMBER,
     )
-    tagged_position._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER  # type: ignore
     gateway._mock_positions = [tagged_position]
 
     candle_counter = 0
@@ -776,30 +846,39 @@ async def test_close_reason_no_history_falls_back_to_neutral(tmp_path, monkeypat
     assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
 
 
-# 20. Startup recovery: pre-existing tagged position is recognized and counts toward limits
+# 20. MT5 tag fallback: missing ledger row is recovered and counts toward limits
 @pytest.mark.asyncio
-async def test_startup_recovery_counts_tagged_position_toward_limit(tmp_path, monkeypatch):
-    """A tagged position already open before the campaign starts must be:
-    - Detected and emitted as POSITION_RECOVERED_ON_STARTUP evidence.
-    - Added to _own_order_ids and _open_trades immediately.
-    - Counted against MAX_OPEN_POSITIONS so no second position is opened.
-    """
-    gateway = MockMT5DemoGateway()
+async def test_mt5_tag_fallback_counts_position_toward_limit(tmp_path, monkeypatch):
+    class ParsingMT5DemoGateway(MockMT5DemoGateway):
+        async def get_positions(self) -> list[Position]:
+            return await MT5Gateway.get_positions(self)
+
+    gateway = ParsingMT5DemoGateway()
     output_path = tmp_path / "out.json"
     evidence_path = tmp_path / "evidence.sqlite3"
 
-    # Seed a pre-existing live-paper position (tagged via _raw_magic).
     existing_id = "EXISTING-001"
-    pre_existing = Position(
-        position_id=existing_id,
+    native_position = SimpleNamespace(
+        ticket=existing_id,
         symbol="XAUUSD",
-        side=OrderSide.BUY,
+        type=0,
         volume=0.01,
-        open_price=2000.0,
-        current_price=2001.0,
+        price_open=2000.0,
+        price_current=2001.0,
+        profit=1.0,
+        sl=1990.0,
+        tp=2020.0,
+        time=1700000000,
+        magic=live_paper_campaign.LIVE_MAGIC_NUMBER,
+        comment="JQE LivePaper recovered",
     )
-    pre_existing._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER  # type: ignore
-    gateway._mock_positions = [pre_existing]
+    monkeypatch.setattr("broker.mt5_gateway.mt5.ORDER_TYPE_BUY", 0)
+    positions_get = MagicMock(return_value=[native_position])
+    monkeypatch.setattr("broker.mt5_gateway.mt5.positions_get", positions_get)
+
+    parsed_positions = await gateway.get_positions()
+    assert parsed_positions[0].magic == live_paper_campaign.LIVE_MAGIC_NUMBER
+    assert parsed_positions[0].comment == "JQE LivePaper recovered"
 
     async def mock_strategy(window):
         return {"signal": "BUY", "confidence": 85, "features": {"atr_14": 1.5}}, {"signal_direction": "BUY", "regime": "TREND_UP"}
@@ -824,13 +903,15 @@ async def test_startup_recovery_counts_tagged_position_toward_limit(tmp_path, mo
     store = CampaignEvidenceStore(evidence_path)
     events = store.events(summary["session"]["session_id"])
 
-    # 1. Startup recovery event emitted
     recovery_events = [
         e for e in events
-        if e["facts"].get("reason_code") == "POSITION_RECOVERED_ON_STARTUP"
+        if e["facts"].get("reason_code") == "RECOVERED_VIA_MT5_TAG_FALLBACK"
     ]
     assert len(recovery_events) == 1
     assert recovery_events[0]["facts"]["position_id"] == existing_id
+    assert positions_get.call_count >= 1
+    ledger = SQLitePositionLedger(summary["session"]["position_ledger_path"])
+    assert ledger.open_entries(broker="mt5_demo")[0].position_id == existing_id
 
     # 2. No new order was submitted (existing position fills the limit)
     assert len(gateway.submitted_orders) == 0
@@ -841,3 +922,152 @@ async def test_startup_recovery_counts_tagged_position_toward_limit(tmp_path, mo
         if e["facts"].get("reason_code") == "MAX_OPEN_POSITIONS"
     ]
     assert len(blocked_events) >= 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("broker_name", ["mt5_demo", "deriv_demo"])
+async def test_ledger_survives_restart_and_recovers_by_id_for_both_brokers(
+    tmp_path, monkeypatch, broker_name
+):
+    output_path = tmp_path / f"{broker_name}.json"
+    ledger_path = tmp_path / f"{broker_name}.positions.sqlite3"
+    position_id = f"{broker_name}-POSITION-1"
+    position = Position(
+        position_id=position_id,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        volume=0.25,
+        open_price=2000.0,
+        current_price=2005.0,
+        stop_loss=1990.0,
+        take_profit=2020.0,
+    )
+    SQLitePositionLedger(ledger_path).record_open(
+        broker=broker_name,
+        symbol="XAUUSD",
+        position_id=position_id,
+        order_id=f"{broker_name}-ORDER-1",
+        opened_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    if broker_name == "mt5_demo":
+        gateway = MockMT5DemoGateway()
+        gateway._mock_positions = [position]
+    else:
+        monkeypatch.setattr(settings, "broker", "deriv_demo")
+        gateway = MockDerivDemoGateway([position])
+
+    async def mock_strategy(window):
+        return {"signal": "BUY", "confidence": 85, "features": {"atr_14": 1.5}}, {"signal_direction": "BUY", "regime": "TREND_UP"}
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", mock_strategy)
+
+    def mock_observe(self, ts, regime):
+        return MagicMock(state="ENTRY_DUE", candidate=_mock_candidate(ts), reason="CONFIRMED")
+    monkeypatch.setattr(live_paper_campaign.HistoricalConfirmationState, "observe", mock_observe)
+
+    evidence_path = tmp_path / f"{broker_name}.restart.evidence.sqlite3"
+    summary = await run_live_paper_campaign(
+        gateway=gateway,
+        output=output_path,
+        evidence_path=evidence_path,
+        ledger_path=ledger_path,
+        max_candles=1,
+    )
+    events = CampaignEvidenceStore(evidence_path).events(summary["session"]["session_id"])
+    recovered = [e for e in events if e["facts"].get("reason_code") == "POSITION_RECOVERED_ON_STARTUP"]
+    assert len(recovered) == 1
+    assert recovered[0]["facts"]["position_id"] == position_id
+    assert recovered[0]["facts"]["recovery_source"] == "LOCAL_POSITION_LEDGER"
+    assert any(e["facts"].get("reason_code") == "MAX_OPEN_POSITIONS" for e in events)
+    assert gateway.submitted_orders == []
+
+
+@pytest.mark.asyncio
+async def test_deriv_ledger_position_closed_while_offline(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "broker", "deriv_demo")
+    ledger_path = tmp_path / "deriv.positions.sqlite3"
+    SQLitePositionLedger(ledger_path).record_open(
+        broker="deriv_demo",
+        symbol="R_100",
+        position_id="CONTRACT-CLOSED",
+        order_id="CONTRACT-CLOSED",
+        opened_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    gateway = MockDerivDemoGateway()
+    evidence_path = tmp_path / "deriv.offline.evidence.sqlite3"
+    summary = await run_live_paper_campaign(
+        symbol="R_100",
+        gateway=gateway,
+        output=tmp_path / "deriv.json",
+        evidence_path=evidence_path,
+        ledger_path=ledger_path,
+        max_candles=1,
+    )
+    events = CampaignEvidenceStore(evidence_path).events(summary["session"]["session_id"])
+    closed = next(e for e in events if e["event_type"] == "POSITION_CLOSED")
+    assert closed["facts"]["exit_reason"] == "CLOSED_WHILE_OFFLINE"
+    assert closed["facts"]["closed_while_offline"] is True
+    assert SQLitePositionLedger(ledger_path).entries()[0].closed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_mt5_offline_close_uses_persisted_deal_reason(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "mt5.positions.sqlite3"
+    SQLitePositionLedger(ledger_path).record_open(
+        broker="mt5_demo",
+        symbol="XAUUSD",
+        position_id="MT5-CLOSED",
+        order_id="MT5-ORDER",
+        opened_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    import MetaTrader5 as mt5_mod
+    mt5_mod.DEAL_ENTRY_OUT = 1
+    mt5_mod.DEAL_ENTRY_INOUT = 2
+    history_deals_get = MagicMock(return_value=[SimpleNamespace(
+        position_id="MT5-CLOSED", entry=1, reason=5, time=1700000010,
+    )])
+    monkeypatch.setattr(mt5_mod, "history_deals_get", history_deals_get)
+    gateway = MockMT5DemoGateway()
+    evidence_path = tmp_path / "mt5.offline.evidence.sqlite3"
+    summary = await run_live_paper_campaign(
+        gateway=gateway,
+        output=tmp_path / "mt5.json",
+        evidence_path=evidence_path,
+        ledger_path=ledger_path,
+        max_candles=1,
+    )
+    events = CampaignEvidenceStore(evidence_path).events(summary["session"]["session_id"])
+    closed = next(e for e in events if e["event_type"] == "POSITION_CLOSED")
+    assert closed["facts"]["exit_reason"] == "BROKER_TP"
+    assert history_deals_get.call_count == 1
+    assert SQLitePositionLedger(ledger_path).entries()[0].closed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_deriv_unmatched_position_emits_attention_and_is_not_claimed(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "broker", "deriv_demo")
+    position = Position(
+        position_id="UNMATCHED-CONTRACT",
+        symbol="R_100",
+        side=OrderSide.BUY,
+        volume=10.0,
+        open_price=10.0,
+    )
+    gateway = MockDerivDemoGateway([position])
+    ledger_path = tmp_path / "deriv.positions.sqlite3"
+    evidence_path = tmp_path / "deriv.unmatched.evidence.sqlite3"
+    summary = await run_live_paper_campaign(
+        symbol="R_100",
+        gateway=gateway,
+        output=tmp_path / "deriv.json",
+        evidence_path=evidence_path,
+        ledger_path=ledger_path,
+        max_candles=1,
+    )
+    events = CampaignEvidenceStore(evidence_path).events(summary["session"]["session_id"])
+    unmatched = [e for e in events if e["facts"].get("reason_code") == "UNMATCHED_DERIV_POSITION_ON_STARTUP"]
+    assert len(unmatched) == 1
+    assert unmatched[0]["facts"]["result"] == "ATTENTION_REQUIRED"
+    assert unmatched[0]["facts"]["position_id"] == "UNMATCHED-CONTRACT"
+    assert SQLitePositionLedger(ledger_path).entries() == ()
+    assert not any(e["facts"].get("reason_code") == "POSITION_RECOVERED_ON_STARTUP" for e in events)

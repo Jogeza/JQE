@@ -464,6 +464,11 @@ class DerivGateway(BrokerGateway):
                 ),
                 transaction_id=(str(contract["transaction_id"]) if contract.get("transaction_id") is not None else None),
                 contract_type=str(contract.get("contract_type")) if contract.get("contract_type") is not None else None,
+                # Deriv's portfolio response schema does not return buy-request
+                # passthrough. It is echoed only on the immediate response, so
+                # a later position query cannot recover the order comment.
+                magic=None,
+                comment=None,
             )
             for contract in contracts
         ]
