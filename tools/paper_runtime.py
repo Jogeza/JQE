@@ -158,6 +158,7 @@ async def evaluate_strategy_candidate(
         "risk_authorization_state": "NOT_EVALUATED",
         "momentum": intelligence.get("momentum", intelligence.get("momentum_state")),
         "volatility": intelligence.get("volatility", intelligence.get("volatility_state")),
+        "rsi": intelligence.get("rsi"),
         "strategy_duration_ms": (perf_counter() - started) * 1000,
     }
 

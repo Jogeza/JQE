@@ -5,6 +5,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 
+import pytest
+
 from broker.types import ClosedMarketObservation, Timeframe
 from tools import paper_campaign
 from research.paper_diagnostics import PaperDiagnosticsStore
@@ -64,13 +66,11 @@ def test_campaign_resume_does_not_duplicate_records(monkeypatch, tmp_path):
     session = store.session(first["session"]["session_id"])
     assert session is not None
     store.finish(replace(session, ended_at=None, status="RUNNING", termination_reason=None))
-    resumed = asyncio.run(paper_campaign.run_campaign(
-        symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
-        output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", session_id=first["session"]["session_id"], resume=True, quiet=True,
-    ))
-
-    assert resumed["session"]["processed_observations"] == 3
-    assert resumed["metrics"]["observations"] == 3
+    with pytest.raises(ValueError, match="immutable"):
+        asyncio.run(paper_campaign.run_campaign(
+            symbol="XAUUSD", timeframe=Timeframe.M15, max_observations=3,
+            output=output, safety_context=_safety(), diagnostics_path=tmp_path / "diagnostics.sqlite3", session_id=first["session"]["session_id"], resume=True, quiet=True,
+        ))
 
 
 def test_new_campaign_session_does_not_reuse_prior_runtime_state(monkeypatch, tmp_path):

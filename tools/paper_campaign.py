@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import subprocess
+import hashlib
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -35,10 +36,43 @@ from research.historical_safety import (
     require_historical_research_context,
 )
 from research.historical_confirmation import HistoricalConfirmationState
+from research.campaign_provenance import (
+    CampaignEvidence, CampaignEvidenceStore, build_fingerprint, sha256_file,
+)
 from tools.paper_runtime import evaluate_production_decision, evaluate_strategy_candidate
 
 
 DEFAULT_OUTPUT = Path("state/paper_campaigns/latest.json")
+
+
+def _candidate_id(symbol: str, timeframe: str, signal_candle: datetime, direction: str) -> str:
+    value = f"{symbol.upper()}|{timeframe}|{signal_candle.astimezone(timezone.utc).isoformat()}|{direction}"
+    return "CANDIDATE-" + hashlib.sha256(value.encode()).hexdigest()[:24]
+
+
+def _effective_config(*, symbol: str, timeframe: Timeframe, max_observations: int, safety: HistoricalResearchSafetyContext) -> dict[str, object]:
+    """Secret-free effective inputs used by the campaign."""
+    specification = PaperContractSpecification(
+        minimum_stake=Decimal("0.000000000001"), stake_increment=Decimal("0.000000000001")
+    )
+    return {
+        "symbol": symbol.upper(), "timeframe": timeframe.value,
+        "max_observations": max_observations, "warmup_candles": 500,
+        "history_window_candles": 500, "account_balance": settings.account_balance,
+        "risk_percent": settings.risk_percent, "max_daily_loss": settings.max_daily_loss,
+        "max_daily_trades": settings.max_trades_daily,
+        "min_confidence_threshold": settings.min_confidence_threshold,
+        "max_open_positions": safety.max_open_positions,
+        "paper_minimum_stake": str(specification.minimum_stake),
+        "paper_maximum_stake": str(specification.maximum_stake),
+        "paper_stake_increment": str(specification.stake_increment),
+        "paper_fee_rate": str(specification.fee_rate),
+        "paper_slippage": str(specification.slippage),
+        "trade_plan_atr_sl_multiplier": "2.0", "trade_plan_target_rr": "2.0",
+        "paper_diagnostics_minimum_sample": settings.paper_diagnostics_minimum_sample,
+        "runtime_mode": "paper_continuous", "broker": "simulation",
+        "broker_execution_enabled": False,
+    }
 
 
 def _git_commit() -> str:
@@ -116,7 +150,7 @@ def _record(session_id: str, cycle: int, observation: ClosedMarketObservation, h
     )
 
 
-async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: int, output: Path, safety_context: HistoricalResearchSafetyContext | None, diagnostics_path: Path | None = None, session_id: str | None = None, resume: bool = False, quiet: bool = False) -> dict[str, Any]:
+async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: int, output: Path, safety_context: HistoricalResearchSafetyContext | None, diagnostics_path: Path | None = None, evidence_path: Path | None = None, session_id: str | None = None, resume: bool = False, quiet: bool = False) -> dict[str, Any]:
     if max_observations <= 0:
         raise ValueError("max-observations must be positive")
     research_safety = require_historical_research_context(safety_context)
@@ -126,6 +160,7 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
     warmup = 500
     output = output.expanduser().resolve()
     diagnostics_path = (diagnostics_path or output.with_suffix(".sqlite3")).expanduser().resolve()
+    evidence_path = (evidence_path or output.with_suffix(".evidence.sqlite3")).expanduser().resolve()
     pending_output = output.with_suffix(".pending.json")
     pending_confirmation_path = output.with_name(f"{output.stem}.{session_id or 'new'}.confirmation.json")
     diagnostics = PaperDiagnosticsStore(diagnostics_path)
@@ -135,6 +170,15 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
     if existing and existing.status == "COMPLETED":
         raise ValueError("campaign session is already complete")
     session_id = session_id or uuid4().hex
+    fingerprint = build_fingerprint(
+        root=Path(__file__).resolve().parents[1], git_commit=_git_commit(), strategy_id=STRATEGY_ID,
+        effective_config=_effective_config(symbol=symbol, timeframe=timeframe, max_observations=max_observations, safety=research_safety),
+        dataset_identity=dataset_identity, symbol=symbol, timeframe=timeframe.value,
+        first_candle=observations[warmup].closed_at.isoformat(), last_candle=observations[-1].closed_at.isoformat(),
+        requested_observations=max_observations, safety_context={"kind": research_safety.kind.value, **research_safety.assumptions},
+    )
+    evidence = CampaignEvidenceStore(evidence_path)
+    evidence.start(session_id, fingerprint)
     pending_confirmation_path = output.with_name(f"{output.stem}.{session_id}.confirmation.json")
     records = diagnostics.records(session_id) if existing else ()
     processed_times = {item.candle_close_time for item in records}
@@ -158,14 +202,44 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
         if not resume:
             confirmation.save(pending_confirmation_path)
         facts: dict[str, object] = {}
+        position_origins: dict[str, dict[str, object]] = {}
+        event_sequence = len(evidence.events(session_id))
+        def emit(event_type: str, occurred_at: datetime, event_facts: dict[str, object], candidate_id: str | None = None) -> None:
+            nonlocal event_sequence
+            event_sequence += 1
+            evidence.append(session_id, CampaignEvidence(
+                event_id=f"{event_sequence:08d}:{event_type}", event_type=event_type,
+                candidate_id=candidate_id, occurred_at=occurred_at.isoformat(), facts=event_facts,
+            ))
         async def decide(window: list[ClosedMarketObservation]):
             nonlocal facts
             signal, facts = await evaluate_strategy_candidate(window)
             facts["strategy_signal_direction"] = facts["signal_direction"]
             latest = window[-1]
+            pending_before = confirmation.pending
             transition = confirmation.observe(latest.candle_opened_at, str(facts["regime"]))
+            current_direction = str(signal.get("signal", "NO_TRADE"))
+            current_candidate_id = _candidate_id(symbol, timeframe.value, latest.candle_opened_at, current_direction) if current_direction in {"BUY", "SELL"} else None
+            if current_candidate_id is not None:
+                status = "CONFIRMATION_PENDING" if pending_before is None else "OVERLAP_PENDING_CANDIDATE"
+                emit("CANDIDATE", latest.candle_opened_at, {
+                    "symbol": symbol, "timeframe": timeframe.value, "signal_candle": latest.candle_opened_at.isoformat(),
+                    "direction": current_direction, "regime": facts.get("regime"), "confidence": facts.get("signal_confidence"),
+                    "momentum": facts.get("momentum"), "volatility": facts.get("volatility"), "rsi": facts.get("rsi"),
+                    "candidate_status": status,
+                }, current_candidate_id)
+            if transition.candidate is not None and transition.state not in {"NO_PENDING_CANDIDATE", "PENDING_CONFIRMATION"}:
+                prior = transition.candidate
+                prior_id = _candidate_id(symbol, timeframe.value, prior.signal_candle, prior.direction)
+                emit("CONFIRMATION" if transition.state in {"CONFIRMED", "CONFIRMATION_FAILED"} else "CANDIDATE_DISPOSITION", latest.candle_opened_at, {
+                    "signal_timestamp": prior.signal_candle.isoformat(), "confirmation_timestamp": latest.candle_opened_at.isoformat(),
+                    "direction": prior.direction, "signal_regime": prior.strategy_context.get("regime"),
+                    "confirmation_regime": facts.get("regime"), "result": transition.state, "reason_code": transition.reason,
+                    "confirmation_features": {"regime": facts.get("regime")},
+                }, prior_id)
             if transition.state == "ENTRY_DUE" and transition.candidate is not None:
                 candidate = transition.candidate
+                candidate_id = _candidate_id(symbol, timeframe.value, candidate.signal_candle, candidate.direction)
                 original_signal = dict(candidate.strategy_context["signal"])
                 decision, authorized_facts = await evaluate_production_decision(
                     window, execution_context=research_safety.execution_context(),
@@ -178,7 +252,31 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
                     "confirmation_reason": candidate.confirmation_reason,
                     "signal_candle": candidate.signal_candle.isoformat(),
                     "entry_candle": latest.candle_opened_at.isoformat(),
+                    "candidate_id": candidate_id,
+                    "original_regime": candidate.strategy_context.get("regime"),
+                    "original_momentum": dict(original_signal.get("intelligence", {})).get("momentum"),
+                    "original_volatility": dict(original_signal.get("intelligence", {})).get("volatility"),
                 }
+                if decision is not None:
+                    facts.update(
+                        authorized_risk_amount=str(decision.intent.authorized_risk_amount),
+                        stop_loss=str(decision.intent.stop_loss), take_profit=str(decision.intent.take_profit),
+                        stop_distance=str(abs(Decimal(str(decision.intent.entry)) - Decimal(str(decision.intent.stop_loss)))),
+                    )
+                emit("ENTRY", latest.candle_opened_at, {
+                    "expected_entry_timestamp": candidate.expected_entry_candle.isoformat(),
+                    "actual_entry_timestamp": latest.candle_opened_at.isoformat(), "entry_available": True,
+                    "entry_price": str(latest.open),
+                }, candidate_id)
+                emit("RISK", latest.candle_opened_at, {
+                    "result": facts.get("risk_authorization_state"), "reason_code": facts.get("block_reason"),
+                    "input_confidence": original_signal.get("confidence"), "account_balance": settings.account_balance,
+                    "risk_percent": settings.risk_percent, "authorized_quantity": facts.get("authorized_quantity"),
+                    "quantity_unit": "SIMULATION_UNITS" if facts.get("authorized_quantity") is not None else None,
+                    "authorized_risk_amount": facts.get("authorized_risk_amount"),
+                    "stop_distance": facts.get("stop_distance"),
+                    "risk_policy_source_hash": fingerprint.source_hashes["risk"],
+                }, candidate_id)
                 confirmation.save(pending_confirmation_path)
                 return decision
             if transition.state in {"CONFIRMED", "CONFIRMATION_FAILED", "INCOMPLETE_CONFIRMATION", "INCOMPLETE_ENTRY", "DUPLICATE_CONFIRMATION_PREVENTED"}:
@@ -229,6 +327,41 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
                     item = _record(session.session_id, cursor, observation, heartbeat, facts, began, runtime)
                     item = replace(item, dataset_identity=dataset_identity)
                     diagnostics.append(item)
+                    if facts.get("candidate_id") and heartbeat.last_action.startswith("BLOCKED:"):
+                        open_positions = [p for p in runtime.engine.positions if p.state.value != "CLOSED"]
+                        emit("POLICY", observation.candle_opened_at, {
+                            "result": "BLOCKED", "reason_code": heartbeat.last_action.split(":", 1)[1],
+                            "open_position_ids": [p.contract_id for p in open_positions],
+                            "open_position_count": len(open_positions), "max_open_positions": research_safety.max_open_positions,
+                        }, str(facts["candidate_id"]))
+                    elif facts.get("candidate_id") and heartbeat.last_action == "POSITION_OPENED":
+                        position = next(p for p in reversed(runtime.engine.positions) if p.state.value != "CLOSED")
+                        origin = {
+                            "candidate_id": str(facts["candidate_id"]), "contract_id": position.contract_id,
+                            "entry_timestamp": position.opened_at.isoformat(), "entry_price": str(position.entry),
+                            "direction": position.side.value, "original_regime": facts.get("original_regime"),
+                            "original_confidence": facts.get("signal_confidence"), "original_momentum": facts.get("original_momentum"),
+                            "original_volatility": facts.get("original_volatility"), "authorized_quantity": str(position.stake),
+                            "authorized_risk": facts.get("authorized_risk_amount"),
+                            "stop": str(position.stop_loss), "target": str(position.take_profit),
+                        }
+                        position_origins[position.contract_id] = origin
+                        emit("POLICY", observation.candle_opened_at, {"result": "ADMITTED", "reason_code": "ALLOWED", "open_position_ids": []}, str(facts["candidate_id"]))
+                        emit("POSITION_OPENED", observation.candle_opened_at, origin, str(facts["candidate_id"]))
+                    closed_event = runtime.engine.closes[-1] if (
+                        runtime.engine.closes and runtime.engine.closes[-1].closed_at == observation.closed_at
+                    ) else None
+                    if item.exit_event == "CLOSED" and closed_event is not None:
+                        closed = closed_event
+                        origin = position_origins.get(closed.contract_id, {})
+                        opened_at = next(p.opened_at for p in runtime.engine.positions if p.contract_id == closed.contract_id)
+                        seconds = int((closed.closed_at - opened_at).total_seconds())
+                        emit("POSITION_CLOSED", closed.closed_at, {
+                            **origin, "exit_timestamp": closed.closed_at.isoformat(), "exit_price": str(closed.exit_price),
+                            "exit_reason": closed.reason.value, "realized_pnl": str(closed.realized_profit),
+                            "realized_r": str(item.realized_r), "holding_duration_seconds": seconds,
+                            "holding_candles": seconds // TIMEFRAME_SECONDS[timeframe], "reconciliation_state": item.reconciliation_state,
+                        }, str(origin.get("candidate_id")) if origin else None)
                     processed = cursor - warmup
                     if not quiet and processed % 1000 == 0:
                         print(f"Progress: {processed}/{max_observations}")
@@ -237,6 +370,13 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
             if quiet:
                 jqe_logger.enable("core.data_validator")
         boundary = confirmation.finish()
+        if boundary is not None and boundary.candidate is not None:
+            boundary_candidate = boundary.candidate
+            emit("CANDIDATE_DISPOSITION", observations[-1].candle_opened_at, {
+                "result": boundary.state, "reason_code": boundary.reason,
+                "expected_confirmation_timestamp": boundary_candidate.expected_confirmation_candle.isoformat(),
+                "expected_entry_timestamp": boundary_candidate.expected_entry_candle.isoformat(),
+            }, _candidate_id(symbol, timeframe.value, boundary_candidate.signal_candle, boundary_candidate.direction))
         confirmation.save(pending_confirmation_path)
         records = diagnostics.records(session.session_id)
         metrics = summarize(records, minimum_sample=settings.paper_diagnostics_minimum_sample)
@@ -257,7 +397,11 @@ async def run_campaign(*, symbol: str, timeframe: Timeframe, max_observations: i
             for direction, group in metrics["by_direction"].items()
             if direction in {"BUY", "SELL"}
         }
-        summary = {"schema_version": 1, "safety_context": research_safety.kind.value,
+        evidence.finalize(session_id)
+        summary = {"schema_version": 2, "provenance_status": "PROVENANCE_COMPLETE",
+        "research_fingerprint": fingerprint.payload(), "evidence": {
+            "path": evidence_path.name, "sha256": sha256_file(evidence_path), "event_count": len(evidence.events(session_id)),
+        }, "safety_context": research_safety.kind.value,
         "research_safety_assumptions": research_safety.assumptions, "session": {
             "session_id": session.session_id, "git_commit": session.git_commit,
             "strategy_id": session.strategy_id, "configuration_hash": session.configuration_hash,
@@ -292,13 +436,14 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--diagnostics-path", type=Path)
+    parser.add_argument("--evidence-path", type=Path)
     args = parser.parse_args()
     safety_context = HistoricalResearchSafetyContext(
         kind=ExecutionContextKind.HISTORICAL_RESEARCH, symbol=args.symbol,
         max_daily_loss_percent=settings.max_daily_loss,
         max_daily_trades=settings.max_trades_daily, max_open_positions=1,
     )
-    summary = asyncio.run(run_campaign(symbol=args.symbol, timeframe=args.timeframe, max_observations=args.max_observations, output=args.output, safety_context=safety_context, diagnostics_path=args.diagnostics_path, session_id=args.session_id, resume=args.resume, quiet=args.quiet))
+    summary = asyncio.run(run_campaign(symbol=args.symbol, timeframe=args.timeframe, max_observations=args.max_observations, output=args.output, safety_context=safety_context, diagnostics_path=args.diagnostics_path, evidence_path=args.evidence_path, session_id=args.session_id, resume=args.resume, quiet=args.quiet))
     print(json.dumps({"status": summary["session"]["status"], "session_id": summary["session"]["session_id"], "summary": str(args.output)}, sort_keys=True))
     return 0
 

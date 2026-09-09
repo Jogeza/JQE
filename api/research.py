@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+import json
+import re
 from pathlib import Path
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -401,6 +403,31 @@ def get_paper_diagnostics(session_id: str | None = None):
         }
     except Exception:
         return {"status": "UNAVAILABLE", "sample_size_insufficient": True}
+
+
+@router.get("/campaign-provenance/{artifact_name}", response_model=None)
+def get_campaign_provenance(artifact_name: str):
+    """Expose only safe provenance metadata from a completed campaign artifact."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.json", artifact_name):
+        raise HTTPException(422, "Invalid campaign artifact name")
+    path = Path("state/paper_campaigns") / artifact_name
+    if not path.is_file():
+        raise HTTPException(404, "Campaign artifact unavailable")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    fingerprint = payload.get("research_fingerprint")
+    if not isinstance(fingerprint, dict):
+        return {
+            "artifact": artifact_name, "provenance_status": "PROVENANCE_INCOMPLETE",
+            "dataset_identity": payload.get("session", {}).get("dataset_identity"),
+            "git_commit": payload.get("session", {}).get("git_commit"),
+        }
+    return {
+        "artifact": artifact_name, "provenance_status": payload.get("provenance_status"),
+        "fingerprint_schema_version": fingerprint.get("schema_version"),
+        "research_fingerprint_sha256": fingerprint.get("research_fingerprint_sha256"),
+        "dataset_identity": fingerprint.get("dataset_identity"),
+        "git_commit": fingerprint.get("git_commit"),
+    }
 
 
 @router.get("/experiments", response_model=ExperimentListDTO)
