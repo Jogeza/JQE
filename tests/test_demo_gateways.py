@@ -118,6 +118,78 @@ class TestDerivDemoGateway:
 
 class TestMT5DemoGateway:
     @pytest.mark.asyncio
+    async def test_read_only_demo_connection_does_not_require_terminal_trading_permission(self) -> None:
+        mock_info = MagicMock(login=12345, server="DemoServer", trade_mode=0)
+        mock_term = MagicMock(connected=True, trade_allowed=False, tradeapi_disabled=False)
+        gateway = MT5DemoGateway()
+        with patch("broker.mt5_gateway.mt5_connect", return_value=True), \
+             patch("broker.mt5_gateway.mt5.account_info", return_value=mock_info), \
+             patch("broker.mt5_gateway.mt5.terminal_info", return_value=mock_term), \
+             patch("broker.mt5_demo.mt5.account_info", return_value=mock_info):
+            await gateway.connect()
+            assert gateway.is_connected is True
+            assert gateway._verify_connection_identity(require_trading=True) is False
+
+    @pytest.mark.asyncio
+    async def test_submit_never_reaches_order_send_when_terminal_trading_is_disabled(self) -> None:
+        account = MagicMock(login=12345, server="DemoServer", trade_mode=0)
+        terminal = MagicMock(connected=True, trade_allowed=False, tradeapi_disabled=False)
+        gateway = MT5DemoGateway()
+        gateway._connected = True
+        order = OrderRequest(
+            symbol="XAUUSD", side=OrderSide.BUY,
+            quantity=ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
+        )
+        with patch("broker.mt5_demo.mt5.account_info", return_value=account), \
+             patch("broker.mt5_gateway.mt5.account_info", return_value=account), \
+             patch("broker.mt5_gateway.mt5.terminal_info", return_value=terminal), \
+             patch("broker.mt5_gateway.mt5.order_send") as order_send:
+            with pytest.raises(BrokerConnectionError, match="pre-submit readiness"):
+                await gateway.submit_order(order)
+            order_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_account_currency_risk_uses_broker_profit_and_margin(self) -> None:
+        gateway = MT5DemoGateway()
+        gateway._connected = True
+        info = MagicMock(
+            trade_contract_size=100.0, trade_tick_size=0.01, trade_tick_value=1.0,
+            trade_tick_value_profit=1.0, trade_tick_value_loss=1.0, point=0.01,
+            volume_min=0.01, volume_step=0.01, volume_max=100.0,
+        )
+        account = MagicMock(currency="USD", margin_free=5000.0)
+        with patch.object(gateway, "_resolve_symbol", return_value="XAUUSD"), \
+             patch("broker.mt5_demo.mt5.symbol_info", return_value=info), \
+             patch("broker.mt5_demo.mt5.symbol_info_tick", return_value=MagicMock(ask=2000.0)), \
+             patch("broker.mt5_demo.mt5.account_info", return_value=account), \
+             patch("broker.mt5_demo.mt5.order_calc_margin", return_value=50.0), \
+             patch("broker.mt5_demo.mt5.order_calc_profit", side_effect=[-1000.0, -100.0]):
+            quantity, facts = await gateway.authorize_account_currency_risk(
+                symbol="XAUUSD", side=OrderSide.BUY, balance=10000.0,
+                risk_percent=1.0, entry=2000.0, stop_loss=1990.0,
+            )
+        assert quantity.value == 0.1
+        assert facts["authorized_risk_amount"] == 100.0
+        assert facts["expected_loss_at_stop"] == 100.0
+        assert facts["margin_requirement"] == 50.0
+
+    @pytest.mark.asyncio
+    async def test_instrument_preflight_fails_closed_on_missing_tick_value(self) -> None:
+        gateway = MT5DemoGateway()
+        gateway._connected = True
+        info = MagicMock(
+            trade_contract_size=100.0, trade_tick_size=0.01, trade_tick_value=0.0,
+            trade_tick_value_profit=0.0, trade_tick_value_loss=0.0, point=0.01,
+            volume_min=0.01,
+        )
+        with patch.object(gateway, "_resolve_symbol", return_value="XAUUSD"), \
+             patch("broker.mt5_demo.mt5.symbol_info", return_value=info), \
+             patch("broker.mt5_demo.mt5.symbol_info_tick", return_value=MagicMock(ask=2000.0)), \
+             patch("broker.mt5_demo.mt5.account_info", return_value=MagicMock(currency="USD")):
+            with pytest.raises(BrokerConnectionError, match="invalid specifications"):
+                await gateway.verify_instrument_risk_spec("XAUUSD")
+
+    @pytest.mark.asyncio
     async def test_connect_with_demo_trade_mode_succeeds(self) -> None:
         mock_info = MagicMock(login=12345, server="DemoServer", trade_mode=0)
         mock_term = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)

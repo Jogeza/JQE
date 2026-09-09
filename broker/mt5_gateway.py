@@ -144,7 +144,7 @@ class MT5Gateway(BrokerGateway):
 
         self._connected = True
 
-    def _verify_connection_identity(self) -> bool:
+    def _verify_connection_identity(self, *, require_trading: bool = False) -> bool:
         account = mt5.account_info()
         terminal = mt5.terminal_info()
         if account is None or terminal is None:
@@ -153,7 +153,10 @@ class MT5Gateway(BrokerGateway):
         if getattr(terminal, "connected", False) is not True:
             logger.error("MT5 terminal is not connected")
             return False
-        if getattr(terminal, "trade_allowed", False) is not True or getattr(terminal, "tradeapi_disabled", False) is True:
+        if require_trading and (
+            getattr(terminal, "trade_allowed", False) is not True
+            or getattr(terminal, "tradeapi_disabled", False) is True
+        ):
             logger.error("MT5 trading is disabled")
             return False
         if self.login is not None and int(getattr(account, "login", -1)) != self.login:
@@ -236,11 +239,6 @@ class MT5Gateway(BrokerGateway):
                 for rate in raw_rates
             ]
 
-        # NOTE: MarketData currently fetches on a fixed internal
-        # timeframe (H1) and does not yet accept `timeframe` — see
-        # docs/roadmap.md. Accepted here for interface conformance.
-        del timeframe
-
         real_symbol = self._resolve_symbol(symbol)
         if not real_symbol:
             raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
@@ -248,7 +246,7 @@ class MT5Gateway(BrokerGateway):
         raw_rates = await asyncio.to_thread(
             mt5.copy_rates_from_pos,
             real_symbol,
-            mt5.TIMEFRAME_H1,
+            _mt5_timeframe(timeframe),
             0,
             count,
         )
@@ -296,7 +294,7 @@ class MT5Gateway(BrokerGateway):
             raise ExecutionError("MT5 requires MT5_LOTS")
         quantity = order.quantity.value
         if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
-            if not await asyncio.to_thread(self._verify_connection_identity):
+            if not await asyncio.to_thread(self._verify_connection_identity, require_trading=True):
                 self._connected = False
                 raise BrokerConnectionError("MT5 pre-submit readiness verification failed")
 

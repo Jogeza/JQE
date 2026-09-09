@@ -10,7 +10,7 @@ from typing import Any
 
 
 FEED_EVENT_TYPES = frozenset({
-    "CANDIDATE", "CONFIRMATION", "ENTRY", "RISK", "POLICY",
+    "SIGNAL", "CANDIDATE", "CONFIRMATION", "ENTRY", "RISK", "POLICY",
     "POSITION_OPENED", "POSITION_CLOSED",
 })
 CRITICAL_REASON_CODES = frozenset({
@@ -205,7 +205,12 @@ def dashboard_snapshot(
     selected = next((item for item in sessions if item["session_id"] == session_id), sessions[0])
     events = _events(evidence_path, selected["session_id"])
     ledger = _ledger_rows(ledger_path)
-    selected = {**selected, "progress": _session_progress(selected, events)}
+    stopped = next((e for e in events if e.get("event_type") == "CAMPAIGN_STOPPED"), None)
+    selected = {
+        **selected,
+        "progress": _session_progress(selected, events),
+        "stop_reason": stopped.get("facts", {}).get("stop_reason") if stopped else None,
+    }
     return {
         "sessions": sessions,
         "selected_session": selected,

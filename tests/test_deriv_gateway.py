@@ -206,6 +206,17 @@ class TestGetCandles:
 
 
 class TestSubmitOrder:
+    def test_canonical_xauusd_maps_to_deriv_provider_symbol(self) -> None:
+        request = _build_proposal_request(
+            OrderRequest(
+                symbol="XAUUSD",
+                side=OrderSide.BUY,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+            ),
+            "USD",
+        )
+        assert request["underlying_symbol"] == "frxXAUUSD"
+
     def test_proposal_base_schema_uses_underlying_symbol_only(self) -> None:
         request = _build_proposal_request(
             OrderRequest(

@@ -103,6 +103,25 @@ class MockMT5DemoGateway(MT5DemoGateway):
             equity=self._mock_balance,
         )
 
+    async def verify_instrument_risk_spec(self, symbol: str):
+        return {
+            "symbol": symbol, "account_currency": "USD", "contract_size": 100.0,
+            "tick_size": 0.01, "tick_value": 1.0, "tick_value_profit": 1.0,
+            "tick_value_loss": 1.0, "point": 0.01, "point_value": 1.0,
+            "volume_min": 0.01, "minimum_volume_margin": 20.0,
+        }
+
+    async def authorize_account_currency_risk(
+        self, *, symbol, side, balance, risk_percent, entry, stop_loss,
+    ):
+        risk = balance * risk_percent / 100.0
+        quantity = ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS)
+        return quantity, {
+            "authorized_risk_amount": risk,
+            "expected_loss_at_stop": min(risk, 10.0),
+            "margin_requirement": 20.0,
+        }
+
     async def get_candles(self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None) -> list[Candle]:
         self._candle_call_count += 1
         start = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=15 * self._candle_call_count)
@@ -202,6 +221,7 @@ def configure_settings(monkeypatch):
     monkeypatch.setattr(settings, "campaign_mode", "live_paper")
     monkeypatch.setattr(settings, "broker_execution_enabled", True)
     monkeypatch.setattr(settings, "broker", "mt5_demo")
+    monkeypatch.setattr(settings, "deriv_expected_environment", "demo")
     monkeypatch.setattr(settings, "risk_percent", 1.0)
     monkeypatch.setattr(settings, "max_daily_loss", 5.0)
     monkeypatch.setattr(settings, "max_trades_daily", 20)
@@ -296,6 +316,22 @@ async def test_simulation_broker_raises_configuration_error(tmp_path, monkeypatc
             gateway=gateway,
             output=tmp_path / "out.json",
         )
+
+
+@pytest.mark.asyncio
+async def test_deriv_gateway_configuration_mismatch_fails_before_connect(tmp_path, monkeypatch):
+    gateway = MockDerivDemoGateway()
+    connect = AsyncMock()
+    monkeypatch.setattr(gateway, "connect", connect)
+    monkeypatch.setattr(settings, "broker", "mt5_demo")
+    with pytest.raises(ConfigurationError, match="gateway/configuration mismatch"):
+        await run_live_paper_campaign(
+            symbol="XAUUSD",
+            gateway=gateway,
+            output=tmp_path / "out.json",
+            max_candles=1,
+        )
+    connect.assert_not_awaited()
 
 
 # 5. Stop by candle count
@@ -1071,3 +1107,28 @@ async def test_deriv_unmatched_position_emits_attention_and_is_not_claimed(tmp_p
     assert unmatched[0]["facts"]["position_id"] == "UNMATCHED-CONTRACT"
     assert SQLitePositionLedger(ledger_path).entries() == ()
     assert not any(e["facts"].get("reason_code") == "POSITION_RECOVERED_ON_STARTUP" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_live_paper_excludes_in_progress_candle_from_strategy(tmp_path, monkeypatch):
+    gateway = MockMT5DemoGateway()
+    interval = timedelta(minutes=15)
+    current_open = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    candles = _generate_candles(501, start=current_open - (500 * interval))
+    observed_latest: list[datetime] = []
+
+    async def fixed_candles(symbol, timeframe, count, end=None):
+        return candles
+
+    async def capture_strategy(window):
+        observed_latest.append(window[-1].candle_opened_at)
+        return {"signal": "NO_TRADE"}, {"signal_direction": "NO_TRADE", "regime": "FLAT"}
+
+    monkeypatch.setattr(gateway, "get_candles", fixed_candles)
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", capture_strategy)
+    await run_live_paper_campaign(
+        gateway=gateway,
+        output=tmp_path / "chronology.json",
+        max_candles=1,
+    )
+    assert observed_latest == [current_open - interval]

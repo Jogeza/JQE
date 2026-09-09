@@ -72,6 +72,18 @@ from core.logger import logger
 
 DEFAULT_ENDPOINT = "wss://ws.derivws.com/websockets/v3"
 _REQUEST_TIMEOUT_SECONDS = 15.0
+_DERIV_PROVIDER_SYMBOLS = {"XAUUSD": "frxXAUUSD"}
+
+
+def _provider_symbol(symbol: str) -> str:
+    normalized = symbol.strip()
+    return _DERIV_PROVIDER_SYMBOLS.get(normalized.upper(), normalized)
+
+
+def _canonical_symbol(symbol: object) -> str:
+    value = str(symbol or "")
+    reverse = {provider: canonical for canonical, provider in _DERIV_PROVIDER_SYMBOLS.items()}
+    return reverse.get(value, value)
 
 
 def _positive_financial_number(value: Any, *, field: str) -> float:
@@ -102,7 +114,7 @@ def _build_proposal_request(order: OrderRequest, currency: str) -> dict[str, Any
     return {
         "proposal": 1,
         "contract_type": "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN",
-        "underlying_symbol": order.symbol,
+        "underlying_symbol": _provider_symbol(order.symbol),
         "amount": order.quantity.value,
         "basis": "stake",
         "currency": currency,
@@ -331,7 +343,7 @@ class DerivGateway(BrokerGateway):
         self._require_connected()
         response = await self._request(
             {
-                "ticks_history": symbol,
+                "ticks_history": _provider_symbol(symbol),
                 "style": "candles",
                 "granularity": TIMEFRAME_SECONDS[timeframe],
                 "count": count,
@@ -449,7 +461,9 @@ class DerivGateway(BrokerGateway):
         return [
             Position(
                 position_id=str(contract.get("contract_id", "")),
-                symbol=str(contract.get("symbol", "")),
+                symbol=_canonical_symbol(
+                    contract.get("underlying_symbol", contract.get("symbol", ""))
+                ),
                 side=(
                     OrderSide.BUY
                     if "UP" in str(contract.get("contract_type", ""))

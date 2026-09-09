@@ -190,12 +190,12 @@ class TestResolveSymbol:
 class TestGetCandles:
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
-    async def test_maps_unanchored_candles_with_h1(
+    async def test_maps_unanchored_candles_with_requested_timeframe(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
-        mock_mt5.TIMEFRAME_H1 = 16385
+        mock_mt5.TIMEFRAME_M15 = 15
         mock_mt5.copy_rates_from_pos.return_value = [
             {
                 "time": 1700000000,
@@ -206,12 +206,12 @@ class TestGetCandles:
                 "tick_volume": 10,
             }
         ]
-        candles = await gateway.get_candles("XAUUSD", Timeframe.H1, 1)
+        candles = await gateway.get_candles("XAUUSD", Timeframe.M15, 1)
         assert len(candles) == 1
         assert candles[0].close == 1.5
         assert candles[0].volume == 10.0
         assert candles[0].time == datetime.fromtimestamp(1700000000, tz=timezone.utc)
-        mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 16385, 0, 1)
+        mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 15, 0, 1)
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)

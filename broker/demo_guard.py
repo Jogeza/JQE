@@ -247,9 +247,8 @@ class DemoOnlyGuard:
         """Persist verification evidence event and log confirmation."""
         facts = verification.to_facts()
         logger.info(
-            "DemoOnlyGuard passed: broker={} account={} checked_field={} observed_value={}",
+            "DemoOnlyGuard passed: broker={} account=verified-redacted checked_field={} observed_value={}",
             verification.broker,
-            verification.account_id,
             verification.checked_field,
             verification.observed_value,
         )

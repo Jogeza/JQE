@@ -69,6 +69,7 @@ from broker.types import (
 from config import settings
 from core.exceptions import ConfigurationError, UnsafeBrokerAccountError
 from core.logger import logger
+from data.market_observation import closed_observations_from_candles, provider_symbol_for
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore, SQLitePositionLedger
@@ -240,6 +241,14 @@ async def run_live_paper_campaign(
             f"live_paper campaign requires demo broker, got '{settings.broker}'"
         )
 
+    broker_name = "mt5_demo" if isinstance(gateway, MT5DemoGateway) else "deriv_demo"
+    if settings.broker != broker_name:
+        raise ConfigurationError(
+            f"live_paper gateway/configuration mismatch: gateway={broker_name}, configured={settings.broker}"
+        )
+    if broker_name == "deriv_demo" and settings.deriv_expected_environment != "demo":
+        raise ConfigurationError("Deriv live-paper requires unmistakable DEMO environment")
+
     eff_max_candles = max_candles or settings.live_paper_max_candles
     eff_max_duration = max_duration_seconds or settings.live_paper_max_duration_seconds
 
@@ -253,7 +262,9 @@ async def run_live_paper_campaign(
 
     # 3. Fetch initial account details
     account = await gateway.get_account_info()
-    broker_name = "mt5_demo" if isinstance(gateway, MT5DemoGateway) else "deriv_demo"
+    mt5_preflight: Mapping[str, Any] | None = None
+    if broker_name == "mt5_demo":
+        mt5_preflight = await gateway.verify_instrument_risk_spec(symbol)
 
     # 4. Initialize safety context
     if safety_context is None:
@@ -342,6 +353,13 @@ async def run_live_paper_campaign(
                 facts=facts,
             ),
         )
+
+    if mt5_preflight is not None:
+        emit("POLICY", datetime.now(timezone.utc), {
+            "result": "AUTHORIZED",
+            "reason_code": "MT5_INSTRUMENT_RISK_PREFLIGHT_VERIFIED",
+            **{key: value for key, value in mt5_preflight.items() if key != "account_currency"},
+        })
 
     def emit_position_snapshot(positions: tuple[Position, ...], observed_at: datetime) -> None:
         """Persist broker-observed position fields for read-only monitors."""
@@ -506,6 +524,7 @@ async def run_live_paper_campaign(
     candles_processed = 0
     start_monotonic = time.monotonic()
     last_candle_time: datetime | None = None
+    stop_reason = "UNKNOWN"
 
     # 7b. Main loop
     while True:
@@ -514,9 +533,11 @@ async def run_live_paper_campaign(
         # Check stop conditions
         if eff_max_candles is not None and candles_processed >= eff_max_candles:
             logger.info("Live-paper campaign reached maximum candle count: {}", candles_processed)
+            stop_reason = "MAX_CANDLES"
             break
         if eff_max_duration is not None and (time.monotonic() - start_monotonic) >= eff_max_duration:
             logger.info("Live-paper campaign reached maximum duration: {}s", eff_max_duration)
+            stop_reason = "MAX_DURATION"
             break
 
         # Fetch candles
@@ -526,16 +547,30 @@ async def run_live_paper_campaign(
                 await asyncio.sleep(poll_interval_seconds)
             continue
 
-        latest_candle = candles[-1]
-        if last_candle_time is not None and latest_candle.time <= last_candle_time:
+        provider_symbol = provider_symbol_for(
+            canonical_symbol=symbol,
+            source="deriv_public" if broker_name == "deriv_demo" else "mt5",
+        )
+        observations = closed_observations_from_candles(
+            candles=candles,
+            canonical_symbol=symbol,
+            provider_symbol=provider_symbol,
+            source=broker_name,
+            timeframe=timeframe,
+            observed_at=now,
+        )
+        if not observations:
+            await asyncio.sleep(poll_interval_seconds if poll_interval_seconds > 0 else 0.005)
+            continue
+        latest_candle_time = observations[-1].candle_opened_at
+        if last_candle_time is not None and latest_candle_time <= last_candle_time:
             # No new closed candle yet
             await asyncio.sleep(poll_interval_seconds if poll_interval_seconds > 0 else 0.005)
             continue
 
-        last_candle_time = latest_candle.time
+        last_candle_time = latest_candle_time
         candles_processed += 1
 
-        observations = _candles_to_observations(candles, symbol, timeframe, broker_name)
         window = observations[-500:]
         latest = window[-1]
         emit("OBSERVATION", latest.candle_opened_at, {
@@ -551,6 +586,17 @@ async def run_live_paper_campaign(
         pending_before = confirmation.pending
         transition = confirmation.observe(latest.candle_opened_at, str(facts.get("regime", "UNKNOWN")))
         current_direction = str(signal.get("signal", "NO_TRADE"))
+        emit("SIGNAL", latest.candle_opened_at, {
+            "symbol": symbol,
+            "timeframe": timeframe.value,
+            "signal_candle": latest.candle_opened_at.isoformat(),
+            "direction": current_direction,
+            "confidence": facts.get("signal_confidence"),
+            "regime": facts.get("regime"),
+            "momentum": facts.get("momentum"),
+            "volatility": facts.get("volatility"),
+            "rsi": facts.get("rsi"),
+        })
         current_candidate_id = _candidate_id(symbol, timeframe.value, latest.candle_opened_at, current_direction) if current_direction in {"BUY", "SELL"} else None
 
         if current_candidate_id is not None:
@@ -680,15 +726,37 @@ async def run_live_paper_campaign(
                 stop_loss = round(entry_price + stop_distance, 4)
                 take_profit = round(entry_price - (stop_distance * 2.0), 4)
 
-            sizing = authorize_execution_quantity(
-                broker=broker_name,
-                balance=account.balance,
-                risk_percent=settings.risk_percent,
-                entry=entry_price,
-                stop_loss=stop_loss,
-            )
+            mt5_risk_facts: Mapping[str, Any] | None = None
+            if broker_name == "mt5_demo":
+                try:
+                    exec_quantity, mt5_risk_facts = await gateway.authorize_account_currency_risk(
+                        symbol=symbol,
+                        side=side,
+                        balance=account.balance,
+                        risk_percent=settings.risk_percent,
+                        entry=entry_price,
+                        stop_loss=stop_loss,
+                    )
+                except Exception as exc:
+                    emit("RISK", now, {
+                        "result": "REJECTED",
+                        "reason_code": "MT5_ACCOUNT_CURRENCY_RISK_UNVERIFIED",
+                        "reason": str(exc),
+                        "candidate_id": candidate_id,
+                    }, candidate_id)
+                    confirmation.save(pending_confirmation_path)
+                    continue
+                sizing = None
+            else:
+                sizing = authorize_execution_quantity(
+                    broker=broker_name,
+                    balance=account.balance,
+                    risk_percent=settings.risk_percent,
+                    entry=entry_price,
+                    stop_loss=stop_loss,
+                )
 
-            if not sizing.risk_verifiable or sizing.quantity is None:
+            if sizing is not None and (not sizing.risk_verifiable or sizing.quantity is None):
                 emit("RISK", now, {
                     "result": "REJECTED",
                     "reason_code": sizing.reason,
@@ -697,29 +765,8 @@ async def run_live_paper_campaign(
                 confirmation.save(pending_confirmation_path)
                 continue
 
-            raw_quantity = sizing.quantity
-            if broker_name == "mt5_demo":
-                symbol_info = None
-                if hasattr(gateway, "_resolve_symbol"):
-                    try:
-                        import MetaTrader5 as mt5  # type: ignore
-                        real_sym = gateway._resolve_symbol(symbol)
-                        symbol_info = mt5.symbol_info(real_sym)
-                    except Exception:
-                        symbol_info = None
-                floored_lots = _round_lots_to_broker_constraints(symbol_info, raw_quantity.value)
-                if floored_lots is None:
-                    emit("RISK", now, {
-                        "result": "REJECTED",
-                        "reason_code": "LOT_SIZE_INVALID",
-                        "raw_volume": raw_quantity.value,
-                        "candidate_id": candidate_id,
-                    }, candidate_id)
-                    confirmation.save(pending_confirmation_path)
-                    continue
-                exec_quantity = ExecutionQuantity(value=floored_lots, unit=ExecutionQuantityUnit.MT5_LOTS)
-            else:
-                exec_quantity = raw_quantity
+            if broker_name != "mt5_demo":
+                exec_quantity = sizing.quantity
 
             # Emit ENTRY and RISK evidence
             emit("ENTRY", latest.candle_opened_at, {
@@ -736,7 +783,18 @@ async def run_live_paper_campaign(
                 "risk_percent": settings.risk_percent,
                 "authorized_quantity": str(exec_quantity.value),
                 "quantity_unit": exec_quantity.unit.value,
-                "authorized_risk_amount": str(sizing.authorized_risk_amount),
+                "authorized_risk_amount": str(
+                    mt5_risk_facts["authorized_risk_amount"]
+                    if mt5_risk_facts is not None else sizing.authorized_risk_amount
+                ),
+                "expected_loss_at_stop": str(
+                    mt5_risk_facts["expected_loss_at_stop"]
+                    if mt5_risk_facts is not None else sizing.expected_loss_at_stop
+                ),
+                "margin_requirement": (
+                    str(mt5_risk_facts["margin_requirement"])
+                    if mt5_risk_facts is not None else None
+                ),
                 "stop_distance": str(stop_distance),
                 "risk_policy_source_hash": fingerprint.source_hashes.get("risk", ""),
             }, candidate_id)
@@ -756,8 +814,14 @@ async def run_live_paper_campaign(
                 symbol=symbol,
                 side=side,
                 quantity=exec_quantity,
-                authorized_risk_amount=sizing.authorized_risk_amount,
-                expected_loss_at_stop=sizing.expected_loss_at_stop,
+                authorized_risk_amount=(
+                    float(mt5_risk_facts["authorized_risk_amount"])
+                    if mt5_risk_facts is not None else sizing.authorized_risk_amount
+                ),
+                expected_loss_at_stop=(
+                    float(mt5_risk_facts["expected_loss_at_stop"])
+                    if mt5_risk_facts is not None else sizing.expected_loss_at_stop
+                ),
                 quantity_risk_verified=True,
                 entry=entry_price,
                 stop_loss=stop_loss,
@@ -936,8 +1000,14 @@ async def run_live_paper_campaign(
             await asyncio.sleep(poll_interval_seconds)
 
     # 8. Finalize evidence and write summary
+    emit("CAMPAIGN_STOPPED", datetime.now(timezone.utc), {
+        "stop_reason": stop_reason,
+        "candles_processed": candles_processed,
+        "orders_submitted": rate_guard._submitted,
+    })
     evidence_store.finalize(session_id)
 
+    ended_at = datetime.now(timezone.utc)
     summary: dict[str, Any] = {
         "session": {
             "session_id": session_id,
@@ -947,6 +1017,10 @@ async def run_live_paper_campaign(
             "symbol": symbol,
             "timeframe": timeframe.value,
             "processed_candles": candles_processed,
+            "started_at": started_at.isoformat(),
+            "ended_at": ended_at.isoformat(),
+            "duration_seconds": time.monotonic() - start_monotonic,
+            "stop_reason": stop_reason,
             "orders_submitted": rate_guard._submitted,
             "evidence_path": str(evidence_path),
             "position_ledger_path": str(ledger_path),
