@@ -343,6 +343,25 @@ async def run_live_paper_campaign(
             ),
         )
 
+    def emit_position_snapshot(positions: tuple[Position, ...], observed_at: datetime) -> None:
+        """Persist broker-observed position fields for read-only monitors."""
+        emit("POSITION_SNAPSHOT", observed_at, {
+            "positions": [
+                {
+                    "position_id": position.position_id,
+                    "symbol": position.symbol,
+                    "side": position.side.value,
+                    "volume": float(position.volume),
+                    "open_price": float(position.open_price),
+                    "current_price": position.current_price,
+                    "stop_loss": position.stop_loss,
+                    "take_profit": position.take_profit,
+                    "opened_at": position.opened_at.isoformat() if position.opened_at else None,
+                }
+                for position in positions
+            ],
+        })
+
     # 6. Initialize executor and guards
     intent_store = SQLiteIntentRecordStore(intent_path)
     position_ledger = SQLitePositionLedger(ledger_path)
@@ -373,6 +392,7 @@ async def run_live_paper_campaign(
     ledger_ids = {entry.position_id for entry in ledger_open}
 
     if startup_query_succeeded:
+        emit_position_snapshot(startup_positions, datetime.now(timezone.utc))
         for entry in ledger_open:
             sp = startup_by_id.get(entry.position_id)
             if sp is None:
@@ -518,6 +538,12 @@ async def run_live_paper_campaign(
         observations = _candles_to_observations(candles, symbol, timeframe, broker_name)
         window = observations[-500:]
         latest = window[-1]
+        emit("OBSERVATION", latest.candle_opened_at, {
+            "candles_processed": candles_processed,
+            "symbol": symbol,
+            "timeframe": timeframe.value,
+            "candle_time": latest.candle_opened_at.isoformat(),
+        })
 
         # Strategy evaluation
         signal, facts = await evaluate_strategy_candidate(window)
@@ -578,6 +604,7 @@ async def run_live_paper_campaign(
             # ii. Broker reconciliation (own positions only)
             try:
                 broker_positions = tuple(await gateway.get_positions())
+                emit_position_snapshot(broker_positions, now)
             except Exception as exc:
                 logger.warning("Failed to retrieve broker positions: {}", exc)
                 broker_positions = ()
@@ -810,6 +837,8 @@ async def run_live_paper_campaign(
                     "slippage": abs(fill_price - entry_price),
                     "requested_volume": exec_quantity.value,
                     "filled_volume": filled_vol,
+                    "stop_loss": matched_pos.stop_loss if matched_pos else stop_loss,
+                    "take_profit": matched_pos.take_profit if matched_pos else take_profit,
                     "partial_fill": is_partial,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
@@ -863,6 +892,7 @@ async def run_live_paper_campaign(
         # Monitor and reconcile closed positions
         try:
             cur_positions = tuple(await gateway.get_positions())
+            emit_position_snapshot(cur_positions, now)
         except Exception:
             cur_positions = ()
 

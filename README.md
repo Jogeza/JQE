@@ -101,6 +101,22 @@ connection required. Both currently stop after market analysis / data
 preparation — see "A significant discovery" in `docs/architecture.md`
 for why the signal → risk → execution stage isn't wired in yet.
 
+### Read-only live-paper dashboard
+
+Monitor a running or completed live-paper session locally with the evidence
+database and its instance-scoped position ledger:
+
+```powershell
+& D:\JQE\venv\Scripts\python.exe -m monitoring.dashboard `
+  --evidence state\live-paper.evidence.sqlite3 `
+  --ledger state\live-paper.positions.sqlite3
+```
+
+Then open `http://127.0.0.1:8765`. The browser refreshes every three seconds;
+use `--refresh-seconds`, `--host`, or `--port` to override those defaults. The
+monitor opens both SQLite files with `mode=ro` and `query_only`, and contains no
+broker imports or execution controls.
+
 ## Development workflow
 
 1. Read `docs/architecture.md` and `docs/roadmap.md` before starting —

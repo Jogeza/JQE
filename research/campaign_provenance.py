@@ -216,11 +216,17 @@ class CampaignEvidenceStore:
         self.path = path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
+            # WAL keeps short-lived monitoring readers from blocking the
+            # campaign's append transactions.
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
             connection.execute("CREATE TABLE IF NOT EXISTS campaign(session_id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status TEXT NOT NULL)")
             connection.execute("CREATE TABLE IF NOT EXISTS evidence(session_id TEXT NOT NULL,event_id TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(session_id,event_id))")
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path, timeout=5.0)
+        connection = sqlite3.connect(self.path, timeout=5.0)
+        connection.execute("PRAGMA busy_timeout=5000")
+        return connection
 
     def start(self, session_id: str, fingerprint: ResearchFingerprint) -> None:
         payload = canonical_json(fingerprint.payload())
