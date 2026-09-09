@@ -626,3 +626,218 @@ async def test_pending_order_timeout(tmp_path, monkeypatch):
         events = store.events(summary["session"]["session_id"])
         timeout_events = [e for e in events if e["event_type"] == "ENTRY_TIMEOUT"]
         assert len(timeout_events) >= 1
+
+
+# 18. MT5 confirmed SL-hit records honest exit_reason "BROKER_SL"
+@pytest.mark.asyncio
+async def test_mt5_close_reason_sl_confirmed(tmp_path, monkeypatch):
+    """When history_deals_get returns a DEAL_REASON_SL closing deal,
+    the POSITION_CLOSED evidence must carry exit_reason='BROKER_SL',
+    not the fabricated 'BROKER_SL_TP' label.
+    """
+    gateway = MockMT5DemoGateway()
+    output_path = tmp_path / "out.json"
+    evidence_path = tmp_path / "evidence.sqlite3"
+
+    # Seed one open position that will disappear after the first candle.
+    order_id = "SL-HIT-001"
+    gateway._mock_positions.append(Position(
+        position_id=order_id,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        volume=0.01,
+        open_price=2000.0,
+        current_price=1990.0,
+    ))
+    # Add order_id to the local trade tracking so the campaign knows it's ours.
+    # We exercise _fetch_mt5_close_reason by having the position disappear.
+    # The campaign will query history_deals_get after position disappears.
+
+    # Mock history_deals_get to return a closing deal with reason=4 (DEAL_REASON_SL).
+    sl_deal = MagicMock()
+    sl_deal.position_id = order_id
+    sl_deal.reason = 4  # _MT5_DEAL_REASON_SL -> "BROKER_SL"
+    sl_deal.time = 1700000000
+
+    import MetaTrader5 as mt5_mod
+    mt5_mod.DEAL_ENTRY_OUT = 1
+    mt5_mod.DEAL_ENTRY_INOUT = 2
+    sl_deal.entry = 1  # DEAL_ENTRY_OUT
+    mt5_mod.history_deals_get = MagicMock(return_value=[sl_deal])
+
+    # Patch _fetch_mt5_close_reason to use our mock
+    # (We call it via asyncio.to_thread; ensure history_deals_get is patched.)
+    async def mock_strategy(window):
+        return {"signal": "NO_TRADE"}, {"signal_direction": "NO_TRADE", "regime": "FLAT"}
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", mock_strategy)
+
+    candle_counter = 0
+    async def advancing_candles(symbol, timeframe, count, end=None):
+        nonlocal candle_counter
+        candle_counter += 1
+        candles = _generate_candles(
+            count,
+            start=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=15 * candle_counter),
+        )
+        # Simulate position disappearing after first candle.
+        if candle_counter > 1 and gateway._mock_positions:
+            gateway._mock_positions.clear()
+        return candles
+    monkeypatch.setattr(gateway, "get_candles", advancing_candles)
+
+    # Pre-seed local state by patching _open_trades/_own_order_ids.
+    # We achieve this by injecting a recovered position via _raw_magic.
+    class TaggedPosition(Position):
+        _raw_magic: int = live_paper_campaign.LIVE_MAGIC_NUMBER
+
+    tagged = TaggedPosition(
+        position_id=order_id,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        volume=0.01,
+        open_price=2000.0,
+        current_price=2000.0,
+    )
+    tagged._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER
+    gateway._mock_positions = [tagged]
+
+    summary = await run_live_paper_campaign(
+        symbol="XAUUSD",
+        gateway=gateway,
+        output=output_path,
+        evidence_path=evidence_path,
+        max_candles=2,
+    )
+
+    store = CampaignEvidenceStore(evidence_path)
+    events = store.events(summary["session"]["session_id"])
+    closed_events = [e for e in events if e["event_type"] == "POSITION_CLOSED"]
+    assert len(closed_events) >= 1
+    assert closed_events[0]["facts"]["exit_reason"] == "BROKER_SL"
+    assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
+
+
+# 19. No history_deals_get result falls back to neutral label
+@pytest.mark.asyncio
+async def test_close_reason_no_history_falls_back_to_neutral(tmp_path, monkeypatch):
+    """When history_deals_get returns no results, exit_reason must be
+    'POSITION_NO_LONGER_OPEN', not the fabricated 'BROKER_SL_TP'.
+    """
+    import MetaTrader5 as mt5_mod
+    mt5_mod.DEAL_ENTRY_OUT = 1
+    mt5_mod.DEAL_ENTRY_INOUT = 2
+    mt5_mod.history_deals_get = MagicMock(return_value=None)  # no history
+
+    gateway = MockMT5DemoGateway()
+    output_path = tmp_path / "out.json"
+    evidence_path = tmp_path / "evidence.sqlite3"
+
+    order_id = "CLOSED-UNKNOWN"
+    tagged_position = Position(
+        position_id=order_id,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        volume=0.01,
+        open_price=2000.0,
+        current_price=2000.0,
+    )
+    tagged_position._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER  # type: ignore
+    gateway._mock_positions = [tagged_position]
+
+    candle_counter = 0
+    async def advancing_candles(symbol, timeframe, count, end=None):
+        nonlocal candle_counter
+        candle_counter += 1
+        if candle_counter > 1:
+            gateway._mock_positions.clear()
+        return _generate_candles(
+            count,
+            start=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=15 * candle_counter),
+        )
+    monkeypatch.setattr(gateway, "get_candles", advancing_candles)
+
+    async def mock_strategy(window):
+        return {"signal": "NO_TRADE"}, {"signal_direction": "NO_TRADE", "regime": "FLAT"}
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", mock_strategy)
+
+    summary = await run_live_paper_campaign(
+        symbol="XAUUSD",
+        gateway=gateway,
+        output=output_path,
+        evidence_path=evidence_path,
+        max_candles=2,
+    )
+
+    store = CampaignEvidenceStore(evidence_path)
+    events = store.events(summary["session"]["session_id"])
+    closed_events = [e for e in events if e["event_type"] == "POSITION_CLOSED"]
+    assert len(closed_events) >= 1
+    assert closed_events[0]["facts"]["exit_reason"] == "POSITION_NO_LONGER_OPEN"
+    assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
+
+
+# 20. Startup recovery: pre-existing tagged position is recognized and counts toward limits
+@pytest.mark.asyncio
+async def test_startup_recovery_counts_tagged_position_toward_limit(tmp_path, monkeypatch):
+    """A tagged position already open before the campaign starts must be:
+    - Detected and emitted as POSITION_RECOVERED_ON_STARTUP evidence.
+    - Added to _own_order_ids and _open_trades immediately.
+    - Counted against MAX_OPEN_POSITIONS so no second position is opened.
+    """
+    gateway = MockMT5DemoGateway()
+    output_path = tmp_path / "out.json"
+    evidence_path = tmp_path / "evidence.sqlite3"
+
+    # Seed a pre-existing live-paper position (tagged via _raw_magic).
+    existing_id = "EXISTING-001"
+    pre_existing = Position(
+        position_id=existing_id,
+        symbol="XAUUSD",
+        side=OrderSide.BUY,
+        volume=0.01,
+        open_price=2000.0,
+        current_price=2001.0,
+    )
+    pre_existing._raw_magic = live_paper_campaign.LIVE_MAGIC_NUMBER  # type: ignore
+    gateway._mock_positions = [pre_existing]
+
+    async def mock_strategy(window):
+        return {"signal": "BUY", "confidence": 85, "features": {"atr_14": 1.5}}, {"signal_direction": "BUY", "regime": "TREND_UP"}
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", mock_strategy)
+
+    def mock_observe(self, ts, regime):
+        cand = _mock_candidate(ts, "BUY")
+        return MagicMock(state="ENTRY_DUE", candidate=cand, reason="CONFIRMED")
+    monkeypatch.setattr(live_paper_campaign.HistoricalConfirmationState, "observe", mock_observe)
+
+    monkeypatch.setattr(settings, "live_paper_max_orders_per_session", 10)
+    # MAX_OPEN_POSITIONS is 1 by default in LivePaperSafetyContext.
+
+    summary = await run_live_paper_campaign(
+        symbol="XAUUSD",
+        gateway=gateway,
+        output=output_path,
+        evidence_path=evidence_path,
+        max_candles=2,
+    )
+
+    store = CampaignEvidenceStore(evidence_path)
+    events = store.events(summary["session"]["session_id"])
+
+    # 1. Startup recovery event emitted
+    recovery_events = [
+        e for e in events
+        if e["facts"].get("reason_code") == "POSITION_RECOVERED_ON_STARTUP"
+    ]
+    assert len(recovery_events) == 1
+    assert recovery_events[0]["facts"]["position_id"] == existing_id
+
+    # 2. No new order was submitted (existing position fills the limit)
+    assert len(gateway.submitted_orders) == 0
+
+    # 3. The blocking event for MAX_OPEN_POSITIONS was emitted
+    blocked_events = [
+        e for e in events
+        if e["facts"].get("reason_code") == "MAX_OPEN_POSITIONS"
+    ]
+    assert len(blocked_events) >= 1

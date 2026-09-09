@@ -24,6 +24,33 @@ import time
 from typing import Any, Mapping
 from uuid import uuid4
 
+# MT5 DEAL_REASON integer constants (broker-reported via history_deals_get).
+# These are stable across MT5 versions; we define them here so the campaign
+# logic can run without a live MT5 import available in test environments.
+_MT5_DEAL_REASON_CLIENT = 0    # manual close via desktop terminal
+_MT5_DEAL_REASON_MOBILE = 1    # manual close via mobile
+_MT5_DEAL_REASON_WEB = 2       # manual close via webtrader
+_MT5_DEAL_REASON_EXPERT = 3    # automated expert advisor close
+_MT5_DEAL_REASON_SL = 4        # stop-loss triggered
+_MT5_DEAL_REASON_TP = 5        # take-profit triggered
+_MT5_DEAL_REASON_SO = 6        # margin stop-out
+_MT5_DEAL_REASON_ROLLOVER = 7  # position rollover
+_MT5_DEAL_REASON_VMARGIN = 8   # virtual margin call
+_MT5_DEAL_REASON_SPLIT = 9     # symbol split
+
+_MT5_DEAL_REASON_MAP: dict[int, str] = {
+    _MT5_DEAL_REASON_CLIENT:   "MANUAL_CLIENT",
+    _MT5_DEAL_REASON_MOBILE:   "MANUAL_MOBILE",
+    _MT5_DEAL_REASON_WEB:      "MANUAL_WEB",
+    _MT5_DEAL_REASON_EXPERT:   "EXPERT_ADVISOR",
+    _MT5_DEAL_REASON_SL:       "BROKER_SL",
+    _MT5_DEAL_REASON_TP:       "BROKER_TP",
+    _MT5_DEAL_REASON_SO:       "BROKER_STOP_OUT",
+    _MT5_DEAL_REASON_ROLLOVER: "ROLLOVER",
+    _MT5_DEAL_REASON_VMARGIN:  "VIRTUAL_MARGIN",
+    _MT5_DEAL_REASON_SPLIT:    "SPLIT",
+}
+
 import pandas as pd
 
 from broker.deriv_demo import DerivDemoGateway
@@ -97,6 +124,50 @@ def _round_lots_to_broker_constraints(symbol_info: Any, raw_volume: float) -> fl
     floored = math.floor(raw_volume / step) * step
     floored = round(floored, 8)
     return floored if floored >= minimum else None
+
+
+async def _fetch_mt5_close_reason(gateway: Any, position_id: str) -> str:
+    """Query MT5 history_deals_get for the close reason of a specific position.
+
+    Returns an honest label from ``_MT5_DEAL_REASON_MAP`` when a confirmed
+    closing deal is found, otherwise returns ``"POSITION_NO_LONGER_OPEN"``.
+    Never raises — any failure degrades to the neutral label.
+    """
+    try:
+        import MetaTrader5 as mt5  # type: ignore
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        # Search deals from up to 7 days back to cover the position.
+        deals = await asyncio.to_thread(
+            mt5.history_deals_get,
+            now - timedelta(days=7),
+            now,
+        )
+        if not deals:
+            return "POSITION_NO_LONGER_OPEN"
+        # Filter to closing deals that reference this position ticket.
+        # MT5 deal.position_id links a deal back to its originating position.
+        closing_entry_types: set[int] = set()
+        try:
+            closing_entry_types = {mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_INOUT}
+        except AttributeError:
+            # Stub environment: constants are MagicMock objects; skip filtering.
+            return "POSITION_NO_LONGER_OPEN"
+        closing_deals = [
+            d for d in deals
+            if str(getattr(d, "position_id", None)) == position_id
+            and getattr(d, "entry", None) in closing_entry_types
+        ]
+        if not closing_deals:
+            return "POSITION_NO_LONGER_OPEN"
+        # Use the most recent closing deal (highest time).
+        latest_deal = max(closing_deals, key=lambda d: getattr(d, "time", 0))
+        raw_reason = getattr(latest_deal, "reason", None)
+        if raw_reason is None:
+            return "POSITION_NO_LONGER_OPEN"
+        return _MT5_DEAL_REASON_MAP.get(int(raw_reason), f"MT5_REASON_{raw_reason}")
+    except Exception:
+        return "POSITION_NO_LONGER_OPEN"
 
 
 def _git_commit() -> str:
@@ -282,11 +353,74 @@ async def run_live_paper_campaign(
     _open_trades: dict[str, dict[str, Any]] = {}
     _used_idempotency_keys: set[str] = set()
 
+    # 7a. Startup recovery: reconstruct any positions this campaign already
+    # opened (tagged with LIVE_MAGIC_NUMBER / JQE LivePaper comment prefix)
+    # so that rate limits and MAX_OPEN_POSITIONS are correct from the first
+    # policy check, even if the process was restarted mid-session.
+    try:
+        startup_positions = tuple(await gateway.get_positions())
+    except Exception as exc:
+        logger.warning("Startup position query failed: {}", exc)
+        startup_positions = ()
+
+    _is_mt5 = isinstance(gateway, MT5DemoGateway)
+    _live_paper_comment_prefix = "JQE LivePaper"
+
+    for sp in startup_positions:
+        is_ours = False
+        if _is_mt5:
+            # MT5 positions carry magic number on the position record.
+            # We rely on the raw field if available; the Position model
+            # doesn't expose it, so we check via the gateway's underlying
+            # positions_get result — but that's not directly accessible here.
+            # As a practical proxy, we filter by comment prefix stored
+            # in the underlying deal comment. Since Position doesn't carry
+            # magic, we use comment prefix if present, otherwise we cannot
+            # distinguish; we err on the side of not claiming unknown positions.
+            # The comment field IS in the underlying mt5 position record.
+            raw_comment = getattr(sp, "_raw_comment", None) or ""
+            raw_magic = getattr(sp, "_raw_magic", None)
+            if raw_magic == LIVE_MAGIC_NUMBER:
+                is_ours = True
+            elif raw_comment.startswith(_live_paper_comment_prefix):
+                is_ours = True
+        else:
+            # Deriv: comment passthrough stored in contract metadata.
+            raw_comment = getattr(sp, "_raw_comment", None) or ""
+            if raw_comment.startswith(_live_paper_comment_prefix):
+                is_ours = True
+
+        if is_ours:
+            _own_order_ids.add(sp.position_id)
+            _open_trades[sp.position_id] = {
+                "candidate_id": None,  # not recoverable after restart
+                "symbol": sp.symbol,
+                "side": sp.side.value if hasattr(sp.side, "value") else str(sp.side),
+                "entry_price": float(sp.open_price),
+                "volume": float(sp.volume),
+                "opened_at": sp.opened_at.isoformat() if sp.opened_at else None,
+                "recovered": True,
+            }
+            emit("POLICY", datetime.now(timezone.utc), {
+                "result": "RECOVERED",
+                "reason_code": "POSITION_RECOVERED_ON_STARTUP",
+                "position_id": sp.position_id,
+                "symbol": sp.symbol,
+                "side": sp.side.value if hasattr(sp.side, "value") else str(sp.side),
+                "volume": float(sp.volume),
+                "open_price": float(sp.open_price),
+                "note": "Inherited from prior session; counts toward open-position limits",
+            })
+            logger.info(
+                "Live-paper startup: recovered existing own position {} for {}",
+                sp.position_id, sp.symbol,
+            )
+
     candles_processed = 0
     start_monotonic = time.monotonic()
     last_candle_time: datetime | None = None
 
-    # 7. Main loop
+    # 7b. Main loop
     while True:
         now = datetime.now(timezone.utc)
 
@@ -623,6 +757,17 @@ async def run_live_paper_campaign(
             if open_oid not in cur_pos_ids:
                 trade = _open_trades.pop(open_oid)
                 exit_price = float(latest.close)
+
+                # Resolve the actual close reason from the broker where possible.
+                # For MT5: query history_deals_get for the position ticket and
+                # read the DEAL_REASON field from the closing deal record.
+                # For Deriv: no equivalent programmatic API exists; record the
+                # neutral label rather than fabricating a causal claim.
+                if _is_mt5:
+                    exit_reason = await _fetch_mt5_close_reason(gateway, open_oid)
+                else:
+                    exit_reason = "POSITION_NO_LONGER_OPEN"
+
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
                     "symbol": trade["symbol"],
@@ -632,7 +777,7 @@ async def run_live_paper_campaign(
                     "broker_fill_time": now.isoformat(),
                     "exit_price": exit_price,
                     "pnl": 0.0,
-                    "exit_reason": "BROKER_SL_TP",
+                    "exit_reason": exit_reason,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
