@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from execution.safety import EmergencyStopState
@@ -168,6 +168,30 @@ class Settings(BaseSettings):
     paper_runtime_state_path: Path = Path("state/paper_runtime.sqlite3")
     paper_diagnostics_path: Path = Path("state/paper_diagnostics.sqlite3")
     paper_diagnostics_minimum_sample: int = Field(default=100, gt=0)
+
+    campaign_mode: Literal["historical", "historical_replay", "live_paper"] = "historical"
+    live_paper_max_candles: int | None = Field(default=None, gt=0)
+    live_paper_max_duration_seconds: float | None = Field(default=None, gt=0)
+    live_paper_max_orders_per_session: int = Field(default=50, gt=0)
+    live_paper_min_order_spacing_seconds: float = Field(default=60.0, ge=0)
+    live_paper_order_poll_timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_live_paper_mode(self) -> Settings:
+        if self.campaign_mode == "live_paper":
+            if not self.broker_execution_enabled:
+                raise ValueError(
+                    "live_paper campaign mode requires broker_execution_enabled=True"
+                )
+            if self.broker not in {"mt5_demo", "deriv_demo"}:
+                raise ValueError(
+                    f"live_paper campaign mode requires a demo broker ('mt5_demo' or 'deriv_demo'), got '{self.broker}'"
+                )
+            if self.live_paper_max_candles is None and self.live_paper_max_duration_seconds is None:
+                raise ValueError(
+                    "live_paper requires at least one stop condition"
+                )
+        return self
 
     @field_validator("log_level", mode="before")
     @classmethod

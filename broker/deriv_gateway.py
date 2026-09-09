@@ -130,11 +130,17 @@ def _parse_proposal_response(response: dict[str, Any], *, symbol: str) -> tuple[
 
 
 def _build_buy_request(
-    proposal_id: str, ask_price: float, idempotency_key: str | None
+    proposal_id: str,
+    ask_price: float,
+    idempotency_key: str | None,
+    passthrough: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     request: dict[str, Any] = {"buy": proposal_id, "price": ask_price}
+    passthrough_dict: dict[str, Any] = dict(passthrough) if passthrough is not None else {}
     if idempotency_key is not None:
-        request["passthrough"] = {"jqe": {"idempotency_key": idempotency_key}}
+        passthrough_dict.setdefault("jqe", {})["idempotency_key"] = idempotency_key
+    if passthrough_dict:
+        request["passthrough"] = passthrough_dict
     return request
 
 

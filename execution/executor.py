@@ -246,6 +246,8 @@ class AsyncTradeExecutor:
             stop_loss=float(intent.stop_loss),
             take_profit=float(intent.take_profit),
             idempotency_key=intent.idempotency_key,
+            magic_number=intent.magic_number,
+            order_comment=intent.order_comment,
         )
         try:
             result = await self._gateway.submit_order(order)

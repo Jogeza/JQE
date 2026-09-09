@@ -29,7 +29,10 @@ SOURCE_AUTHORITIES = {
     "execution_policy": ("execution/policy.py",),
     "paper_lifecycle": ("execution/paper_contract.py", "execution/paper_runtime.py"),
     "configuration": ("config/settings.py",),
-    "campaign_runner": ("tools/paper_campaign.py", "tools/paper_runtime.py", "research/campaign_provenance.py"),
+    "campaign_runner": (
+        "tools/paper_campaign.py", "tools/paper_runtime.py",
+        "research/campaign_provenance.py", "tools/live_paper_campaign.py",
+    ),
 }
 
 
@@ -145,6 +148,56 @@ def fingerprint_diff(left: ResearchFingerprint | Mapping[str, Any], right: Resea
             result[prefix] = {"left": x, "right": y}
     visit("", a, b)
     return result
+
+
+@dataclass(frozen=True, slots=True)
+class LiveSessionIdentity:
+    session_id: str
+    broker: str
+    account_id: str
+    is_virtual: bool
+    symbol: str
+    timeframe: str
+    started_at: str
+    initial_balance: float
+    currency: str
+    stop_conditions: Mapping[str, Any]
+    live_session_identity_sha256: str
+
+    def payload(self, *, include_hash: bool = True) -> dict[str, Any]:
+        result = asdict(self)
+        if not include_hash:
+            result.pop("live_session_identity_sha256", None)
+        return result
+
+
+def build_live_session_identity(
+    *,
+    session_id: str,
+    broker: str,
+    account_id: str,
+    is_virtual: bool,
+    symbol: str,
+    timeframe: str,
+    started_at: str,
+    initial_balance: float,
+    currency: str,
+    stop_conditions: Mapping[str, Any],
+) -> LiveSessionIdentity:
+    values: dict[str, Any] = {
+        "session_id": session_id,
+        "broker": broker,
+        "account_id": account_id,
+        "is_virtual": is_virtual,
+        "symbol": symbol.upper(),
+        "timeframe": timeframe,
+        "started_at": started_at,
+        "initial_balance": initial_balance,
+        "currency": currency,
+        "stop_conditions": dict(sorted(stop_conditions.items())),
+    }
+    values["live_session_identity_sha256"] = sha256_text(canonical_json(values))
+    return LiveSessionIdentity(**values)
 
 
 @dataclass(frozen=True, slots=True)

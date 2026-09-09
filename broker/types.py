@@ -221,6 +221,8 @@ class OrderRequest(BaseModel):
     stop_loss: float | None = None
     take_profit: float | None = None
     idempotency_key: str | None = None
+    magic_number: int | None = None
+    order_comment: str | None = None
 
     @property
     def volume(self) -> float:

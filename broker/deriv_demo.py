@@ -116,8 +116,9 @@ class DerivDemoGateway(DerivGateway):
         proposal_id, ask_price = _parse_proposal_response(
             proposal_response, symbol=order.symbol
         )
+        passthrough = {"order_comment": order.order_comment} if order.order_comment else None
         buy_request = _build_buy_request(
-            proposal_id, ask_price, order.idempotency_key
+            proposal_id, ask_price, order.idempotency_key, passthrough=passthrough
         )
         buy_response = await self._request(buy_request)
 

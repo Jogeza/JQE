@@ -16,6 +16,7 @@ from execution.policy import ExecutionContext, PositionSnapshot
 class ExecutionContextKind(str, Enum):
     RUNTIME_EXECUTION = "RUNTIME_EXECUTION"
     HISTORICAL_RESEARCH = "HISTORICAL_RESEARCH"
+    LIVE_PAPER = "LIVE_PAPER"
 
 
 @dataclass(frozen=True, slots=True)

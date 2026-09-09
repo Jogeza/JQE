@@ -439,8 +439,8 @@ class MT5Gateway(BrokerGateway):
             "sl": stop_loss or 0.0,
             "tp": take_profit or 0.0,
             "deviation": 20,
-            "magic": 20260802,
-            "comment": "JQE Gateway Execution",
+            "magic": order.magic_number or 20260802,
+            "comment": order.order_comment or "JQE Gateway Execution",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }

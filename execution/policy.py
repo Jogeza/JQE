@@ -57,6 +57,8 @@ class ExecutionIntent:
     take_profit: float
     idempotency_key: str
     risk_approved: bool | None
+    magic_number: int | None = None
+    order_comment: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +233,9 @@ class ExecutionPolicy:
         expected_unit = {
             "simulation": ExecutionQuantityUnit.SIMULATION_UNITS,
             "deriv": ExecutionQuantityUnit.DERIV_STAKE,
+            "deriv_demo": ExecutionQuantityUnit.DERIV_STAKE,
             "mt5": ExecutionQuantityUnit.MT5_LOTS,
+            "mt5_demo": ExecutionQuantityUnit.MT5_LOTS,
         }.get(context.broker)
         if intent.quantity_risk_verified is not True:
             return _reject(
