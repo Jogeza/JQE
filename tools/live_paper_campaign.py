@@ -79,6 +79,9 @@ from execution.policy import (
     ExecutionIntent,
     PositionSnapshot,
 )
+from notifications.events import JQENotificationEvents
+from notifications.service import NotificationService
+from notifications.telegram import TelegramConfigurationError, telegram_gateway_from_settings
 from research.campaign_provenance import (
     CampaignEvidence,
     CampaignEvidenceStore,
@@ -97,6 +100,20 @@ from tools.paper_runtime import (
 
 LIVE_MAGIC_NUMBER = 20260809
 STRATEGY_ID = "strategy.pipeline.generate_trading_signal"
+
+
+def _signal_freshness(
+    observation: ClosedMarketObservation, observed_at: datetime
+) -> tuple[str, datetime]:
+    """Classify signal data against a one-timeframe closed-candle validity window."""
+    expires_at = observation.closed_at + timedelta(
+        seconds=TIMEFRAME_SECONDS[observation.timeframe]
+    )
+    if observed_at < observation.closed_at:
+        return "degraded", expires_at
+    if observed_at <= expires_at:
+        return "fresh", expires_at
+    return "stale", expires_at
 
 
 @dataclass
@@ -265,6 +282,15 @@ async def run_live_paper_campaign(
     mt5_preflight: Mapping[str, Any] | None = None
     if broker_name == "mt5_demo":
         mt5_preflight = await gateway.verify_instrument_risk_spec(symbol)
+
+    # Notifications are downstream observations only. Configuration or delivery
+    # failure must never grant authority, submit an order, or stop the campaign.
+    try:
+        telegram_gateway = telegram_gateway_from_settings(settings)
+    except TelegramConfigurationError:
+        logger.warning("Telegram signal notifications are unavailable: invalid configuration")
+        telegram_gateway = None
+    notification_events = JQENotificationEvents(NotificationService(telegram_gateway))
 
     # 4. Initialize safety context
     if safety_context is None:
@@ -597,6 +623,21 @@ async def run_live_paper_campaign(
             "volatility": facts.get("volatility"),
             "rsi": facts.get("rsi"),
         })
+        freshness, expires_at = _signal_freshness(latest, now)
+        quality_score = signal.get("confidence", facts.get("signal_confidence"))
+        await notification_events.live_campaign_signal(
+            actionable=current_direction in {"BUY", "SELL"},
+            execution_enabled=bool(settings.broker_execution_enabled),
+            facts={
+                "Symbol / timeframe": f"{symbol} / {timeframe.value}",
+                "Conclusion": current_direction,
+                "Quality score": str(quality_score if quality_score is not None else "UNAVAILABLE"),
+                "Observed at": now.isoformat(),
+                "Candle closed at": latest.closed_at.isoformat(),
+                "Expires at": expires_at.isoformat(),
+                "Data freshness": freshness,
+            },
+        )
         current_candidate_id = _candidate_id(symbol, timeframe.value, latest.candle_opened_at, current_direction) if current_direction in {"BUY", "SELL"} else None
 
         if current_candidate_id is not None:

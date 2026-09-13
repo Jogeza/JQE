@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,6 +72,14 @@ async def test_gateway_uses_https_and_escapes_factual_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_fans_out_over_private_chat_ids() -> None:
+    post = AsyncMock()
+    gateway = TelegramGateway(TelegramConfig("secret-token", (7, 8)), post=post)
+    await gateway.send_text("signal")
+    assert [json.loads(call.args[1])["chat_id"] for call in post.await_args_list] == [7, 8]
+
+
+@pytest.mark.asyncio
 async def test_delivery_failure_is_generic_and_does_not_authorize_anything() -> None:
     async def fail(*_args):
         raise RuntimeError("secret-token")
@@ -122,3 +131,33 @@ async def test_factual_event_adapter_masks_identity_and_preserves_block_reason()
     await events.trade_blocked(reason="DAILY_LIMIT_REACHED")
     blocked = gateway.send.await_args.args[0]
     assert blocked.facts["Reason"] == "DAILY_LIMIT_REACHED"
+
+
+@pytest.mark.asyncio
+async def test_live_campaign_signal_labels_actionable_and_no_trade() -> None:
+    gateway = AsyncMock()
+    events = JQENotificationEvents(NotificationService(gateway))
+    facts = {
+        "Symbol / timeframe": "XAUUSD / M15",
+        "Conclusion": "BUY",
+        "Quality score": "85",
+        "Observed at": "2026-01-01T00:15:00+00:00",
+        "Candle closed at": "2026-01-01T00:15:00+00:00",
+        "Expires at": "2026-01-01T00:30:00+00:00",
+        "Data freshness": "fresh",
+    }
+    await events.live_campaign_signal(
+        facts=facts, actionable=True, execution_enabled=True
+    )
+    actionable = gateway.send.await_args.args[0]
+    assert "ACTIONABLE CONCLUSION" in actionable.title
+    assert actionable.facts["Signal state"] == "SIGNAL ONLY — ORDER NOT YET SUBMITTED"
+
+    await events.live_campaign_signal(
+        facts={**facts, "Conclusion": "NO_TRADE"},
+        actionable=False,
+        execution_enabled=False,
+    )
+    no_trade = gateway.send.await_args.args[0]
+    assert "NO_TRADE / ANALYSIS ONLY" in no_trade.title
+    assert no_trade.facts["Execution mode"] == "DISABLED — ANALYSIS ONLY"

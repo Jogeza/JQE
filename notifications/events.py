@@ -75,6 +75,31 @@ class JQENotificationEvents:
         notification_type, title = mapping[kind]
         return await self._service.publish(Notification(notification_type, title, facts))
 
+    async def live_campaign_signal(
+        self,
+        *,
+        facts: dict[str, str],
+        actionable: bool,
+        execution_enabled: bool,
+    ) -> bool:
+        """Publish a factual signal observation without granting execution authority."""
+        if actionable:
+            title = "JQE LIVE-PAPER SIGNAL — ACTIONABLE CONCLUSION"
+            signal_state = "SIGNAL ONLY — ORDER NOT YET SUBMITTED"
+        else:
+            title = "JQE LIVE-PAPER SIGNAL — NO_TRADE / ANALYSIS ONLY"
+            signal_state = "NO_TRADE — NO ORDER WILL BE SUBMITTED"
+        payload = dict(facts)
+        payload["Signal state"] = signal_state
+        payload["Execution mode"] = (
+            "ENABLED — STILL SUBJECT TO ALL SAFETY GATES"
+            if execution_enabled
+            else "DISABLED — ANALYSIS ONLY"
+        )
+        return await self._service.publish(
+            Notification(NotificationType.PAPER_SIGNAL, title, payload)
+        )
+
     async def paper_summary(self, *, facts: dict[str, str], public: bool = False) -> bool:
         safe_keys = {"Observations", "Signals", "Confirmed", "Trades", "Net R", "Drawdown R"}
         payload = {key: value for key, value in facts.items() if not public or key in safe_keys}

@@ -26,14 +26,19 @@ class TelegramDeliveryError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class TelegramConfig:
     token: str = field(repr=False)
-    allowed_chat_id: int
+    chat_ids: tuple[int, ...] | int
     timeout_seconds: float = 10.0
 
     def __post_init__(self) -> None:
         if not self.token.strip():
             raise TelegramConfigurationError("Telegram token is missing")
-        if isinstance(self.allowed_chat_id, bool) or not isinstance(self.allowed_chat_id, int):
+        raw_chat_ids = (self.chat_ids,) if isinstance(self.chat_ids, int) else self.chat_ids
+        if (
+            not raw_chat_ids
+            or any(isinstance(chat_id, bool) or not isinstance(chat_id, int) for chat_id in raw_chat_ids)
+        ):
             raise TelegramConfigurationError("Telegram allowed chat is missing")
+        object.__setattr__(self, "chat_ids", tuple(dict.fromkeys(raw_chat_ids)))
         if self.timeout_seconds <= 0 or self.timeout_seconds > 30:
             raise TelegramConfigurationError("Telegram timeout is invalid")
 
@@ -53,16 +58,17 @@ class TelegramGateway:
 
     async def send_text(self, text: str) -> None:
         message = text[:MAX_TELEGRAM_MESSAGE]
-        payload = json.dumps({
-            "chat_id": self._config.allowed_chat_id,
-            "text": message,
-            "parse_mode": "HTML",
-        }).encode("utf-8")
         url = f"https://api.telegram.org/bot{self._config.token}/sendMessage"
-        try:
-            await self._post(url, payload, self._config.timeout_seconds)
-        except Exception as exc:
-            raise TelegramDeliveryError("Telegram delivery failed") from exc
+        for chat_id in self._config.chat_ids:
+            payload = json.dumps({
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            }).encode("utf-8")
+            try:
+                await self._post(url, payload, self._config.timeout_seconds)
+            except Exception as exc:
+                raise TelegramDeliveryError("Telegram delivery failed") from exc
 
     @staticmethod
     async def _default_post(url: str, payload: bytes, timeout: float) -> None:
@@ -136,6 +142,6 @@ def telegram_gateway_from_settings(settings: object) -> TelegramGateway | None:
         raise TelegramConfigurationError("Telegram is enabled but its allowed chat is missing")
     return TelegramGateway(TelegramConfig(
         token=token,
-        allowed_chat_id=chat_id,
+        chat_ids=(chat_id,),
         timeout_seconds=getattr(settings, "telegram_request_timeout_seconds", 10.0),
     ))

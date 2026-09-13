@@ -45,6 +45,46 @@ from tools.live_paper_campaign import (
 )
 
 
+@pytest.mark.asyncio
+async def test_campaign_sends_factual_no_trade_signal_to_telegram(
+    tmp_path, monkeypatch
+):
+    gateway = MockMT5DemoGateway()
+    telegram = AsyncMock()
+    monkeypatch.setattr(settings, "telegram_enabled", True)
+    monkeypatch.setattr(
+        live_paper_campaign, "telegram_gateway_from_settings", lambda _settings: telegram
+    )
+
+    async def no_trade(_window):
+        return {"signal": "NO_TRADE", "confidence": 41}, {
+            "signal_direction": "NO_TRADE",
+            "signal_confidence": 41,
+            "regime": "RANGE",
+        }
+
+    monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", no_trade)
+    await run_live_paper_campaign(
+        symbol="XAUUSD",
+        timeframe=Timeframe.M15,
+        gateway=gateway,
+        output=tmp_path / "telegram-summary.json",
+        max_candles=1,
+    )
+
+    telegram.send.assert_awaited_once()
+    notification = telegram.send.await_args.args[0]
+    assert "NO_TRADE / ANALYSIS ONLY" in notification.title
+    assert notification.facts["Symbol / timeframe"] == "XAUUSD / M15"
+    assert notification.facts["Conclusion"] == "NO_TRADE"
+    assert notification.facts["Quality score"] == "41"
+    assert notification.facts["Data freshness"] in {"fresh", "stale", "degraded"}
+    assert "Observed at" in notification.facts
+    assert "Candle closed at" in notification.facts
+    assert "Expires at" in notification.facts
+    assert gateway.submitted_orders == []
+
+
 def _generate_candles(count: int, start: datetime | None = None) -> list[Candle]:
     start = start or datetime(2026, 1, 1, tzinfo=timezone.utc)
     interval = timedelta(minutes=15)
@@ -229,6 +269,7 @@ def configure_settings(monkeypatch):
     monkeypatch.setattr(settings, "live_paper_min_order_spacing_seconds", 0.0)
     monkeypatch.setattr(settings, "live_paper_max_candles", 5)
     monkeypatch.setattr(settings, "live_paper_max_duration_seconds", None)
+    monkeypatch.setattr(settings, "telegram_enabled", False)
 
 
 # 1. Happy path: N candles, mock gateway FILLED, POSITION_OPENED recorded
