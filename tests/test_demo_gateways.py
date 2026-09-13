@@ -240,13 +240,16 @@ class TestMT5DemoGateway:
             idempotency_key="idemp-mt5-1",
         )
 
-        mock_sym_info = MagicMock(digits=2, point=0.01, trade_stops_level=0)
+        mock_sym_info = MagicMock(digits=2, point=0.01, trade_stops_level=0, trade_mode=4,
+                                  volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
         with patch("broker.mt5_demo.mt5.account_info", return_value=mock_info_demo), \
              patch("broker.mt5_gateway.mt5.account_info", return_value=mock_info_demo), \
              patch("broker.mt5_gateway.mt5.terminal_info", return_value=mock_term), \
              patch("broker.mt5_gateway.mt5.symbol_select", return_value=True), \
              patch("broker.mt5_gateway.mt5.symbol_info", return_value=mock_sym_info), \
              patch("broker.mt5_gateway.mt5.symbol_info_tick", return_value=MagicMock(ask=1900.5, bid=1900.3)), \
+             patch("broker.mt5_gateway.mt5.order_check", return_value=MagicMock(retcode=0, comment="Done")), \
+             patch("broker.mt5_gateway.mt5.SYMBOL_TRADE_MODE_DISABLED", 0), \
              patch("broker.mt5_gateway.mt5.order_send", return_value=mock_order_send_result) as mock_send, \
              patch.object(gateway, "_resolve_symbol", return_value="XAUUSD"):
             result = await gateway.submit_order(order)

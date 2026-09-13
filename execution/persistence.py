@@ -174,6 +174,80 @@ class SQLitePositionLedger:
         return tuple(PositionLedgerEntry(**dict(row)) for row in rows)
 
 
+class SQLiteOneShotExecutionGuard:
+    """Durable account-scoped lifetime submission cap.
+
+    Consuming the slot is intentionally irreversible: an indeterminate broker
+    outcome must never make a second submission possible.
+    """
+
+    def __init__(self, path: str | Path, *, limit: int = 1) -> None:
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit != 1:
+            raise ValueError("Only the one-order lifetime limit is supported")
+        resolved = Path(path).expanduser().resolve()
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        self._path = str(resolved)
+        self.limit = limit
+        with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS execution_lifetime_counter (
+                    scope TEXT PRIMARY KEY,
+                    submissions INTEGER NOT NULL CHECK (submissions >= 0),
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self._path, timeout=5.0)
+        connection.execute("PRAGMA busy_timeout=5000")
+        return connection
+
+    @staticmethod
+    def _scope(scope: str) -> str:
+        if not isinstance(scope, str) or not scope.strip():
+            raise ValueError("Execution lifetime scope must be nonblank")
+        return scope.strip()
+
+    def count(self, scope: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT submissions FROM execution_lifetime_counter WHERE scope=?",
+                (self._scope(scope),),
+            ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def assert_available(self, scope: str) -> None:
+        if self.count(scope) >= self.limit:
+            raise RuntimeError("One-order lifetime execution cap has already been consumed")
+
+    def consume(self, scope: str) -> None:
+        normalized = self._scope(scope)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT submissions FROM execution_lifetime_counter WHERE scope=?",
+                (normalized,),
+            ).fetchone()
+            count = 0 if row is None else int(row[0])
+            if count >= self.limit:
+                connection.rollback()
+                raise RuntimeError("One-order lifetime execution cap has already been consumed")
+            connection.execute(
+                """INSERT INTO execution_lifetime_counter(scope, submissions, updated_at)
+                VALUES (?, 1, ?)
+                ON CONFLICT(scope) DO UPDATE SET submissions=1, updated_at=excluded.updated_at""",
+                (normalized, _utc_now()),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
 _ALLOWED_TRANSITIONS: dict[IntentRecordStatus, frozenset[IntentRecordStatus]] = {
     IntentRecordStatus.PENDING: frozenset({IntentRecordStatus.ACCEPTED, IntentRecordStatus.REJECTED, IntentRecordStatus.UNKNOWN}),
     IntentRecordStatus.UNKNOWN: frozenset({IntentRecordStatus.ACCEPTED, IntentRecordStatus.REJECTED, IntentRecordStatus.UNKNOWN}),

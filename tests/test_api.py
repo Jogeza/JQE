@@ -96,6 +96,8 @@ def test_settings() -> Settings:
 
 @pytest.fixture
 def sim_service(test_settings: Settings, tmp_path, monkeypatch) -> ApplicationService:
+    monkeypatch.setattr(settings, "broker", "simulation")
+    monkeypatch.setattr(settings, "environment", "development")
     monkeypatch.setattr(
         settings, "execution_safety_store_path", tmp_path / "execution-safety.sqlite3"
     )
@@ -222,7 +224,10 @@ class TestApplicationService:
         assert signal_resp.trade_plan is not None
         assert signal_resp.price_decimals == 2
 
-    async def test_public_market_source_is_independent_and_read_only(self) -> None:
+    async def test_public_market_source_is_independent_and_read_only(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(settings, "broker", "simulation")
         execution_gateway = SimulationGateway(starting_balance=321.0)
         public_source = FakePublicMarketData()
         service = ApplicationService(
@@ -289,6 +294,8 @@ class TestApplicationService:
     async def test_fresh_simulation_risk_observation_exposes_typed_quantity(
         self, tmp_path, monkeypatch
     ) -> None:
+        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
         monkeypatch.setattr(settings, "execution_safety_store_path", path)
@@ -322,6 +329,8 @@ class TestApplicationService:
     async def test_stale_observation_cannot_leak_previously_authorized_quantity(
         self, tmp_path, monkeypatch
     ) -> None:
+        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
         monkeypatch.setattr(settings, "execution_safety_store_path", path)
@@ -342,6 +351,8 @@ class TestApplicationService:
         assert response.execution_quantity_reason == "Risk observation is stale"
 
     async def test_exact_freshness_boundary_is_fresh(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
         monkeypatch.setattr(settings, "execution_safety_store_path", path)

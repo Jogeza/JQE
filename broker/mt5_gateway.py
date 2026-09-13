@@ -10,6 +10,7 @@ wrapped with asyncio.to_thread() to keep the gateway async compatible.
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -66,7 +67,44 @@ _MT5_SYMBOL_ALIASES: dict[str, list[str]] = {
         "EURUSDm",
         "EURUSD.pro",
     ],
+    "GBPUSD": ["GBPUSD", "GBPUSDm", "GBPUSD.pro"],
+    "R_75": ["Volatility 75 Index"],
+    "VOLATILITY_75": ["Volatility 75 Index"],
 }
+
+
+def _numeric_attr(value: object, name: str, default: float = 0.0) -> float:
+    candidate = getattr(value, name, default)
+    return float(candidate) if isinstance(candidate, (int, float)) and not isinstance(candidate, bool) else default
+
+
+def _normalize_volume(requested: float, symbol_info: object) -> float:
+    """Normalize down to the broker step without increasing authorized risk."""
+    minimum = _numeric_attr(symbol_info, "volume_min")
+    maximum = _numeric_attr(symbol_info, "volume_max")
+    step = _numeric_attr(symbol_info, "volume_step")
+    if not math.isfinite(requested) or requested <= 0 or minimum <= 0 or maximum < minimum or step <= 0:
+        raise ExecutionError("Invalid MT5 volume specification", requested_volume=requested)
+    if requested + 1e-12 < minimum:
+        raise ExecutionError("MT5 volume is below the symbol minimum", requested_volume=requested, minimum=minimum)
+    if requested > maximum + 1e-12:
+        raise ExecutionError("MT5 volume exceeds the symbol maximum", requested_volume=requested, maximum=maximum)
+    normalized = round(math.floor((requested + 1e-12) / step) * step, 8)
+    if normalized + 1e-12 < minimum:
+        raise ExecutionError("MT5 normalized volume is below the symbol minimum", requested_volume=requested)
+    return normalized
+
+
+def _select_filling_mode(symbol_info: object) -> int:
+    """Translate MT5 symbol filling flags into an allowed order policy."""
+    flags = int(_numeric_attr(symbol_info, "filling_mode", -1))
+    if flags >= 0 and flags & int(getattr(mt5, "SYMBOL_FILLING_IOC", 2)):
+        return mt5.ORDER_FILLING_IOC
+    if flags >= 0 and flags & int(getattr(mt5, "SYMBOL_FILLING_FOK", 1)):
+        return mt5.ORDER_FILLING_FOK
+    if getattr(symbol_info, "trade_exemode", None) != getattr(mt5, "SYMBOL_TRADE_EXECUTION_MARKET", object()):
+        return mt5.ORDER_FILLING_RETURN
+    raise ExecutionError("MT5 symbol has no supported filling mode")
 
 
 #: Maps the broker-agnostic Timeframe to MT5's native constants. Built
@@ -203,6 +241,16 @@ class MT5Gateway(BrokerGateway):
             currency=str(info.currency),
             equity=float(info.equity),
             leverage=float(info.leverage),
+            server=str(info.server),
+            trade_mode=(
+                "demo"
+                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)
+                else "live"
+                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2)
+                else "contest"
+                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_CONTEST", 1)
+                else "unknown"
+            ),
         )
 
     async def get_candles(
@@ -292,7 +340,7 @@ class MT5Gateway(BrokerGateway):
         from broker.types import ExecutionQuantityUnit
         if order.quantity.unit is not ExecutionQuantityUnit.MT5_LOTS:
             raise ExecutionError("MT5 requires MT5_LOTS")
-        quantity = order.quantity.value
+        requested_quantity = order.quantity.value
         if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
             if not await asyncio.to_thread(self._verify_connection_identity, require_trading=True):
                 self._connected = False
@@ -330,6 +378,10 @@ class MT5Gateway(BrokerGateway):
                 "Unable to retrieve symbol info",
                 symbol=order.symbol,
             )
+
+        if getattr(symbol_info, "trade_mode", None) == getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", 0):
+            raise ExecutionError("MT5 symbol is disabled", symbol=order.symbol)
+        quantity = _normalize_volume(requested_quantity, symbol_info)
 
         tick = await asyncio.to_thread(
             mt5.symbol_info_tick,
@@ -372,9 +424,9 @@ class MT5Gateway(BrokerGateway):
                     price - stop_loss
                     < minimum_distance
                 ):
-                    stop_loss = round(
-                        price - minimum_distance,
-                        digits,
+                    raise ExecutionError(
+                        "MT5 stop-loss validation failed",
+                        symbol=order.symbol,
                     )
 
             if take_profit:
@@ -387,9 +439,9 @@ class MT5Gateway(BrokerGateway):
                     take_profit - price
                     < minimum_distance
                 ):
-                    take_profit = round(
-                        price + minimum_distance,
-                        digits,
+                    raise ExecutionError(
+                        "MT5 take-profit validation failed",
+                        symbol=order.symbol,
                     )
 
         else:
@@ -404,9 +456,9 @@ class MT5Gateway(BrokerGateway):
                     stop_loss - price
                     < minimum_distance
                 ):
-                    stop_loss = round(
-                        price + minimum_distance,
-                        digits,
+                    raise ExecutionError(
+                        "MT5 stop-loss validation failed",
+                        symbol=order.symbol,
                     )
 
             if take_profit:
@@ -419,9 +471,9 @@ class MT5Gateway(BrokerGateway):
                     price - take_profit
                     < minimum_distance
                 ):
-                    take_profit = round(
-                        price - minimum_distance,
-                        digits,
+                    raise ExecutionError(
+                        "MT5 take-profit validation failed",
+                        symbol=order.symbol,
                     )
 
         request = {
@@ -440,13 +492,21 @@ class MT5Gateway(BrokerGateway):
             "magic": order.magic_number or 20260802,
             "comment": order.order_comment or "JQE Gateway Execution",
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": _select_filling_mode(symbol_info),
         }
 
         logger.info(
             "MT5 order request: {}",
             request,
         )
+
+        check = await asyncio.to_thread(mt5.order_check, request)
+        if check is None or getattr(check, "retcode", None) != 0:
+            raise ExecutionError(
+                "MT5 order_check rejected request", symbol=order.symbol,
+                retcode=getattr(check, "retcode", None),
+                comment=getattr(check, "comment", ""), request=request,
+            )
 
         result = await asyncio.to_thread(
             mt5.order_send,
@@ -499,8 +559,67 @@ class MT5Gateway(BrokerGateway):
             filled_price=float(result_price),
             raw={
                 "retcode": result.retcode,
+                "comment": getattr(result, "comment", ""),
+                "deal": getattr(result, "deal", None),
+                "position": getattr(result, "position", None),
+                "requested_volume": requested_quantity,
+                "filled_volume": _numeric_attr(result, "volume", quantity),
+                "requested_price": price,
                 "request": request,
             },
+        )
+
+    async def close_position(self, position_id: str, *, volume: float | None = None) -> OrderResult:
+        """Close an authoritative MT5 position by ticket and confirm final state."""
+        self._require_connected()
+        if not await asyncio.to_thread(self._verify_connection_identity, require_trading=True):
+            self._connected = False
+            raise BrokerConnectionError("MT5 pre-close readiness verification failed")
+        try:
+            ticket = int(position_id)
+        except (TypeError, ValueError) as exc:
+            raise ExecutionError("Invalid MT5 position ticket", position_id=position_id) from exc
+        native = await asyncio.to_thread(mt5.positions_get, ticket=ticket)
+        if not native:
+            raise ExecutionError("MT5 position was not found", position_id=position_id)
+        position = native[0]
+        info = await asyncio.to_thread(mt5.symbol_info, position.symbol)
+        tick = await asyncio.to_thread(mt5.symbol_info_tick, position.symbol)
+        if info is None or tick is None:
+            raise ExecutionError("MT5 close preflight data is unavailable", position_id=position_id)
+        close_volume = _normalize_volume(float(volume if volume is not None else position.volume), info)
+        is_buy = position.type == mt5.ORDER_TYPE_BUY
+        price = round(float(tick.bid if is_buy else tick.ask), int(info.digits))
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": position.symbol,
+            "position": ticket,
+            "volume": close_volume,
+            "type": mt5.ORDER_TYPE_SELL if is_buy else mt5.ORDER_TYPE_BUY,
+            "price": price,
+            "deviation": 20,
+            "magic": int(getattr(position, "magic", 20260802) or 20260802),
+            "comment": "JQE position close",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": _select_filling_mode(info),
+        }
+        check = await asyncio.to_thread(mt5.order_check, request)
+        if check is None or getattr(check, "retcode", None) != 0:
+            raise ExecutionError("MT5 close order_check rejected request", retcode=getattr(check, "retcode", None), comment=getattr(check, "comment", ""), request=request)
+        result = await asyncio.to_thread(mt5.order_send, request)
+        if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
+            raise ExecutionError("MT5 close order_send rejected request", retcode=getattr(result, "retcode", None), comment=getattr(result, "comment", ""), request=request)
+        remaining = await asyncio.to_thread(mt5.positions_get, ticket=ticket)
+        if remaining and close_volume + 1e-12 >= float(position.volume):
+            raise ExecutionError("MT5 reported success but position remains open", position_id=position_id)
+        return OrderResult(
+            order_id=str(getattr(result, "order", None) or getattr(result, "deal", "")),
+            status=OrderStatus.FILLED,
+            symbol=position.symbol,
+            side=OrderSide.SELL if is_buy else OrderSide.BUY,
+            volume=close_volume,
+            filled_price=float(getattr(result, "price", price)),
+            raw={"retcode": result.retcode, "deal": getattr(result, "deal", None), "position": ticket, "request": request},
         )
 
     async def get_positions(self) -> list[Position]:

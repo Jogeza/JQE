@@ -20,14 +20,14 @@ Run directly to execute a single cycle:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, time, timezone
 
 import pandas as pd
 
 from broker.factory import get_gateway
 from broker.simulation_gateway import ObservedSimulationExecutionGateway
-from broker.types import OrderSide, Timeframe
+from broker.types import AccountIdentity, AccountInfo, OrderSide, Timeframe
 from config import EmergencyStopState, settings
 from core.data_validator import validate_market_data
 from core.exceptions import ConfigurationError, ExecutionError, JQEError, MarketDataError
@@ -42,9 +42,9 @@ from data.market_observation import (
 from intelligence.trade_plan import TradePlanBuilder
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
-from execution.persistence import SQLiteIntentRecordStore
+from execution.persistence import SQLiteIntentRecordStore, SQLiteOneShotExecutionGuard, SQLitePositionLedger
 from execution.policy import ExecutionContext, ExecutionIntent
-from execution.reconciliation import SimulationReconciliationAdapter
+from execution.reconciliation import get_reconciliation_adapter
 from execution.recovery import StartupRecoveryService
 from execution.safety import (
     DailyStateAuthority,
@@ -60,14 +60,76 @@ from execution.safety import (
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
     approve_trade,
-    authorize_execution_quantity,
     get_reconciled_daily_state,
     reconcile_daily_history,
 )
+from risk.position_sizing import ExecutionSizingDecision, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _SIDE_BY_SIGNAL: dict[str, OrderSide] = {"BUY": OrderSide.BUY, "SELL": OrderSide.SELL}
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionComposition:
+    """Broker-aware durable execution dependencies resolved once per startup."""
+
+    account: AccountInfo
+    identity: AccountIdentity
+    records: SQLiteIntentRecordStore
+    position_ledger: SQLitePositionLedger
+    reconciler: object
+    lifetime_guard: SQLiteOneShotExecutionGuard
+
+
+async def build_execution_composition(gateway, *, broker: str, active_settings=settings) -> ExecutionComposition:
+    account = await gateway.get_account_info()
+    normalized_broker = broker.strip().lower()
+    trade_mode = account.trade_mode or ("simulation" if normalized_broker == "simulation" else "unknown")
+    identity = AccountIdentity(
+        broker=normalized_broker,
+        account_id=account.account_id,
+        server=account.server,
+        currency=account.currency,
+        trade_mode=trade_mode,
+    )
+    if normalized_broker in {"mt5", "mt5_demo"}:
+        if identity.account_id.strip().upper() == "SIMULATED":
+            raise ConfigurationError("MT5 startup resolved the legacy SIMULATED account sentinel")
+        if identity.trade_mode != "demo":
+            raise ConfigurationError("MT5 startup account identity is not authoritatively DEMO")
+    position_ledger = SQLitePositionLedger(active_settings.execution_position_ledger_path)
+    lifetime_guard = SQLiteOneShotExecutionGuard(active_settings.execution_lifetime_store_path)
+    if normalized_broker in {"mt5", "mt5_demo"}:
+        lifetime_guard.assert_available(identity.scope)
+    records = SQLiteIntentRecordStore(active_settings.intent_store_path)
+    reconciler = get_reconciliation_adapter(
+        broker=normalized_broker, gateway=gateway, ledger=position_ledger
+    )
+    return ExecutionComposition(account, identity, records, position_ledger, reconciler, lifetime_guard)
+
+
+async def authorize_broker_execution_quantity(
+    gateway, *, broker: str, symbol: str, side: OrderSide, balance: float,
+    risk_percent: float, entry: float, stop_loss: float,
+) -> ExecutionSizingDecision:
+    """Use the gateway's authoritative MT5 P/L and margin model when applicable."""
+    if broker.strip().lower() in {"mt5", "mt5_demo"}:
+        quantity, facts = await gateway.authorize_account_currency_risk(
+            symbol=symbol, side=side, balance=balance,
+            risk_percent=risk_percent, entry=entry, stop_loss=stop_loss,
+        )
+        return ExecutionSizingDecision(
+            authorized_risk_amount=float(facts["authorized_risk_amount"]),
+            quantity=quantity,
+            expected_loss_at_stop=float(facts["expected_loss_at_stop"]),
+            risk_verifiable=True,
+            reason="MT5 quantity verified by broker order_calc_profit/order_calc_margin",
+        )
+    return authorize_execution_quantity(
+        broker=broker, balance=balance, risk_percent=risk_percent,
+        entry=entry, stop_loss=stop_loss,
+    )
 
 
 async def run() -> None:
@@ -192,15 +254,19 @@ async def run() -> None:
     timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
 
     gateway = get_gateway(settings)
-    records = SQLiteIntentRecordStore(settings.intent_store_path)
-    reconciler = SimulationReconciliationAdapter(gateway)
 
     async with gateway:
+        composition = await build_execution_composition(
+            gateway, broker=settings.broker, active_settings=settings
+        )
+        account_identity = composition.identity
+        records = composition.records
+        reconciler = composition.reconciler
         recovery = await StartupRecoveryService(
             records,
             reconciler,
             broker=settings.broker,
-            account_id="SIMULATED",
+            account_id=account_identity.account_id,
         ).recover()
         unresolved_records = records.list_unresolved()
         if unresolved_records:
@@ -272,7 +338,7 @@ async def run() -> None:
         logger.info("Market regime: {}", regime)
         logger.info("Trading signal: {}", signal)
 
-        account = await gateway.get_account_info()
+        account = composition.account
         history_end = datetime.now(timezone.utc)
         history_start = datetime.combine(history_end.date(), time.min, tzinfo=timezone.utc)
         history = await gateway.get_trade_history_snapshot(
@@ -347,8 +413,11 @@ async def run() -> None:
             return
 
         side = _SIDE_BY_SIGNAL[plan.signal]
-        sizing = authorize_execution_quantity(
+        sizing = await authorize_broker_execution_quantity(
+            gateway,
             broker=settings.broker,
+            symbol=plan.symbol,
+            side=side,
             balance=account.balance,
             risk_percent=risk_decision["risk_percent"],
             entry=float(latest["close"]),
@@ -386,7 +455,7 @@ async def run() -> None:
             tuple(await gateway.get_positions())
         )
         execution_environment = settings.environment
-        approved_account = "SIMULATED"
+        approved_account = account_identity.account_id
         approved_symbols = frozenset({normalized_symbol})
         context = ExecutionContext(
             emergency_stop=(
@@ -429,7 +498,11 @@ async def run() -> None:
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
         )
-        execution_gateway = ObservedSimulationExecutionGateway(gateway, market_observation)
+        execution_gateway = (
+            ObservedSimulationExecutionGateway(gateway, market_observation)
+            if settings.broker == "simulation"
+            else gateway
+        )
         executor = AsyncTradeExecutor(
             execution_gateway,
             records,
@@ -444,6 +517,8 @@ async def run() -> None:
 
         def publish_submission_started(_decision) -> None:
             nonlocal submission_started
+            if settings.broker in {"mt5", "mt5_demo"}:
+                composition.lifetime_guard.consume(account_identity.scope)
             publish_safety(
                 ExecutionAuthorization.NOT_EVALUATED,
                 ("SUBMISSION_IN_PROGRESS",),

@@ -19,6 +19,8 @@ def _reset_risk_engine(tmp_path):
         settings.intent_store_path,
         settings.execution_safety_store_path,
     )
+    original_broker = settings.broker
+    settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     _default_engine.reset_daily_stats()
@@ -30,6 +32,7 @@ def _reset_risk_engine(tmp_path):
         settings.intent_store_path,
         settings.execution_safety_store_path,
     ) = original_paths
+    settings.broker = original_broker
 
 
 @pytest.fixture

@@ -111,6 +111,24 @@ class AccountInfo(BaseModel):
     currency: str
     equity: float | None = None
     leverage: float | None = None
+    server: str | None = None
+    trade_mode: str | None = None
+
+
+class AccountIdentity(BaseModel):
+    """Stable, non-secret broker account identity used for durable scoping."""
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+    broker: str
+    account_id: str
+    server: str | None = None
+    currency: str
+    trade_mode: str
+
+    @property
+    def scope(self) -> str:
+        return f"{self.broker.strip().lower()}:{self.account_id.strip()}"
 
 
 class Candle(BaseModel):

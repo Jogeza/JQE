@@ -62,23 +62,10 @@ def authorize_execution_quantity(
         return ExecutionSizingDecision(
             authorized_risk, None, None, False, capability.reason
         )
-    if broker == "mt5_demo":
-        raw_lot = float(authorized_risk_decimal / stop_distance_decimal)
-        lot = round(raw_lot, 2)
-        if lot <= 0:
-            return ExecutionSizingDecision(
-                authorized_risk, None, None, False, "Authorized lot size is zero or negative"
-            )
-        expected_loss = float(Decimal(str(lot)) * stop_distance_decimal)
+    if broker in {"mt5", "mt5_demo"}:
         return ExecutionSizingDecision(
-            authorized_risk_amount=authorized_risk,
-            quantity=ExecutionQuantity(
-                value=lot,
-                unit=ExecutionQuantityUnit.MT5_LOTS,
-            ),
-            expected_loss_at_stop=expected_loss,
-            risk_verifiable=True,
-            reason="MT5 demo lot sizing verified against linear stop distance",
+            authorized_risk, None, None, False,
+            "MT5 sizing requires gateway order_calc_profit/order_calc_margin authority",
         )
     if broker == "deriv_demo":
         stake = round(authorized_risk, 2)

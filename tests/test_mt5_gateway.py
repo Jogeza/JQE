@@ -306,7 +306,12 @@ class TestSubmitOrder:
     ) -> None:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
+        mock_mt5.symbol_select.return_value = True
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10, trade_mode=4, volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.order_check.return_value = MagicMock(retcode=0, comment="Done")
         mock_mt5.TRADE_RETCODE_DONE = 10009
         mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=555, price=2000.5)
 
@@ -324,7 +329,10 @@ class TestSubmitOrder:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
-        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10, trade_mode=4, volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.order_check.return_value = MagicMock(retcode=0, comment="Done")
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
         mock_mt5.TRADE_RETCODE_DONE = 10009
         mock_mt5.order_send.return_value = MagicMock(retcode=10004, order=None, price=None)
@@ -342,7 +350,10 @@ class TestSubmitOrder:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
-        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10, trade_mode=4, volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.order_check.return_value = MagicMock(retcode=0, comment="Done")
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.5, bid=2000.0)
         mock_mt5.order_send.return_value = None
         with pytest.raises(ExecutionError, match="outcome is indeterminate"):
@@ -393,7 +404,10 @@ class TestSubmitOrder:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
-        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10)
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.01, trade_stops_level=10, trade_mode=4, volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.order_check.return_value = MagicMock(retcode=0, comment="Done")
         mock_mt5.symbol_info_tick.return_value = None
 
         with pytest.raises(MarketDataError, match="No tick data available"):
@@ -401,33 +415,65 @@ class TestSubmitOrder:
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
-    async def test_adjusts_sl_tp_when_below_minimum_distance(
+    async def test_rejects_sl_tp_when_below_minimum_distance(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
         # stops level = 50 points * 0.1 = 5.0 min distance
-        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.1, trade_stops_level=50)
+        mock_mt5.symbol_info.return_value = MagicMock(digits=2, point=0.1, trade_stops_level=50, trade_mode=4, volume_min=0.01, volume_max=10.0, volume_step=0.01, filling_mode=1)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.order_check.return_value = MagicMock(retcode=0, comment="Done")
         mock_mt5.symbol_info_tick.return_value = MagicMock(ask=2000.0, bid=1999.0)
         mock_mt5.TRADE_RETCODE_DONE = 10009
         mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=777, price=2000.0)
 
-        # SL was 1998.0 (diff 2.0 < 5.0 min distance) -> adjusted to 2000.0 - 5.0 = 1995.0
-        # TP was 2002.0 (diff 2.0 < 5.0 min distance) -> adjusted to 2000.0 + 5.0 = 2005.0
-        result = await gateway.submit_order(
-            OrderRequest(
-                symbol="XAUUSD",
-                side=OrderSide.BUY,
-                quantity={"value": 0.1, "unit": "MT5_LOTS"},
-                stop_loss=1998.0,
-                take_profit=2002.0,
-            )
+        with pytest.raises(ExecutionError, match="stop-loss validation failed"):
+            await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY,
+                quantity={"value": 0.1, "unit": "MT5_LOTS"}, stop_loss=1998.0, take_profit=2002.0))
+        mock_mt5.order_send.assert_not_called()
+
+
+class TestMT5OrderPreflight:
+    @staticmethod
+    def _prepare(mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        gateway._connected = True
+        gateway._resolve_symbol = MagicMock(return_value="EURUSD")
+        mock_mt5.symbol_select.return_value = True
+        mock_mt5.symbol_info.return_value = MagicMock(
+            digits=5, point=0.00001, trade_stops_level=20, trade_mode=4,
+            volume_min=0.01, volume_max=20.0, volume_step=0.01, filling_mode=1,
         )
-        assert result.status is OrderStatus.FILLED
-        sent_request = mock_mt5.order_send.call_args[0][0]
-        assert sent_request["sl"] == 1995.0
-        assert sent_request["tp"] == 2005.0
+        mock_mt5.symbol_info_tick.return_value = MagicMock(ask=1.10020, bid=1.10000)
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.TRADE_RETCODE_DONE = 10009
+
+    @patch("broker.mt5_gateway.mt5")
+    async def test_order_check_rejection_never_sends(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        self._prepare(mock_mt5, gateway)
+        mock_mt5.order_check.return_value = MagicMock(retcode=10016, comment="Invalid stops")
+        with pytest.raises(ExecutionError, match="order_check rejected"):
+            await gateway.submit_order(OrderRequest(symbol="EURUSD", side=OrderSide.BUY, quantity={"value": 0.01, "unit": "MT5_LOTS"}))
+        mock_mt5.order_send.assert_not_called()
+
+    @patch("broker.mt5_gateway.mt5")
+    async def test_volume_is_normalized_down_to_step(self, mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
+        self._prepare(mock_mt5, gateway)
+        mock_mt5.order_check.return_value = MagicMock(retcode=0)
+        mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=12, deal=13, price=1.10020, volume=0.01)
+        await gateway.submit_order(OrderRequest(symbol="EURUSD", side=OrderSide.BUY, quantity={"value": 0.019, "unit": "MT5_LOTS"}))
+        assert mock_mt5.order_send.call_args.args[0]["volume"] == 0.01
+
+    @pytest.mark.parametrize("volume, message", [(0.001, "below"), (21.0, "exceeds")])
+    @patch("broker.mt5_gateway.mt5")
+    async def test_out_of_range_volume_is_rejected(self, mock_mt5: MagicMock, gateway: MT5Gateway, volume: float, message: str) -> None:
+        self._prepare(mock_mt5, gateway)
+        with pytest.raises(ExecutionError, match=message):
+            await gateway.submit_order(OrderRequest(symbol="EURUSD", side=OrderSide.BUY, quantity={"value": volume, "unit": "MT5_LOTS"}))
+        mock_mt5.order_send.assert_not_called()
 
 
 class TestGetPositions:
@@ -485,6 +531,32 @@ class TestStreamTicks:
         gen = gateway.stream_ticks("UNKNOWN")
         with pytest.raises(MarketDataError, match="Unknown MT5 symbol"):
             await gen.__anext__()
+
+
+class TestClosePosition:
+    @patch("broker.mt5_gateway.mt5")
+    async def test_successful_close_uses_ticket_and_confirms_absence(self, mock_mt5: MagicMock) -> None:
+        gateway = MT5Gateway(expected_environment="demo", strict_lifecycle=True)
+        gateway._connected = True
+        mock_mt5.ACCOUNT_TRADE_MODE_DEMO = 0
+        mock_mt5.account_info.return_value = MagicMock(trade_mode=0)
+        mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
+        position = MagicMock(ticket=88, symbol="EURUSD", type=0, volume=0.01, magic=20260802)
+        mock_mt5.positions_get.side_effect = [[position], []]
+        mock_mt5.ORDER_TYPE_BUY = 0
+        mock_mt5.ORDER_TYPE_SELL = 1
+        mock_mt5.SYMBOL_FILLING_FOK = 1
+        mock_mt5.symbol_info.return_value = MagicMock(digits=5, filling_mode=1, volume_min=0.01, volume_max=20.0, volume_step=0.01)
+        mock_mt5.symbol_info_tick.return_value = MagicMock(bid=1.1, ask=1.1002)
+        mock_mt5.order_check.return_value = MagicMock(retcode=0)
+        mock_mt5.TRADE_RETCODE_DONE = 10009
+        mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=90, deal=91, price=1.1)
+
+        result = await gateway.close_position("88")
+
+        assert result.status is OrderStatus.FILLED
+        assert mock_mt5.order_send.call_args.args[0]["position"] == 88
+        assert mock_mt5.order_send.call_args.args[0]["type"] == mock_mt5.ORDER_TYPE_SELL
 
 def _make_deal(
     *,

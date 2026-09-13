@@ -156,6 +156,8 @@ class Settings(BaseSettings):
     historical_data_path: Path = Path("data/historical.sqlite3")
     research_experiment_path: Path = Path("data/experiments")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
+    execution_position_ledger_path: Path = Path("state/execution_positions.sqlite3")
+    execution_lifetime_store_path: Path = Path("state/execution_lifetime.sqlite3")
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)

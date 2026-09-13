@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,6 +23,16 @@ class Connection:
     def __init__(self) -> None:
         self.closed = False
         self._messages: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def send(self, raw_message: str) -> None:
+        message = json.loads(raw_message)
+        request_type = next(key for key in message if key != "req_id")
+        if request_type == "balance":
+            response = {"balance": {"currency": "USD"}}
+        else:
+            response = {"error": {"message": "multiplier is unverified"}}
+        response["req_id"] = message["req_id"]
+        await self._messages.put(json.dumps(response))
 
     async def close(self) -> None:
         self.closed = True

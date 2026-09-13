@@ -142,6 +142,10 @@ class MT5ObservationGateway(Protocol):
     async def get_trade_history(self, count: int = 100) -> list[object]: ...
 
 
+class PositionLedger(Protocol):
+    def open_entries(self, *, broker: str) -> tuple[object, ...]: ...
+
+
 class SimulationObservationGateway(Protocol):
     async def get_positions(self) -> list[Position]: ...
     async def get_trade_history(self, count: int = 100) -> list[TradeHistoryEntry]: ...
@@ -214,8 +218,10 @@ class SimulationReconciliationAdapter:
 class MT5ReconciliationAdapter:
     """Conservative MT5 evidence lookup, isolated from the generic executor."""
 
-    def __init__(self, gateway: MT5ObservationGateway) -> None:
+    def __init__(self, gateway: MT5ObservationGateway, *, ledger: PositionLedger | None = None, broker: str = "mt5") -> None:
         self._gateway = gateway
+        self._ledger = ledger
+        self._broker = broker
 
     async def reconcile(
         self,
@@ -231,9 +237,25 @@ class MT5ReconciliationAdapter:
         try:
             positions = tuple(await self._gateway.get_positions())
             history = tuple(await self._gateway.get_trade_history())
+            ledger_entries = () if self._ledger is None else self._ledger.open_entries(broker=self._broker)
         except Exception:
             return _result(BrokerReconciliationState.UNAVAILABLE, "MT5 state unavailable", broker="mt5", idempotency_key=idempotency_key)
         records = (*positions, *history)
+        if order_id is not None:
+            ledger_positions = {
+                str(entry.position_id)
+                for entry in ledger_entries
+                if str(entry.order_id) == str(order_id)
+            }
+            for item in records:
+                observed_position = getattr(item, "position_id", None) or getattr(item, "trade_id", None)
+                if observed_position is not None and str(observed_position) in ledger_positions:
+                    return _result(
+                        BrokerReconciliationState.CONFIRMED_MATCH,
+                        "MT5 ledger order mapped to authoritative broker position",
+                        broker="mt5", idempotency_key=idempotency_key, item=item,
+                        order_id=order_id, position_id=str(observed_position),
+                    )
         for item in records:
             if _matches_id(item, order_id, ("order_id", "order")) or _matches_id(item, deal_id, ("deal_id", "deal", "trade_id")) or _matches_id(item, position_id, ("position_id", "position_identifier")) or _matches_id(item, request_id, ("request_id",)):
                 return _result(BrokerReconciliationState.CONFIRMED_MATCH, "MT5 broker identifier matched", broker="mt5", idempotency_key=idempotency_key, item=item, order_id=order_id, deal_id=deal_id, position_id=position_id, request_id=request_id)
@@ -241,6 +263,18 @@ class MT5ReconciliationAdapter:
         if evidence_present or symbol:
             return _result(BrokerReconciliationState.AMBIGUOUS, "MT5 evidence lacks intent correlation", broker="mt5", idempotency_key=idempotency_key, symbol=symbol)
         return _result(BrokerReconciliationState.CONFIRMED_ABSENCE, "MT5 query returned no usable evidence", broker="mt5", idempotency_key=idempotency_key)
+
+
+def get_reconciliation_adapter(*, broker: str, gateway: object, ledger: PositionLedger | None = None) -> object:
+    """Construct the broker-specific reconciler for the active gateway."""
+    normalized = broker.strip().lower()
+    if normalized == "simulation":
+        return SimulationReconciliationAdapter(gateway)  # type: ignore[arg-type]
+    if normalized in {"mt5", "mt5_demo"}:
+        return MT5ReconciliationAdapter(gateway, ledger=ledger, broker=normalized)  # type: ignore[arg-type]
+    if normalized in {"deriv", "deriv_demo"}:
+        return DerivReconciliationAdapter(gateway)  # type: ignore[arg-type]
+    raise ValueError(f"Unsupported reconciliation broker: {broker!r}")
 
 
 def classify_observation(*, broker_available: bool, symbol_match: bool, broker: str = "unknown", idempotency_key: str | None = None) -> BrokerReconciliationResult:
