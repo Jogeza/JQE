@@ -77,8 +77,11 @@ async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_life
     gateway.authorize_account_currency_risk.assert_awaited_once()
 
     composition.lifetime_guard.consume(composition.identity.scope)
-    with pytest.raises(RuntimeError, match="lifetime execution cap"):
-        await main.build_execution_composition(gateway, broker="mt5", active_settings=settings)
+    # A consumed submission slot must not block read-only startup composition.
+    second = await main.build_execution_composition(
+        gateway, broker="mt5", active_settings=settings
+    )
+    assert second.lifetime_guard.count(second.identity.scope) == 1
 
 
 @pytest.mark.asyncio

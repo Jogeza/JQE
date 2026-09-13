@@ -100,8 +100,6 @@ async def build_execution_composition(gateway, *, broker: str, active_settings=s
             raise ConfigurationError("MT5 startup account identity is not authoritatively DEMO")
     position_ledger = SQLitePositionLedger(active_settings.execution_position_ledger_path)
     lifetime_guard = SQLiteOneShotExecutionGuard(active_settings.execution_lifetime_store_path)
-    if normalized_broker in {"mt5", "mt5_demo"}:
-        lifetime_guard.assert_available(identity.scope)
     records = SQLiteIntentRecordStore(active_settings.intent_store_path)
     reconciler = get_reconciliation_adapter(
         broker=normalized_broker, gateway=gateway, ledger=position_ledger
@@ -152,12 +150,13 @@ async def run() -> None:
         "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
     )
 
-    if settings.broker != "simulation":
-        if not (
-            settings.broker_execution_enabled
-            and settings.broker in ("deriv", "deriv_demo", "mt5", "mt5_demo")
-        ):
-            raise ConfigurationError("Application execution is authorized for simulation only")
+    if settings.broker not in ("simulation", "deriv", "deriv_demo", "mt5", "mt5_demo"):
+        raise ConfigurationError(f"Unsupported broker: {settings.broker}")
+    if (
+        settings.broker in ("deriv", "deriv_demo")
+        and not settings.broker_execution_enabled
+    ):
+        raise ConfigurationError("Application execution is authorized for simulation only")
 
     safety_store = SQLiteExecutionSafetyStore(
         settings.execution_safety_store_path, initialize=True
@@ -474,7 +473,9 @@ async def run() -> None:
             used_idempotency_keys=(
                 frozenset({idempotency_key}) if existing_record is not None else frozenset()
             ),
-            execution_enabled=True,
+            execution_enabled=(
+                settings.broker == "simulation" or settings.broker_execution_enabled
+            ),
             dry_run=False,
             broker=settings.broker,
             environment=execution_environment,

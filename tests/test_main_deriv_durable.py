@@ -20,7 +20,7 @@ def _restore_broker():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("broker", ["deriv", "mt5"])
+@pytest.mark.parametrize("broker", ["deriv"])
 async def test_non_simulation_application_execution_is_rejected_before_gateway(
     broker: str,
 ) -> None:

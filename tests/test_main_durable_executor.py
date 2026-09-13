@@ -44,6 +44,10 @@ def _restore_execution_settings(tmp_path):
         settings.emergency_stop,
         settings.execution_safety_store_path,
         settings.market_data_source,
+        settings.default_symbol,
+        settings.broker_execution_enabled,
+        settings.execution_position_ledger_path,
+        settings.execution_lifetime_store_path,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
@@ -51,6 +55,10 @@ def _restore_execution_settings(tmp_path):
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     settings.market_data_source = "simulation"
+    settings.default_symbol = "XAUUSD"
+    settings.broker_execution_enabled = False
+    settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
+    settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
     yield
     (
         settings.broker,
@@ -59,6 +67,10 @@ def _restore_execution_settings(tmp_path):
         settings.emergency_stop,
         settings.execution_safety_store_path,
         settings.market_data_source,
+        settings.default_symbol,
+        settings.broker_execution_enabled,
+        settings.execution_position_ledger_path,
+        settings.execution_lifetime_store_path,
     ) = original
 
 
@@ -187,13 +199,38 @@ async def test_obsolete_durable_switch_cannot_restore_direct_submission_path() -
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("broker", ["deriv", "mt5"])
-async def test_direct_real_broker_is_rejected_before_gateway_creation(broker: str) -> None:
-    settings.broker = broker
-    with patch("main.get_gateway") as get_gateway:
-        with pytest.raises(ConfigurationError, match="simulation only"):
-            await main.run()
-    get_gateway.assert_not_called()
+async def test_execution_disabled_mt5_refreshes_demo_risk_without_submission(tmp_path) -> None:
+    settings.broker = "mt5"
+    settings.broker_execution_enabled = False
+    settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
+    settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
+    gateway = _gateway()
+    gateway.get_account_info.return_value = AccountInfo(
+        account_id="41163130", balance=10_000.0, equity=9_950.0,
+        currency="USD", server="Deriv-Demo", trade_mode="demo",
+    )
+    gateway.authorize_account_currency_risk = AsyncMock(return_value=(
+        ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
+        {"authorized_risk_amount": 2.0, "expected_loss_at_stop": 1.8},
+    ))
+    patches = _pipeline_patches(gateway)
+    with (
+        patches[0], patches[1], patches[2], patches[3], patches[4],
+        patches[5], patches[6]
+    ):
+        await main.run()
+
+    gateway.get_account_info.assert_awaited()
+    gateway.get_positions.assert_awaited()
+    gateway.get_trade_history_snapshot.assert_awaited()
+    gateway.submit_order.assert_not_awaited()
+    risk = SQLiteExecutionSafetyStore(
+        settings.execution_safety_store_path, initialize=False
+    ).read_risk()
+    assert risk is not None
+    assert risk.account_id == "41163130"
+    assert risk.balance == 10_000.0
+    assert risk.equity == 9_950.0
 
 
 @pytest.mark.asyncio
@@ -403,13 +440,10 @@ async def test_unavailable_daily_history_fails_closed_before_submission() -> Non
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("broker", ["deriv", "mt5"])
-async def test_unauthorized_durable_execution_fails_before_gateway_creation(
-    broker: str,
-) -> None:
-    settings.broker = broker
+async def test_unsupported_broker_fails_before_gateway_creation() -> None:
+    settings.broker = "unsupported"
     with patch("main.get_gateway") as get_gateway:
-        with pytest.raises(Exception, match="simulation only"):
+        with pytest.raises(ConfigurationError, match="Unsupported broker"):
             await main.run()
     get_gateway.assert_not_called()
 
