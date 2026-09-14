@@ -612,19 +612,25 @@ async def run_live_paper_campaign(
         pending_before = confirmation.pending
         transition = confirmation.observe(latest.candle_opened_at, str(facts.get("regime", "UNKNOWN")))
         current_direction = str(signal.get("signal", "NO_TRADE"))
+        freshness, expires_at = _signal_freshness(latest, now)
+        quality_score = signal.get("confidence", facts.get("signal_confidence"))
         emit("SIGNAL", latest.candle_opened_at, {
             "symbol": symbol,
             "timeframe": timeframe.value,
             "signal_candle": latest.candle_opened_at.isoformat(),
             "direction": current_direction,
             "confidence": facts.get("signal_confidence"),
+            "conclusion": current_direction,
+            "quality_score": quality_score,
+            "observed_at": now.isoformat(),
+            "candle_closed_at": latest.closed_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "data_freshness": freshness,
             "regime": facts.get("regime"),
             "momentum": facts.get("momentum"),
             "volatility": facts.get("volatility"),
             "rsi": facts.get("rsi"),
         })
-        freshness, expires_at = _signal_freshness(latest, now)
-        quality_score = signal.get("confidence", facts.get("signal_confidence"))
         await notification_events.live_campaign_signal(
             actionable=current_direction in {"BUY", "SELL"},
             execution_enabled=bool(settings.broker_execution_enabled),

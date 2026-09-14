@@ -64,7 +64,7 @@ async def test_campaign_sends_factual_no_trade_signal_to_telegram(
         }
 
     monkeypatch.setattr(live_paper_campaign, "evaluate_strategy_candidate", no_trade)
-    await run_live_paper_campaign(
+    summary = await run_live_paper_campaign(
         symbol="XAUUSD",
         timeframe=Timeframe.M15,
         gateway=gateway,
@@ -83,6 +83,18 @@ async def test_campaign_sends_factual_no_trade_signal_to_telegram(
     assert "Candle closed at" in notification.facts
     assert "Expires at" in notification.facts
     assert gateway.submitted_orders == []
+    signal_event = next(
+        event
+        for event in CampaignEvidenceStore(
+            Path(summary["session"]["evidence_path"])
+        ).events(summary["session"]["session_id"])
+        if event["event_type"] == "SIGNAL"
+    )
+    assert signal_event["facts"]["conclusion"] == "NO_TRADE"
+    assert signal_event["facts"]["quality_score"] == 41
+    assert signal_event["facts"]["data_freshness"] in {
+        "fresh", "stale", "degraded", "cached"
+    }
 
 
 def _generate_candles(count: int, start: datetime | None = None) -> list[Candle]:

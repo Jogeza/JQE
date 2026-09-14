@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.routes import router
+from api.observation import router as observation_router
 from api.research import router as research_router
 from config.settings import settings
 from core.exceptions import JQEError
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(router)
+    app.include_router(observation_router)
     app.include_router(research_router)
 
     @app.get("/health", tags=["system"])
