@@ -171,6 +171,14 @@ class Settings(BaseSettings):
     paper_diagnostics_path: Path = Path("state/paper_diagnostics.sqlite3")
     paper_diagnostics_minimum_sample: int = Field(default=100, gt=0)
 
+    observation_symbols: str = "R_75:H1"
+    observation_evidence_path: Path = Path(
+        "state/live_paper_operational/observation_daemon.evidence.sqlite3"
+    )
+    observation_close_grace_seconds: float = Field(default=5.0, ge=0, le=300)
+    observation_max_backoff_seconds: float = Field(default=300.0, ge=1, le=3600)
+    observation_heartbeat_stale_cycles: int = Field(default=2, ge=1, le=24)
+
     campaign_mode: Literal["historical", "historical_replay", "live_paper"] = "historical"
     live_paper_max_candles: int | None = Field(default=None, gt=0)
     live_paper_max_duration_seconds: float | None = Field(default=None, gt=0)

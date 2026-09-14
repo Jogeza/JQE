@@ -129,3 +129,33 @@ def summarize_observations(
 def discover_live_evidence(root: Path = Path("state")) -> tuple[Path, ...]:
     """Find existing live-paper evidence stores without creating any path."""
     return tuple(sorted(root.glob("live_paper*/**/*.evidence.sqlite3")))
+
+
+def read_observation_health(
+    path: Path, *, now: datetime, maximum_age: timedelta
+) -> dict[str, Any]:
+    """Read daemon health without creating or modifying its evidence store."""
+    resolved = Path(path).resolve()
+    unavailable = {
+        "running": False, "healthy": False, "updated_at": now.isoformat(),
+        "last_success_at": None, "last_error": "NOT_STARTED",
+        "cycles_completed": 0, "session_id": "",
+    }
+    if not resolved.is_file():
+        return unavailable
+    connection = sqlite3.connect(f"file:{resolved.as_posix()}?mode=ro", uri=True)
+    try:
+        row = connection.execute(
+            "SELECT payload FROM observation_heartbeat WHERE id=1"
+        ).fetchone()
+    except sqlite3.Error:
+        return unavailable
+    finally:
+        connection.close()
+    if not row:
+        return unavailable
+    payload = json.loads(row[0])
+    updated_at = _parse_timestamp(payload.get("updated_at"))
+    if updated_at is None or now - updated_at > maximum_age:
+        payload.update(running=False, healthy=False, last_error="STALE_HEARTBEAT")
+    return payload
