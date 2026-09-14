@@ -67,6 +67,7 @@ def test_daemon_module_has_no_mutating_architecture_dependencies() -> None:
         "SQLiteOneShotExecutionGuard",
     )
     assert all(value not in source for value in forbidden)
+    assert "OBSERVATION_HEARTBEAT" in source
 
 
 @pytest.mark.asyncio

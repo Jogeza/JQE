@@ -218,7 +218,15 @@ class ObservationDaemon:
         return appended
 
     def _heartbeat(self, now: datetime, *, healthy: bool, error: str | None) -> None:
-        self.store.publish(DaemonHeartbeat(True, healthy, now.isoformat(), self.last_success_at, error, self.cycles_completed, self.session_id))
+        heartbeat = DaemonHeartbeat(
+            True, healthy, now.isoformat(), self.last_success_at,
+            error, self.cycles_completed, self.session_id,
+        )
+        self.store.publish(heartbeat)
+        logger.info(
+            "OBSERVATION_HEARTBEAT healthy={} cycles_completed={} last_success_at={} error={}",
+            healthy, self.cycles_completed, self.last_success_at, error or "NONE",
+        )
 
     async def run_forever(self) -> None:
         backoff = 1.0
