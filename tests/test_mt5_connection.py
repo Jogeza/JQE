@@ -38,5 +38,13 @@ def test_login_failure_shuts_down(mock_mt5: MagicMock) -> None:
 
 @patch("core.mt5_connection.mt5")
 def test_shutdown_is_explicit(mock_mt5: MagicMock) -> None:
-    disconnect()
+    mock_mt5.initialize.return_value = True
+    assert connect() is True
+    assert disconnect() is True
     mock_mt5.shutdown.assert_called_once()
+
+
+@patch("core.mt5_connection.mt5")
+def test_non_owner_disconnect_returns_without_shutdown(mock_mt5: MagicMock) -> None:
+    assert disconnect() is False
+    mock_mt5.shutdown.assert_not_called()

@@ -195,7 +195,7 @@ class MT5Gateway(BrokerGateway):
                 mt5_session.activate(self._session_owner)
             except BaseException:
                 try:
-                    mt5_disconnect()
+                    mt5_disconnect(self._session_owner)
                 finally:
                     mt5_session.invalidate()
                     self._pinned_identity = None
@@ -260,7 +260,7 @@ class MT5Gateway(BrokerGateway):
             if not mt5_session.owns(self._session_owner):
                 return
             try:
-                mt5_disconnect()
+                mt5_disconnect(self._session_owner)
             finally:
                 mt5_session.invalidate()
                 self._pinned_identity = None

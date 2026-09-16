@@ -8,7 +8,6 @@ from core.mt5_session import mt5_session
 _LEGACY_SESSION_OWNER = object()
 
 
-
 def connect(*, terminal_path: Path | None = None, login: int | None = None,
             password: str | None = None, server: str | None = None,
             _session_owner: object = _LEGACY_SESSION_OWNER):
@@ -41,13 +40,8 @@ def _initialize(*, terminal_path: Path | None, login: int | None,
         initialized = mt5.initialize()
 
     if initialized is not True:
-
-        logger.error(
-            "MT5 connection failed"
-        )
-
+        logger.error("MT5 connection failed")
         return False
-
 
     if login is not None and mt5.login(login, password=password, server=server) is not True:
         logger.error("MT5 account login failed for account {}", login)
@@ -55,19 +49,19 @@ def _initialize(*, terminal_path: Path | None, login: int | None,
         return False
 
     logger.info("MT5 connection successful")
-
-
     return True
 
 
+def disconnect(_session_owner: object = _LEGACY_SESSION_OWNER) -> bool:
+    """Shut down the MT5 terminal and release the process-global session.
 
-def disconnect():
-    with mt5_session.lock:
-        try:
-            mt5.shutdown()
-        finally:
-            mt5_session.invalidate()
-
-    logger.info(
-        "MT5 disconnected"
-    )
+    Only the current session owner may call this.  If a different owner
+    (e.g. an MT5Gateway) holds the session, this call is a no-op so that
+    legacy helpers cannot forcibly revoke an active gateway session.
+    """
+    released = mt5_session.release(_session_owner, shutdown_callback=mt5.shutdown)
+    if released:
+        logger.info("MT5 disconnected")
+    else:
+        logger.debug("MT5 disconnect ignored — caller does not own the session")
+    return released

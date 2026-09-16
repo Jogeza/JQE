@@ -1,6 +1,8 @@
 """Process-wide MT5 lifecycle authority; contains no broker SDK dependencies."""
 
+from collections.abc import Callable
 from threading import RLock
+from typing import Any
 
 
 class MT5SessionAuthority:
@@ -40,6 +42,29 @@ class MT5SessionAuthority:
         with self.lock:
             if self._owner is owner:
                 self._active = False
+
+    def release(
+        self,
+        owner: object,
+        shutdown_callback: Callable[[], Any] | None = None,
+    ) -> bool:
+        """Atomically validate owner, execute shutdown callback, and clear session.
+
+        Holds the authority lock while validating ownership, calling the
+        shutdown callback, and clearing session state. If the supplied owner
+        does not currently own the session, returns False immediately without
+        invoking the callback.
+        """
+        with self.lock:
+            if self._owner is not owner:
+                return False
+            try:
+                if shutdown_callback is not None:
+                    shutdown_callback()
+            finally:
+                self._active = False
+                self._owner = None
+            return True
 
 
 mt5_session = MT5SessionAuthority()
