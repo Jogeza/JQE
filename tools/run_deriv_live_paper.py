@@ -9,6 +9,7 @@ from pathlib import Path
 from broker.factory import get_gateway
 from broker.types import Timeframe
 from config.settings import Settings
+from core.exceptions import ConfigurationError
 from tools import live_paper_campaign
 
 
@@ -27,9 +28,14 @@ def _arguments() -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    configured = Settings()
+    if not configured.broker_execution_enabled:
+        raise ConfigurationError(
+            "JQE_BROKER_EXECUTION_ENABLED is disabled; Deriv live-paper execution refused"
+        )
     runtime = Settings(
         broker="deriv_demo",
-        broker_execution_enabled=True,
+        broker_execution_enabled=configured.broker_execution_enabled,
         campaign_mode="live_paper",
         deriv_expected_environment="demo",
         live_paper_max_candles=args.max_candles,
@@ -62,7 +68,10 @@ def main() -> int:
     args = _arguments()
     if args.max_candles <= 0 or args.max_duration_seconds <= 0 or args.max_orders <= 0:
         raise SystemExit("All campaign bounds must be positive")
-    return asyncio.run(_run(args))
+    try:
+        return asyncio.run(_run(args))
+    except ConfigurationError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":
