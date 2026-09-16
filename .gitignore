@@ -52,6 +52,7 @@ data/historical.sqlite3-wal
 state/*.sqlite3
 state/*.sqlite3-shm
 state/*.sqlite3-wal
+state/live_paper_operational/
 
 # Python cache
 __pycache__/
