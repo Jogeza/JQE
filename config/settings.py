@@ -129,6 +129,21 @@ class Settings(BaseSettings):
     weltrade_password: str | None = Field(default=None, repr=False)
     weltrade_server: str | None = None
     weltrade_terminal_path: Path | None = None
+    weltrade_demo_login: int | None = None
+    weltrade_demo_password: str | None = Field(default=None, repr=False)
+    weltrade_demo_server: str | None = None
+
+    @property
+    def effective_weltrade_login(self) -> int | None:
+        return self.weltrade_demo_login if self.weltrade_demo_login is not None else self.weltrade_login
+
+    @property
+    def effective_weltrade_password(self) -> str | None:
+        return self.weltrade_demo_password if self.weltrade_demo_password is not None else self.weltrade_password
+
+    @property
+    def effective_weltrade_server(self) -> str | None:
+        return self.weltrade_demo_server if self.weltrade_demo_server is not None else self.weltrade_server
 
     deriv_api_token: str | None = Field(default=None, repr=False)
     deriv_app_id: str = "1089"
@@ -219,6 +234,21 @@ class Settings(BaseSettings):
                     "live_paper requires at least one stop condition"
                 )
         return self
+
+    @field_validator(
+        "mt5_terminal_path",
+        "weltrade_terminal_path",
+        "observation_mt5_terminal_path",
+        "observation_mt5_portable_data_path",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_windows_paths(cls, value: object) -> object:
+        if isinstance(value, str) and "\t" in value:
+            cand = value.replace("\t", "\\t")
+            if Path(cand).exists():
+                return Path(cand)
+        return value
 
     @field_validator("log_level", mode="before")
     @classmethod

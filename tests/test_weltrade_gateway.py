@@ -12,7 +12,7 @@ from core.exceptions import BrokerConnectionError, UnsafeBrokerAccountError
 async def test_connect_verifies_weltrade_demo_identity() -> None:
     account = MagicMock(login=42, server="Weltrade-Demo", trade_mode=0)
     terminal = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
-    gateway = WeltradeGateway(login=42, server="Weltrade-Demo", expected_environment="demo")
+    gateway = WeltradeGateway(login=42, password="test-password", server="Weltrade-Demo", expected_environment="demo")
     with (
         patch("broker.mt5_gateway.mt5_connect", return_value=True),
         patch("broker.mt5_gateway.mt5.account_info", return_value=account),
@@ -29,7 +29,7 @@ async def test_connect_verifies_weltrade_demo_identity() -> None:
 async def test_connect_rejects_non_weltrade_server() -> None:
     account = MagicMock(login=42, server="OtherBroker-Demo", trade_mode=0)
     terminal = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
-    gateway = WeltradeGateway(expected_environment="demo")
+    gateway = WeltradeGateway(login=42, password="test-password", server="OtherBroker-Demo", expected_environment="demo")
     with (
         patch("broker.mt5_gateway.mt5_connect", return_value=True),
         patch("broker.mt5_gateway.mt5.account_info", return_value=account),
@@ -40,6 +40,20 @@ async def test_connect_rejects_non_weltrade_server() -> None:
     ):
         with pytest.raises(BrokerConnectionError, match="Weltrade terminal identity"):
             await gateway.connect()
+
+
+@pytest.mark.asyncio
+async def test_connect_rejects_missing_credentials(monkeypatch) -> None:
+    from config import settings
+    monkeypatch.setattr(settings, "weltrade_login", None)
+    monkeypatch.setattr(settings, "weltrade_demo_login", None)
+    monkeypatch.setattr(settings, "weltrade_password", None)
+    monkeypatch.setattr(settings, "weltrade_demo_password", None)
+    monkeypatch.setattr(settings, "weltrade_server", None)
+    monkeypatch.setattr(settings, "weltrade_demo_server", None)
+    gateway = WeltradeGateway(login=None, password=None, server=None, expected_environment="demo")
+    with pytest.raises(BrokerConnectionError, match="Weltrade demo login configuration missing"):
+        await gateway.connect()
 
 
 def test_synthetic_symbol_resolves_from_terminal_catalogue() -> None:

@@ -7,7 +7,10 @@ import re
 
 import MetaTrader5 as mt5
 
+from pathlib import Path
+
 from broker.mt5_demo import MT5DemoGateway
+from broker.mt5_gateway import _DEFAULT_TICK_POLL_INTERVAL_SECONDS
 from core.exceptions import BrokerConnectionError
 from core.logger import logger
 
@@ -31,6 +34,50 @@ def _symbol_key(value: str) -> str:
 
 class WeltradeGateway(MT5DemoGateway):
     """Weltrade-only identity and symbol policy over shared MT5 mechanics."""
+
+    def __init__(
+        self,
+        tick_poll_interval: float = _DEFAULT_TICK_POLL_INTERVAL_SECONDS,
+        *,
+        terminal_path: Path | None = None,
+        login: int | None = None,
+        password: str | None = None,
+        server: str | None = None,
+        expected_environment: str | None = "demo",
+        strict_lifecycle: bool = True,
+        session_id: str | None = None,
+    ) -> None:
+        from config import settings
+        terminal_path = terminal_path or settings.weltrade_terminal_path
+        login = login if login is not None else settings.effective_weltrade_login
+        password = password if password is not None else settings.effective_weltrade_password
+        server = server if server is not None else settings.effective_weltrade_server
+
+        super().__init__(
+            tick_poll_interval=tick_poll_interval,
+            terminal_path=terminal_path,
+            login=login,
+            password=password,
+            server=server,
+            expected_environment=expected_environment,
+            strict_lifecycle=strict_lifecycle,
+            session_id=session_id,
+        )
+
+    def _initialize_session(self) -> bool:
+        if self.login is None or not self.password or not self.server:
+            missing: list[str] = []
+            if self.login is None:
+                missing.append("JQE_WELTRADE_DEMO_LOGIN (or JQE_WELTRADE_LOGIN)")
+            if not self.password:
+                missing.append("JQE_WELTRADE_DEMO_PASSWORD (or JQE_WELTRADE_PASSWORD)")
+            if not self.server:
+                missing.append("JQE_WELTRADE_DEMO_SERVER (or JQE_WELTRADE_SERVER)")
+            raise BrokerConnectionError(
+                f"Weltrade demo login configuration missing: {', '.join(missing)}. "
+                "Explicit demo credentials are required for deterministic demo connection."
+            )
+        return super()._initialize_session()
 
     async def connect(self) -> None:
         await super().connect()

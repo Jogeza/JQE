@@ -90,13 +90,16 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
     if settings.broker in ("weltrade", "weltrade_demo"):
         if not settings.weltrade_terminal_path:
             raise ConfigurationError("JQE_WELTRADE_TERMINAL_PATH is required for Weltrade")
-        if not settings.weltrade_login or not settings.weltrade_server:
+        login = settings.effective_weltrade_login
+        server = settings.effective_weltrade_server
+        password = settings.effective_weltrade_password
+        if not login or not server:
             raise ConfigurationError("Weltrade demo login and server identity are required")
         return WeltradeGateway(
             terminal_path=settings.weltrade_terminal_path,
-            login=settings.weltrade_login,
-            password=settings.weltrade_password,
-            server=settings.weltrade_server,
+            login=login,
+            password=password,
+            server=server,
             expected_environment="demo",
             strict_lifecycle=True,
         )

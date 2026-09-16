@@ -28,8 +28,8 @@ async def run() -> None:
     gateway = (
         get_gateway(settings)
         if settings.broker in {"weltrade", "weltrade_demo"}
-        and settings.weltrade_login is not None
-        and settings.weltrade_server
+        and settings.effective_weltrade_login is not None
+        and settings.effective_weltrade_server
         else WeltradeGateway(
             terminal_path=settings.weltrade_terminal_path,
             expected_environment="demo",
@@ -44,7 +44,8 @@ async def run() -> None:
         if not requested:
             raise RuntimeError("Weltrade terminal returned no recognizable synthetic symbols")
         resolved = gateway._resolve_symbol(requested)
-        candles = await gateway.get_candles(requested, Timeframe.H1, 2)
+        requested_count = int(os.environ.get("JQE_WELTRADE_SMOKE_COUNT", "50"))
+        candles = await gateway.get_candles(requested, Timeframe.H1, requested_count)
         tick = mt5.symbol_info_tick(resolved) if resolved else None
         print(json.dumps({
             "connected": gateway.is_connected,
