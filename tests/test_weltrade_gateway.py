@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.mt5_stubs import activate_gateway
 
 from broker.types import OrderRequest, OrderSide, OrderStatus
 from broker.weltrade_gateway import WeltradeGateway
@@ -56,7 +57,7 @@ def test_synthetic_symbol_resolves_from_terminal_catalogue() -> None:
 @pytest.mark.asyncio
 async def test_submit_rechecks_demo_before_shared_mt5_order_path() -> None:
     gateway = WeltradeGateway(expected_environment="demo")
-    gateway._connected = True
+    activate_gateway(gateway)
     gateway._demo_verified = True
     real_account = MagicMock(login=42, server="Weltrade-Live", trade_mode=2)
     order = OrderRequest(

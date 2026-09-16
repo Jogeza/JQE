@@ -39,6 +39,7 @@ from core.exceptions import (
 from core.logger import logger
 from core.mt5_connection import connect as mt5_connect
 from core.mt5_connection import disconnect as mt5_disconnect
+from core.mt5_session import mt5_session
 
 
 _TRADE_HISTORY_LOOKBACK_DAYS = 30
@@ -140,7 +141,8 @@ class MT5Gateway(BrokerGateway):
         expected_environment: str | None = None,
         strict_lifecycle: bool = False,
     ) -> None:
-        self._connected = False
+        self._session_owner = object()
+        self._pinned_identity: tuple[int, str] | None = None
         self.tick_poll_interval = tick_poll_interval
         self.terminal_path = terminal_path
         self.login = login
@@ -163,25 +165,54 @@ class MT5Gateway(BrokerGateway):
         return None
 
     async def connect(self) -> None:
-        connected = await asyncio.to_thread(
-            mt5_connect,
+        await asyncio.to_thread(self._connect_session)
+
+    def _initialize_session(self) -> bool:
+        return mt5_connect(
             terminal_path=self.terminal_path,
             login=self.login,
             password=self.password,
             server=self.server,
+            _session_owner=self._session_owner,
         )
 
-        if not connected:
-            raise BrokerConnectionError(
-                "Failed to connect to MT5 terminal"
-            )
+    def _connect_session(self) -> None:
+        with mt5_session.lock:
+            if not mt5_session.reserve(self._session_owner):
+                raise BrokerConnectionError("MT5 process-global session already owned")
+            self._pinned_identity = None
+            try:
+                if self._initialize_session() is not True:
+                    raise BrokerConnectionError("Failed to connect to MT5 terminal")
+                if self._verify_connection_identity() is not True:
+                    raise BrokerConnectionError("MT5 connection identity verification failed")
+                info = mt5.account_info()
+                self._pinned_identity = self._identity(info)
+                if self._pinned_identity is None or self._is_demo_account(info) is not True:
+                    raise BrokerConnectionError("MT5 connection identity unavailable")
+                if self._verify_connection_identity() is not True:
+                    raise BrokerConnectionError("MT5 connection identity observations conflict")
+                mt5_session.activate(self._session_owner)
+            except BaseException:
+                try:
+                    mt5_disconnect()
+                finally:
+                    mt5_session.invalidate()
+                    self._pinned_identity = None
+                raise
 
-        if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
-            if not await asyncio.to_thread(self._verify_connection_identity):
-                await asyncio.to_thread(mt5_disconnect)
-                raise BrokerConnectionError("MT5 connection identity verification failed")
+    @staticmethod
+    def _identity(account: object) -> tuple[int, str] | None:
+        login = getattr(account, "login", None)
+        server = getattr(account, "server", None)
+        if type(login) is not int or login <= 0 or type(server) is not str or not server.strip():
+            return None
+        return login, server
 
-        self._connected = True
+    @staticmethod
+    def _is_demo_account(account: object) -> bool:
+        mode = getattr(account, "trade_mode", None)
+        return type(mode) is int and mode == 0
 
     def _verify_connection_identity(self, *, require_trading: bool = False) -> bool:
         account = mt5.account_info()
@@ -192,22 +223,27 @@ class MT5Gateway(BrokerGateway):
         if getattr(terminal, "connected", False) is not True:
             logger.error("MT5 terminal is not connected")
             return False
+        identity = self._identity(account)
+        if identity is None or self._is_demo_account(account) is not True:
+            logger.error("MT5 account identity or DEMO verification unavailable")
+            return False
+        if self._pinned_identity is not None and identity != self._pinned_identity:
+            logger.error("MT5 pinned account identity mismatch")
+            return False
         if require_trading and (
             getattr(terminal, "trade_allowed", False) is not True
             or getattr(terminal, "tradeapi_disabled", False) is True
         ):
             logger.error("MT5 trading is disabled")
             return False
-        if self.login is not None and int(getattr(account, "login", -1)) != self.login:
-            logger.error("MT5 account identity mismatch: expected {} observed {}", self.login, getattr(account, "login", None))
+        if self.login is not None and identity[0] != self.login:
+            logger.error("MT5 account identity mismatch")
             return False
-        if self.server is not None and str(getattr(account, "server", "")) != self.server:
-            logger.error("MT5 server identity mismatch: expected {} observed {}", self.server, getattr(account, "server", None))
+        if self.server is not None and identity[1] != self.server:
+            logger.error("MT5 server identity mismatch")
             return False
         if self.expected_environment is not None:
-            demo_value = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)
-            real_value = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2)
-            observed = "demo" if getattr(account, "trade_mode", None) == demo_value else "live" if getattr(account, "trade_mode", None) == real_value else None
+            observed = "demo" if self._is_demo_account(account) is True else None
             if observed != self.expected_environment:
                 logger.error("MT5 environment mismatch: expected {} observed {}", self.expected_environment, observed)
                 return False
@@ -217,24 +253,50 @@ class MT5Gateway(BrokerGateway):
         return True
 
     async def disconnect(self) -> None:
-        await asyncio.to_thread(mt5_disconnect)
-        self._connected = False
+        await asyncio.to_thread(self._disconnect_session)
+
+    def _disconnect_session(self) -> None:
+        with mt5_session.lock:
+            if not mt5_session.owns(self._session_owner):
+                return
+            try:
+                mt5_disconnect()
+            finally:
+                mt5_session.invalidate()
+                self._pinned_identity = None
+
+    @property
+    def _connected(self) -> bool:
+        return mt5_session.is_active(self._session_owner)
 
     @property
     def is_connected(self) -> bool:
         return self._connected
 
     async def get_account_info(self) -> AccountInfo:
-        self._require_connected()
+        return await asyncio.to_thread(self._read_account_info)
 
-        info = await asyncio.to_thread(
-            mt5.account_info
-        )
+    def _read_account_info(self) -> AccountInfo:
+        with mt5_session.lock:
+            return self._read_verified_account_info()
+
+    def _read_verified_account_info(self) -> AccountInfo:
+        self._require_connected()
+        info = mt5.account_info()
 
         if info is None:
+            mt5_session.deactivate(self._session_owner)
             raise BrokerConnectionError(
                 "Failed to retrieve MT5 account info"
             )
+        if (
+            self._pinned_identity is None
+            or self._identity(info) != self._pinned_identity
+            or self._is_demo_account(info) is not True
+            or self._verify_connection_identity() is not True
+        ):
+            mt5_session.deactivate(self._session_owner)
+            raise BrokerConnectionError("MT5 pinned account identity or DEMO verification failed")
 
         return AccountInfo(
             account_id=str(info.login),
@@ -243,15 +305,7 @@ class MT5Gateway(BrokerGateway):
             equity=float(info.equity),
             leverage=float(info.leverage),
             server=str(info.server),
-            trade_mode=(
-                "demo"
-                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)
-                else "live"
-                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2)
-                else "contest"
-                if info.trade_mode == getattr(mt5, "ACCOUNT_TRADE_MODE_CONTEST", 1)
-                else "unknown"
-            ),
+            trade_mode="demo",
         )
 
     async def get_candles(
@@ -343,8 +397,8 @@ class MT5Gateway(BrokerGateway):
             raise ExecutionError("MT5 requires MT5_LOTS")
         requested_quantity = order.quantity.value
         if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
-            if not await asyncio.to_thread(self._verify_connection_identity, require_trading=True):
-                self._connected = False
+            if await asyncio.to_thread(self._verify_connection_identity, require_trading=True) is not True:
+                mt5_session.deactivate(self._session_owner)
                 raise BrokerConnectionError("MT5 pre-submit readiness verification failed")
 
         real_symbol = self._resolve_symbol(
@@ -542,8 +596,8 @@ class MT5Gateway(BrokerGateway):
     async def close_position(self, position_id: str, *, volume: float | None = None) -> OrderResult:
         """Close an authoritative MT5 position by ticket and confirm final state."""
         self._require_connected()
-        if not await asyncio.to_thread(self._verify_connection_identity, require_trading=True):
-            self._connected = False
+        if await asyncio.to_thread(self._verify_connection_identity, require_trading=True) is not True:
+            mt5_session.deactivate(self._session_owner)
             raise BrokerConnectionError("MT5 pre-close readiness verification failed")
         try:
             ticket = int(position_id)

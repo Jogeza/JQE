@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.mt5_stubs import activate_gateway, release_gateway
 
 from broker.demo_guard import DemoOnlyGuard
 from broker.deriv_demo import DerivDemoGateway
@@ -134,18 +135,18 @@ class MockMT5DemoGateway(MT5DemoGateway):
         super().__init__(login=int(account_id), server="DemoServer")
         self._mock_account_id = account_id
         self._mock_balance = balance
-        self._connected = True
+        activate_gateway(self)
         self._demo_verified = True
         self.submitted_orders: list[OrderRequest] = []
         self._mock_positions: list[Position] = []
         self._candle_call_count = 0
 
     async def connect(self) -> None:
-        self._connected = True
+        activate_gateway(self)
         self._demo_verified = True
 
     async def disconnect(self) -> None:
-        self._connected = False
+        release_gateway(self)
 
     async def get_account_info(self) -> AccountInfo:
         return AccountInfo(

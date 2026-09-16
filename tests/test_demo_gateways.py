@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+from tests.mt5_stubs import activate_gateway
 
 from broker.deriv_demo import DerivDemoGateway
 from broker.mt5_demo import MT5DemoGateway
@@ -151,7 +152,7 @@ class TestMT5DemoGateway:
         account = MagicMock(login=12345, server="DemoServer", trade_mode=0)
         terminal = MagicMock(connected=True, trade_allowed=False, tradeapi_disabled=False)
         gateway = MT5DemoGateway()
-        gateway._connected = True
+        activate_gateway(gateway)
         order = OrderRequest(
             symbol="XAUUSD", side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
@@ -168,7 +169,7 @@ class TestMT5DemoGateway:
     @pytest.mark.asyncio
     async def test_account_currency_risk_uses_broker_profit_and_margin(self) -> None:
         gateway = MT5DemoGateway()
-        gateway._connected = True
+        activate_gateway(gateway)
         info = MagicMock(
             trade_contract_size=100.0, trade_tick_size=0.01, trade_tick_value=1.0,
             trade_tick_value_profit=1.0, trade_tick_value_loss=1.0, point=0.01,
@@ -193,7 +194,7 @@ class TestMT5DemoGateway:
     @pytest.mark.asyncio
     async def test_instrument_preflight_fails_closed_on_missing_tick_value(self) -> None:
         gateway = MT5DemoGateway()
-        gateway._connected = True
+        activate_gateway(gateway)
         info = MagicMock(
             trade_contract_size=100.0, trade_tick_size=0.01, trade_tick_value=0.0,
             trade_tick_value_profit=0.0, trade_tick_value_loss=0.0, point=0.01,
@@ -248,7 +249,7 @@ class TestMT5DemoGateway:
         )
 
         gateway = MT5DemoGateway(login=12345, server="DemoServer")
-        gateway._connected = True
+        activate_gateway(gateway)
 
         order = OrderRequest(
             symbol="XAUUSD",
@@ -282,7 +283,7 @@ class TestMT5DemoGateway:
         mock_info_real = MagicMock(login=99999, trade_mode=2)
 
         gateway = MT5DemoGateway(login=99999)
-        gateway._connected = True
+        activate_gateway(gateway)
 
         order = OrderRequest(
             symbol="XAUUSD",

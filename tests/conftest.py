@@ -46,6 +46,21 @@ _install_mt5_stub_if_needed()
 
 
 @pytest.fixture(autouse=True)
+def _fresh_mt5_session_authority(monkeypatch, request):
+    """Each test has a fresh process authority; within-test ownership is real."""
+    from core.mt5_session import mt5_session
+
+    mt5_session.invalidate()
+    if request.module.__name__ == "tests.test_mt5_gateway":
+        from tests.mt5_stubs import configure_sdk
+        sdk = MagicMock(name="OfflineMT5")
+        configure_sdk(sdk)
+        monkeypatch.setattr("broker.mt5_gateway.mt5", sdk)
+    yield
+    mt5_session.invalidate()
+
+
+@pytest.fixture(autouse=True)
 def _offline_main_market_source(monkeypatch, request):
     """Keep orchestration tests offline after market/execution decoupling."""
     if not request.module.__name__.startswith("tests.test_main"):

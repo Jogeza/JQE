@@ -16,6 +16,7 @@ import pytest
 from broker.mt5_gateway import MT5Gateway
 from broker.types import OrderRequest, OrderSide, OrderStatus, Timeframe
 from core.exceptions import BrokerConnectionError, ExecutionError, MarketDataError
+from tests.mt5_stubs import activate_gateway, configure_sdk
 
 
 @pytest.fixture
@@ -60,6 +61,7 @@ class TestConnectionLifecycle:
         mock_mt5.account_info.return_value = MagicMock(login=42, server="Demo", trade_mode=0)
         mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
         gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo")
+        configure_sdk(mock_mt5)
         await gateway.connect()
         assert gateway.is_connected is True
 
@@ -71,6 +73,7 @@ class TestConnectionLifecycle:
         mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
         gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo")
         with pytest.raises(BrokerConnectionError):
+            configure_sdk(mock_mt5)
             await gateway.connect()
         assert gateway.is_connected is False
         mock_disconnect.assert_called_once()
@@ -83,6 +86,7 @@ class TestConnectionLifecycle:
         mock_mt5.terminal_info.return_value = None
         gateway = MT5Gateway(login=42)
         with pytest.raises(BrokerConnectionError):
+            configure_sdk(mock_mt5)
             await gateway.connect()
         assert gateway.is_connected is False
 
@@ -94,6 +98,7 @@ class TestConnectionLifecycle:
         mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
         gateway = MT5Gateway(login=42, strict_lifecycle=True)
         with pytest.raises(BrokerConnectionError):
+            configure_sdk(mock_mt5)
             await gateway.connect()
 
 
@@ -103,9 +108,10 @@ class TestGetAccountInfo:
     async def test_maps_account_info(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_mt5.account_info.return_value = MagicMock(
-            login=12345, balance=1000.0, currency="USD", equity=1010.0, leverage=100.0
+            login=12345, server="DemoServer", trade_mode=0, balance=1000.0, currency="USD", equity=1010.0, leverage=100.0
         )
         account = await gateway.get_account_info()
         assert account.account_id == "12345"
@@ -116,6 +122,7 @@ class TestGetAccountInfo:
     async def test_raises_when_account_info_is_none(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_mt5.account_info.return_value = None
 
@@ -126,9 +133,10 @@ class TestGetAccountInfo:
     async def test_maps_account_info(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_mt5.account_info.return_value = MagicMock(
-            login=12345, balance=1000.0, currency="USD", equity=1010.0, leverage=100.0
+            login=12345, server="DemoServer", trade_mode=0, balance=1000.0, currency="USD", equity=1010.0, leverage=100.0
         )
         account = await gateway.get_account_info()
         assert account.account_id == "12345"
@@ -139,6 +147,7 @@ class TestGetAccountInfo:
     async def test_raises_when_account_info_is_none(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_mt5.account_info.return_value = None
         with pytest.raises(BrokerConnectionError):
@@ -193,6 +202,7 @@ class TestGetCandles:
     async def test_maps_unanchored_candles_with_requested_timeframe(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.TIMEFRAME_M15 = 15
@@ -218,6 +228,7 @@ class TestGetCandles:
     async def test_raises_when_no_candles_returned(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.TIMEFRAME_H1 = 16385
@@ -241,6 +252,7 @@ class TestGetCandlesWithEnd:
     async def test_uses_copy_rates_from_for_historical_range(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.TIMEFRAME_M5 = 5
@@ -267,6 +279,7 @@ class TestGetCandlesWithEnd:
     async def test_raises_for_unknown_symbol(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value=None)
         with pytest.raises(MarketDataError):
@@ -279,6 +292,7 @@ class TestGetCandlesWithEnd:
     async def test_raises_when_range_query_returns_nothing(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.copy_rates_from.return_value = None
@@ -294,6 +308,7 @@ class TestSubmitOrder:
     async def test_rejects_unknown_symbol(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value=None)
         with pytest.raises(ExecutionError):
@@ -304,6 +319,7 @@ class TestSubmitOrder:
     async def test_successful_order_fills(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -326,6 +342,7 @@ class TestSubmitOrder:
     async def test_rejected_order_returns_rejected_status(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -347,6 +364,7 @@ class TestSubmitOrder:
     async def test_absent_order_send_result_is_indeterminate(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -364,7 +382,7 @@ class TestSubmitOrder:
         self, mock_mt5: MagicMock
     ) -> None:
         gateway = MT5Gateway(login=42, server="Demo", expected_environment="demo", strict_lifecycle=True)
-        gateway._connected = True
+        activate_gateway(gateway)
         mock_mt5.account_info.return_value = None
         mock_mt5.terminal_info.return_value = None
         with pytest.raises(BrokerConnectionError, match="pre-submit readiness"):
@@ -376,6 +394,7 @@ class TestSubmitOrder:
     async def test_raises_when_symbol_select_fails(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = False
@@ -388,6 +407,7 @@ class TestSubmitOrder:
     async def test_raises_when_symbol_info_is_none(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -401,6 +421,7 @@ class TestSubmitOrder:
     async def test_raises_when_tick_is_none(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -418,6 +439,7 @@ class TestSubmitOrder:
     async def test_rejects_sl_tp_when_below_minimum_distance(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.symbol_select.return_value = True
@@ -439,7 +461,7 @@ class TestSubmitOrder:
 class TestMT5OrderPreflight:
     @staticmethod
     def _prepare(mock_mt5: MagicMock, gateway: MT5Gateway) -> None:
-        gateway._connected = True
+        activate_gateway(gateway)
         gateway._resolve_symbol = MagicMock(return_value="EURUSD")
         mock_mt5.symbol_select.return_value = True
         mock_mt5.symbol_info.return_value = MagicMock(
@@ -524,6 +546,7 @@ class TestGetPositions:
     async def test_returns_empty_list_when_no_positions(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_mt5.positions_get.return_value = ()
         positions = await gateway.get_positions()
@@ -534,6 +557,7 @@ class TestGetPositions:
     async def test_maps_open_positions(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
+        configure_sdk(mock_mt5)
         await gateway.connect()
         mock_pos = MagicMock(
             ticket=123456,
@@ -579,9 +603,9 @@ class TestClosePosition:
     @patch("broker.mt5_gateway.mt5")
     async def test_successful_close_uses_ticket_and_confirms_absence(self, mock_mt5: MagicMock) -> None:
         gateway = MT5Gateway(expected_environment="demo", strict_lifecycle=True)
-        gateway._connected = True
+        activate_gateway(gateway)
         mock_mt5.ACCOUNT_TRADE_MODE_DEMO = 0
-        mock_mt5.account_info.return_value = MagicMock(trade_mode=0)
+        mock_mt5.account_info.return_value = MagicMock(login=12345, server="DemoServer", trade_mode=0)
         mock_mt5.terminal_info.return_value = MagicMock(connected=True, trade_allowed=True, tradeapi_disabled=False)
         position = MagicMock(ticket=88, symbol="EURUSD", type=0, volume=0.01, magic=20260802)
         mock_mt5.positions_get.side_effect = [[position], []]
@@ -642,6 +666,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """Test 1: Opening deals (DEAL_ENTRY_IN) must not appear in results."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         opening_deal = _make_deal(
@@ -665,6 +690,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """Test 2: Closing deals (DEAL_ENTRY_OUT) must be returned."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         closing_deal = _make_deal(
@@ -688,6 +714,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """Test 3: Commission accounting deals must be excluded."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         # Commission deals use DEAL_TYPE_COMMISSION and often DEAL_ENTRY_IN
@@ -713,6 +740,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """Test 4: Swap/overnight-interest deals must be excluded."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         interest_deal = _make_deal(
@@ -736,6 +764,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """Test 5: trade_id must be str(deal.ticket), not str(deal.position_id)."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         closing_deal = _make_deal(
@@ -761,6 +790,7 @@ class TestGetTradeHistory:
     ) -> None:
         """Test 6 + 7: Three partial closes produce 3 entries with unique IDs
         and correct P/L per execution."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         # One position closed in three partial executions.
@@ -809,6 +839,7 @@ class TestGetTradeHistory:
         """Test 13 (reconciliation): One opening deal + one closing deal for
         the same position must produce exactly ONE entry in get_trade_history().
         This is the core double-count regression test."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         opening = _make_deal(
@@ -842,6 +873,7 @@ class TestGetTradeHistory:
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         """All deal types together: only DEAL_ENTRY_OUT trade deals survive."""
+        configure_sdk(mock_mt5)
         await gateway.connect()
 
         deals = [

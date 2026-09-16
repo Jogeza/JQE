@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 import MetaTrader5 as mt5
 
-from broker.demo_guard import DemoOnlyGuard
 from broker.mt5_demo import MT5DemoGateway
 from broker.types import AccountInfo, Candle, Position, Timeframe
 from config.settings import Settings
-from core.exceptions import BrokerConnectionError, UnsafeBrokerAccountError
+from core.exceptions import BrokerConnectionError
 
 
 class _PortableObservationGateway(MT5DemoGateway):
@@ -23,53 +21,23 @@ class _PortableObservationGateway(MT5DemoGateway):
         super().__init__(**kwargs)
         self._portable_data_path = Path(portable_data_path).expanduser().resolve()
 
-    async def connect(self) -> None:
+    def _initialize_session(self) -> bool:
         terminal_path = Path(self.terminal_path or "").expanduser().resolve()
         if not terminal_path.is_file():
-            raise BrokerConnectionError(
-                "Observation MT5 terminal does not exist", path=str(terminal_path)
-            )
+            raise BrokerConnectionError("Observation MT5 terminal does not exist")
         if terminal_path.parent != self._portable_data_path:
-            raise BrokerConnectionError(
-                "Observation MT5 executable must reside in its portable data directory",
-                terminal_path=str(terminal_path),
-                portable_data_path=str(self._portable_data_path),
-            )
-
-        initialized = await asyncio.to_thread(
-            mt5.initialize, str(terminal_path), portable=True
-        )
-        if not initialized:
-            raise BrokerConnectionError(
-                "Failed to connect to isolated observation MT5 terminal"
-            )
-        if self.login is not None and not await asyncio.to_thread(
-            mt5.login, self.login, password=self.password, server=self.server
-        ):
-            await asyncio.to_thread(mt5.shutdown)
+            raise BrokerConnectionError("Observation MT5 executable must reside in its portable data directory")
+        if mt5.initialize(str(terminal_path), portable=True) is not True:
+            return False
+        if self.login is not None and mt5.login(
+            self.login, password=self.password, server=self.server
+        ) is not True:
             raise BrokerConnectionError("Observation MT5 account login failed")
-
-        terminal = await asyncio.to_thread(mt5.terminal_info)
+        terminal = mt5.terminal_info()
         actual_data_path = None if terminal is None else Path(terminal.data_path).resolve()
         if actual_data_path != self._portable_data_path:
-            await asyncio.to_thread(mt5.shutdown)
-            raise BrokerConnectionError(
-                "Observation MT5 terminal did not use the configured portable profile",
-                expected=str(self._portable_data_path),
-                actual=None if actual_data_path is None else str(actual_data_path),
-            )
-        if not await asyncio.to_thread(self._verify_connection_identity):
-            await asyncio.to_thread(mt5.shutdown)
-            raise BrokerConnectionError("Observation MT5 identity verification failed")
-
-        info = await asyncio.to_thread(mt5.account_info)
-        try:
-            DemoOnlyGuard.assert_demo_account("mt5", info, session_id=self.session_id)
-        except UnsafeBrokerAccountError:
-            await asyncio.to_thread(mt5.shutdown)
-            raise
-        self._connected = True
-        self._demo_verified = True
+            raise BrokerConnectionError("Observation MT5 terminal did not use the configured portable profile")
+        return True
 
 
 class MT5Telemetry(Protocol):

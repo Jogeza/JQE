@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.mt5_stubs import activate_gateway
 from pydantic import ValidationError
 
 from broker.deriv_gateway import DerivGateway
@@ -85,7 +86,7 @@ async def test_deriv_rejects_mt5_lots_before_request() -> None:
 @pytest.mark.asyncio
 async def test_mt5_rejects_deriv_stake_before_sdk_use() -> None:
     gateway = MT5Gateway()
-    gateway._connected = True
+    activate_gateway(gateway)
     with pytest.raises(ExecutionError, match="MT5_LOTS"):
         await gateway.submit_order(OrderRequest(
             symbol="XAUUSD", side=OrderSide.BUY,
