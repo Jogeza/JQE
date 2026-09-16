@@ -39,7 +39,7 @@ from research.campaign_provenance import CampaignEvidenceStore
 from research.live_safety import LivePaperSafetyContext
 from tools import live_paper_campaign
 from tools.live_paper_campaign import (
-    _OrderRateGuard,
+    _OrderSpacingGuard,
     _round_lots_to_broker_constraints,
     run_live_paper_campaign,
 )
@@ -269,7 +269,7 @@ class MockDerivDemoGateway(DerivDemoGateway):
 
 
 @pytest.fixture(autouse=True)
-def configure_settings(monkeypatch):
+def configure_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "campaign_mode", "live_paper")
     monkeypatch.setattr(settings, "broker_execution_enabled", True)
     monkeypatch.setattr(settings, "broker", "mt5_demo")
@@ -277,8 +277,11 @@ def configure_settings(monkeypatch):
     monkeypatch.setattr(settings, "risk_percent", 1.0)
     monkeypatch.setattr(settings, "max_daily_loss", 5.0)
     monkeypatch.setattr(settings, "max_trades_daily", 20)
-    monkeypatch.setattr(settings, "live_paper_max_orders_per_session", 50)
     monkeypatch.setattr(settings, "live_paper_min_order_spacing_seconds", 0.0)
+    monkeypatch.setattr(settings, "live_paper_order_poll_timeout_seconds", 0.01)
+    monkeypatch.setattr(
+        settings, "execution_lifetime_store_path", tmp_path / "lifetime.sqlite3"
+    )
     monkeypatch.setattr(settings, "live_paper_max_candles", 5)
     monkeypatch.setattr(settings, "live_paper_max_duration_seconds", None)
     monkeypatch.setattr(settings, "telegram_enabled", False)
@@ -599,14 +602,12 @@ async def test_broker_position_mismatch_reconciliation(tmp_path, monkeypatch):
     assert len(mismatch_events) >= 1
 
 
-# 11. Order rate limit exceeded
+# 11. Durable account lifetime cap blocks a second submission
 @pytest.mark.asyncio
-async def test_order_rate_limit_exceeded(tmp_path, monkeypatch):
+async def test_durable_lifetime_cap_blocks_second_submission(tmp_path, monkeypatch):
     gateway = MockMT5DemoGateway()
     output_path = tmp_path / "out.json"
     evidence_path = tmp_path / "evidence.sqlite3"
-
-    monkeypatch.setattr(settings, "live_paper_max_orders_per_session", 1)
 
     async def mock_strategy(window):
         return {"signal": "BUY", "confidence": 85, "features": {"atr_14": 1.5}}, {"signal_direction": "BUY", "regime": "TREND_UP"}
@@ -616,6 +617,8 @@ async def test_order_rate_limit_exceeded(tmp_path, monkeypatch):
     async def get_advancing_candles(symbol, timeframe, count, end=None):
         nonlocal counter
         counter += 1
+        if counter > 1:
+            gateway._mock_positions.clear()
         return _generate_candles(count, start=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=15 * counter))
     monkeypatch.setattr(gateway, "get_candles", get_advancing_candles)
 
@@ -635,13 +638,20 @@ async def test_order_rate_limit_exceeded(tmp_path, monkeypatch):
     assert len(gateway.submitted_orders) == 1
     store = CampaignEvidenceStore(evidence_path)
     events = store.events(summary["session"]["session_id"])
-    rate_events = [e for e in events if e["facts"].get("reason_code") == "ORDER_RATE_LIMIT"]
-    assert len(rate_events) >= 1
+    blocked = [
+        e for e in events
+        if e["facts"].get("reason_code") == "ACCOUNT_LIFETIME_CAP_CONSUMED"
+    ]
+    assert len(blocked) >= 1
+    assert blocked[0]["facts"]["account_scope"] == "mt5:12345"
+    from execution.persistence import SQLiteOneShotExecutionGuard
+    guard = SQLiteOneShotExecutionGuard(settings.execution_lifetime_store_path)
+    assert guard.count("mt5:12345") == 1
 
 
 # 12. Minimum spacing violated
 def test_order_rate_guard_spacing():
-    guard = _OrderRateGuard(max_orders_per_session=10, min_spacing_seconds=60.0)
+    guard = _OrderSpacingGuard(min_spacing_seconds=60.0)
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     allowed, code = guard.check_and_record(now)
     assert allowed is True
@@ -817,6 +827,11 @@ async def test_mt5_close_reason_sl_confirmed(tmp_path, monkeypatch):
     sl_deal.position_id = order_id
     sl_deal.reason = 4  # _MT5_DEAL_REASON_SL -> "BROKER_SL"
     sl_deal.time = 1700000000
+    sl_deal.price = 1990.0
+    sl_deal.profit = -12.5
+    sl_deal.commission = -0.25
+    sl_deal.swap = 0.0
+    sl_deal.fee = 0.0
 
     import MetaTrader5 as mt5_mod
     mt5_mod.DEAL_ENTRY_OUT = 1
@@ -869,19 +884,23 @@ async def test_mt5_close_reason_sl_confirmed(tmp_path, monkeypatch):
     assert len(closed_events) >= 1
     assert closed_events[0]["facts"]["exit_reason"] == "BROKER_SL"
     assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
+    assert closed_events[0]["facts"]["pnl"] == -12.75
+    assert closed_events[0]["facts"]["currency"] == "USD"
+    assert closed_events[0]["facts"]["reconciliation_state"] == "RECONCILED"
     ledger_entries = SQLitePositionLedger(
         summary["session"]["position_ledger_path"]
     ).entries()
     assert len(ledger_entries) == 1
     assert ledger_entries[0].closed_at is not None
+    assert ledger_entries[0].close_price == 1990.0
+    assert ledger_entries[0].realized_pnl == -12.75
+    assert ledger_entries[0].currency == "USD"
+    assert ledger_entries[0].reconciliation_state == "RECONCILED"
 
 
-# 19. No history_deals_get result falls back to neutral label
+# 19. No history result remains visibly pending after the bounded poll
 @pytest.mark.asyncio
-async def test_close_reason_no_history_falls_back_to_neutral(tmp_path, monkeypatch):
-    """When history_deals_get returns no results, exit_reason must be
-    'POSITION_NO_LONGER_OPEN', not the fabricated 'BROKER_SL_TP'.
-    """
+async def test_close_history_unavailable_is_recorded_pending(tmp_path, monkeypatch):
     import MetaTrader5 as mt5_mod
     mt5_mod.DEAL_ENTRY_OUT = 1
     mt5_mod.DEAL_ENTRY_INOUT = 2
@@ -931,8 +950,15 @@ async def test_close_reason_no_history_falls_back_to_neutral(tmp_path, monkeypat
     events = store.events(summary["session"]["session_id"])
     closed_events = [e for e in events if e["event_type"] == "POSITION_CLOSED"]
     assert len(closed_events) >= 1
-    assert closed_events[0]["facts"]["exit_reason"] == "POSITION_NO_LONGER_OPEN"
-    assert closed_events[0]["facts"]["exit_reason"] != "BROKER_SL_TP"
+    assert closed_events[0]["facts"]["exit_reason"] == "MT5_CLOSE_HISTORY_PENDING"
+    assert closed_events[0]["facts"]["reconciliation_state"] == "PENDING"
+    assert closed_events[0]["facts"]["pnl"] is None
+    ledger = SQLitePositionLedger(
+        summary["session"]["position_ledger_path"]
+    ).entries()[0]
+    assert ledger.realized_pnl is None
+    assert ledger.currency == "USD"
+    assert ledger.reconciliation_state == "PENDING"
 
 
 # 20. MT5 tag fallback: missing ledger row is recovered and counts toward limits
@@ -978,7 +1004,6 @@ async def test_mt5_tag_fallback_counts_position_toward_limit(tmp_path, monkeypat
         return MagicMock(state="ENTRY_DUE", candidate=cand, reason="CONFIRMED")
     monkeypatch.setattr(live_paper_campaign.HistoricalConfirmationState, "observe", mock_observe)
 
-    monkeypatch.setattr(settings, "live_paper_max_orders_per_session", 10)
     # MAX_OPEN_POSITIONS is 1 by default in LivePaperSafetyContext.
 
     summary = await run_live_paper_campaign(
@@ -1114,6 +1139,7 @@ async def test_mt5_offline_close_uses_persisted_deal_reason(tmp_path, monkeypatc
     mt5_mod.DEAL_ENTRY_INOUT = 2
     history_deals_get = MagicMock(return_value=[SimpleNamespace(
         position_id="MT5-CLOSED", entry=1, reason=5, time=1700000010,
+        price=2020.0, profit=20.0, commission=-0.2, swap=0.0, fee=0.0,
     )])
     monkeypatch.setattr(mt5_mod, "history_deals_get", history_deals_get)
     gateway = MockMT5DemoGateway()
@@ -1128,6 +1154,8 @@ async def test_mt5_offline_close_uses_persisted_deal_reason(tmp_path, monkeypatc
     events = CampaignEvidenceStore(evidence_path).events(summary["session"]["session_id"])
     closed = next(e for e in events if e["event_type"] == "POSITION_CLOSED")
     assert closed["facts"]["exit_reason"] == "BROKER_TP"
+    assert closed["facts"]["pnl"] == 19.8
+    assert closed["facts"]["currency"] == "USD"
     assert history_deals_get.call_count == 1
     assert SQLitePositionLedger(ledger_path).entries()[0].closed_at is not None
 

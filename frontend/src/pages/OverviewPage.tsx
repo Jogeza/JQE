@@ -11,6 +11,7 @@ import { RecoveryPanel } from '../components/RecoveryPanel';
 import { ExecutionSafetyPanel } from '../components/ExecutionSafetyPanel';
 import { PaperRuntimePanel } from '../components/PaperRuntimePanel';
 import { PaperDiagnosticsPanel } from '../components/PaperDiagnosticsPanel';
+import { MarketSetupPanel } from '../components/MarketSetupPanel';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -23,7 +24,11 @@ import {
   RecoveryDiagnosticsResponse,
   PaperRuntimeStatusResponse,
   PaperDiagnosticsResponse,
+  MarketSetup,
+  OfflineMonitoringResponse,
 } from '../types/api';
+import { canonicalSignalFromAssessment, TelemetryLifecycle } from '../services/telemetryLifecycle';
+import { TelemetryLifecyclePanel } from '../components/TelemetryLifecyclePanel';
 import { formatMoney } from '../utils/format';
 
 interface OverviewPageProps {
@@ -45,6 +50,13 @@ interface OverviewPageProps {
   paperDiagnosticsData: PaperDiagnosticsResponse | null;
   paperDiagnosticsUnavailable: boolean;
   paperDiagnosticsStale: boolean;
+  setupData: MarketSetup | null;
+  setupLoading: boolean;
+  setupStale: boolean;
+  monitoringData: OfflineMonitoringResponse | null;
+  backendOffline: boolean;
+  telemetryLifecycle: TelemetryLifecycle;
+  onPaperRecorded: () => void;
   loading: boolean;
   selectedSymbol: string;
   selectedTimeframe: string;
@@ -71,12 +83,22 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   paperDiagnosticsData,
   paperDiagnosticsUnavailable,
   paperDiagnosticsStale,
+  setupData,
+  setupLoading,
+  setupStale,
+  monitoringData,
+  backendOffline,
+  telemetryLifecycle,
+  onPaperRecorded,
   loading,
   selectedSymbol,
   selectedTimeframe,
   candleError,
   telemetryStale,
 }) => {
+  const assessmentIsLive = telemetryLifecycle.state === 'LIVE';
+  const assessmentIsStale = !assessmentIsLive;
+  const canonicalSignal = canonicalSignalFromAssessment(telemetryLifecycle.assessment);
   const balance = riskData?.balance;
   const equity = riskData?.equity;
   const openPositions = executionData?.positions || [];
@@ -84,7 +106,12 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const recentTrades = executionData?.recent_trades || [];
   const tradesToday = riskData?.daily_trades_count ?? 0;
   const dailyLoss = riskData?.daily_loss_percent ?? 0.0;
-  const winRate = performanceData?.win_rate_percent ?? 0.0;
+  const compatibleWinRate = setupData?.historical_win_rate;
+
+  const FreshnessDot: React.FC<{ tone: 'green' | 'amber' | 'red' | 'neutral' }> = ({ tone }) => {
+    const cls = tone === 'green' ? 'dot-green' : tone === 'amber' ? 'dot-amber' : tone === 'red' ? 'dot-red' : 'dot-neutral';
+    return <span className={`freshness-dot ${cls}`} />;
+  };
 
   return (
     <div className="dashboard-page-container overview-page">
@@ -92,6 +119,92 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <div><span className="editorial-kicker">The market, in perspective</span><h1>Overview<span>.</span></h1></div>
         <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}<small>Account, market & system health</small></p>
       </div>
+
+      <TelemetryLifecyclePanel lifecycle={telemetryLifecycle} />
+
+      {/* Active Market Telemetry Synchronization Strip */}
+      <div className="active-market-freshness-bar" aria-label="Telemetry Freshness and Synchronization">
+        <div className="freshness-indicator" title={`Backend Server Time: ${systemStatus?.server_time ?? 'Unavailable'}`}>
+          <span className="freshness-indicator-label">1. Service Heartbeat</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot tone={backendOffline ? 'red' : monitoringData?.backend.state === 'LIVE' ? 'green' : 'neutral'} />
+            {backendOffline ? 'OFFLINE' : monitoringData?.backend.state ?? 'UNAVAILABLE'}
+          </span>
+        </div>
+
+        <div className="freshness-indicator" title={`Market Data Freshness: ${setupData?.data_freshness.reason ?? candlesData?.market_data_status ?? 'Unknown'}`}>
+          <span className="freshness-indicator-label">2. Market Data</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot
+              tone={
+                monitoringData?.candle_freshness.state === 'FRESH'
+                  ? 'green'
+                  : setupData?.data_freshness.freshness_state === 'FORMING'
+                  ? 'amber'
+                  : 'red'
+              }
+            />
+            {monitoringData?.candle_freshness.state ?? 'UNAVAILABLE'}
+          </span>
+        </div>
+
+        <div className="freshness-indicator" title={`Strategy Evaluation: ${signalData?.signal ?? 'None'} · Regime: ${signalData?.regime ?? 'UNKNOWN'}`}>
+          <span className="freshness-indicator-label">3. Strategy Pipeline</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot tone={monitoringData?.strategy.state === 'FRESH' ? 'green' : monitoringData?.strategy.state === 'STALE' ? 'amber' : 'neutral'} />
+            {monitoringData?.strategy.state === 'STALE' ? `STALE · ${monitoringData.strategy.value}` : signalData?.signal === 'NO_TRADE' ? 'NO TRADE' : signalData?.signal ?? 'UNAVAILABLE'}
+          </span>
+        </div>
+
+        <div className="freshness-indicator" title={`Risk Sizing Status: ${setupData?.risk_authorization.reason ?? riskData?.risk_message ?? 'Pending'}`}>
+          <span className="freshness-indicator-label">4. Risk Verification</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot tone={monitoringData?.risk.state === 'FRESH' ? 'green' : monitoringData?.risk.state === 'STALE' ? 'amber' : monitoringData?.risk.state === 'BLOCKED' ? 'red' : 'neutral'} />
+            {monitoringData?.risk.state ?? 'UNAVAILABLE'}
+          </span>
+        </div>
+
+        <div className="freshness-indicator" title={`Setup State: ${setupData?.setup_state ?? 'FORMING'} · Expiry: ${setupData?.expires_at ?? '—'}`}>
+          <span className="freshness-indicator-label">5. Setup Lifecycle</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot
+              tone={
+                setupData?.setup_state === 'READY'
+                  ? 'green'
+                  : setupData?.setup_state === 'FORMING'
+                  ? 'amber'
+                  : 'neutral'
+              }
+            />
+            {setupData?.setup_state ?? 'FORMING'}
+          </span>
+        </div>
+
+        <div className="freshness-indicator" title={`Paper Runtime: ${paperRuntimeData?.runtime_mode ?? 'OFFLINE'} · Action: ${paperRuntimeData?.last_action ?? 'Idle'}`}>
+          <span className="freshness-indicator-label">6. Paper Runtime</span>
+          <span className="freshness-indicator-value">
+            <FreshnessDot tone={paperRuntimeData?.running ? 'green' : 'neutral'} />
+            {paperRuntimeData?.running ? 'RUNNING' : 'STANDBY'}
+          </span>
+        </div>
+      </div>
+
+      <div className="offline-gate-details">
+        <span>Observed: {monitoringData?.observed_at ?? 'UNAVAILABLE'}</span>
+        <span>Source: OFFLINE_EVIDENCE</span>
+        <span>Environment: {monitoringData?.environment ?? 'UNAVAILABLE'}</span>
+        <span>Scope: {monitoringData?.simulation_submissions.account_scope ?? 'UNAVAILABLE'}</span>
+        <span>Simulation starts: {monitoringData ? `${monitoringData.simulation_submissions.utc_count}/${monitoringData.simulation_submissions.limit}` : 'UNAVAILABLE'}</span>
+        <span>Reset: {monitoringData?.simulation_submissions.reset_at ?? 'UNAVAILABLE'}</span>
+        <span>Reasons: {monitoringData ? [...monitoringData.strategy.reason_codes, ...monitoringData.candle_freshness.reason_codes, ...monitoringData.risk.reason_codes, ...monitoringData.execution_authorization.reason_codes, ...monitoringData.simulation_submissions.reason_codes].join(', ') || 'NONE' : 'BACKEND_OFFLINE'}</span>
+        <span>Dataset: {setupData?.dataset_hash ?? 'UNAVAILABLE'}</span>
+        <span>Seed: {setupData?.dataset_seed ?? 'UNAVAILABLE'}</span>
+        <span>Structure: {setupData?.evidence.find(item => item.factor === 'structure')?.assessment ?? 'UNAVAILABLE'}</span>
+        <span>Momentum: {setupData?.evidence.find(item => item.factor === 'momentum')?.assessment ?? 'UNAVAILABLE'}</span>
+        <span>Volatility: {setupData?.evidence.find(item => item.factor === 'volatility')?.assessment ?? 'UNAVAILABLE'}</span>
+        <span>Score: {setupData?.confidence_score ?? 'UNAVAILABLE'}</span>
+      </div>
+
       {/* Top Command Metric Grid */}
       <div className="grid-metrics">
         <MetricCard
@@ -138,9 +251,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
 
         <MetricCard
           label="Win Rate"
-          value={performanceData ? `${winRate.toFixed(1)}%` : null}
-          subtext={performanceData ? `${performanceData.total_trades} Total Trades` : 'Performance unavailable'}
-          loading={loading && !performanceData}
+          value={compatibleWinRate?.status === 'AVAILABLE' && compatibleWinRate.win_rate_percent !== null ? `${compatibleWinRate.win_rate_percent}%` : 'Unavailable'}
+          subtext={compatibleWinRate?.status === 'AVAILABLE' ? `${compatibleWinRate.sample_size} compatible OOS trades` : 'No compatible out-of-sample evidence'}
+          loading={setupLoading && !setupData}
         />
 
         <MetricCard
@@ -153,21 +266,37 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         />
       </div>
 
-      {/* Main Quantitative Workstation Grid: Left Chart/Strategy (2fr) + Right Engine/Risk/Safety (1fr) */}
-      <div className="grid-two-col">
-        {/* Left Column: Market Telemetry & Execution Data */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
-          <MarketChart
-            symbol={selectedSymbol}
-            timeframe={selectedTimeframe}
-            candles={candlesData?.candles || []}
-            signal={signalData}
-            priceDecimals={candlesData?.price_decimals}
-            loading={loading && !candlesData}
-            error={candleError}
-          />
+      {/* Dedicated Active Market Workstation: Chart and Analyst Panel side-by-side */}
+      <div className="active-market-workstation">
+        <MarketChart
+          symbol={selectedSymbol}
+          timeframe={selectedTimeframe}
+          candles={candlesData?.candles || []}
+          signal={signalData}
+          setup={setupData}
+          priceDecimals={candlesData?.price_decimals}
+          loading={loading && !candlesData}
+          error={candleError}
+          dataStatus={candlesData?.market_data_status}
+        />
 
-          <StrategySignalPanel signal={signalData} loading={loading && !signalData} stale={telemetryStale.strategy} />
+        <MarketSetupPanel
+          setup={setupData}
+          loading={setupLoading}
+          stale={setupStale || assessmentIsStale}
+          onRecorded={onPaperRecorded}
+        />
+      </div>
+
+      {/* Auxiliary & Diagnostic Workstation Grid: Left Strategy/Positions + Right Engine/Risk/Safety */}
+      <div className="grid-two-col">
+        {/* Left Column: Strategy Signals & Position Tables */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+          <StrategySignalPanel
+            signal={canonicalSignal}
+            loading={loading && !canonicalSignal}
+            stale={assessmentIsStale}
+          />
 
           <PositionsTable
             positions={openPositions}

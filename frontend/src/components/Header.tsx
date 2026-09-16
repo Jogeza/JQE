@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 const SYMBOL_OPTIONS = [
+  { value: 'R_75', label: 'R_75 (Volatility 75 Index)', search: 'r_75 r75 volatility 75 index synthetic' },
   { value: 'XAUUSD', label: 'XAUUSD (Gold)', search: 'xauusd gold' },
   { value: 'EURUSD', label: 'EURUSD', search: 'eurusd euro dollar' },
   { value: 'GBPUSD', label: 'GBPUSD', search: 'gbpusd pound dollar' },

@@ -4,14 +4,24 @@ import {
   HistogramSeries, LineSeries, LineStyle, type IChartApi, type IPriceLine,
   type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time,
 } from 'lightweight-charts';
-import type { CandleItemDTO, SignalResponse } from '../../types/api';
-import { adaptCandles, adaptSignal, toCandlestickData, toLineData, toSignalMarkers, toVolumeData } from './chartAdapters';
+import type { CandleItemDTO, MarketSetup, SignalResponse } from '../../types/api';
+import { adaptCandles, adaptMarketSetup, adaptSignal, toCandlestickData, toLineData, toSignalMarkers, toVolumeData } from './chartAdapters';
 import { adaptVolumeProfile, VolumeProfilePrimitive } from './volumeProfilePrimitive';
 import type { VolumeProfileSnapshotDTO } from '../../types/research';
 import { getChartPalette } from './chartPalette';
 
 export interface IndicatorVisibility { ema50: boolean; ema200: boolean; rsi: boolean; volume: boolean; }
-interface JQEChartProps { symbol: string; candles: CandleItemDTO[]; signal: SignalResponse | null; markers?: SeriesMarker<Time>[]; priceDecimals?: number; volumeProfile?: VolumeProfileSnapshotDTO | null; indicators?: IndicatorVisibility; height?: number; }
+interface JQEChartProps {
+  symbol: string;
+  candles: CandleItemDTO[];
+  signal?: SignalResponse | null;
+  setup?: MarketSetup | null;
+  markers?: SeriesMarker<Time>[];
+  priceDecimals?: number;
+  volumeProfile?: VolumeProfileSnapshotDTO | null;
+  indicators?: IndicatorVisibility;
+  height?: number;
+}
 interface ChartHandles {
   chart: IChartApi; candles: ISeriesApi<'Candlestick'>; ema50: ISeriesApi<'Line'>;
   ema200: ISeriesApi<'Line'>; rsi: ISeriesApi<'Line'>; volume: ISeriesApi<'Histogram'>;
@@ -19,8 +29,17 @@ interface ChartHandles {
   volumeProfile: VolumeProfilePrimitive | null;
 }
 
-export const JQEChart: React.FC<JQEChartProps> = ({ symbol, candles, signal, markers = [], priceDecimals = 5, volumeProfile = null,
-  indicators = { ema50: true, ema200: true, rsi: true, volume: true }, height = 460 }) => {
+export const JQEChart: React.FC<JQEChartProps> = ({
+  symbol,
+  candles,
+  signal = null,
+  setup = null,
+  markers = [],
+  priceDecimals = 5,
+  volumeProfile = null,
+  indicators = { ema50: true, ema200: true, rsi: true, volume: true },
+  height = 460,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef<ChartHandles | null>(null);
   const hasFitContentRef = useRef(false);
@@ -71,16 +90,41 @@ export const JQEChart: React.FC<JQEChartProps> = ({ symbol, candles, signal, mar
     handles.candles.setData(toCandlestickData(adapted, palette)); handles.volume.setData(toVolumeData(adapted, palette));
     handles.ema50.setData(toLineData(adapted, 'ema50')); handles.ema200.setData(toLineData(adapted, 'ema200'));
     handles.rsi.setData(toLineData(adapted, 'rsi'));
-    const annotation = adaptSignal(signal, symbol);
-    handles.markers.setMarkers([...markers, ...toSignalMarkers(annotation, adapted.length > 0 ? adapted[adapted.length - 1].time : null, palette)]);
+
+    const annotation = setup ? adaptMarketSetup(setup, symbol) : adaptSignal(signal, symbol);
+    const fallbackTime = adapted.length > 0 ? adapted[adapted.length - 1].time : null;
+    handles.markers.setMarkers([...markers, ...toSignalMarkers(annotation, fallbackTime, palette)]);
     handles.priceLines.forEach((line) => handles.candles.removePriceLine(line));
     handles.priceLines = [];
     if (annotation) {
-      [{ price: annotation.entry, color: palette.accent, title: 'ENTRY' }, { price: annotation.stopLoss, color: palette.bear, title: 'SL' }, { price: annotation.takeProfit, color: palette.neutral, title: 'TP' }]
-        .forEach(({ price, color, title }) => { if (price !== null) handles.priceLines.push(handles.candles.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true })); });
+      if (annotation.entry !== null) {
+        handles.priceLines.push(handles.candles.createPriceLine({
+          price: annotation.entry, color: palette.accent, title: 'ENTRY', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+        }));
+      }
+      if (annotation.stopLoss !== null) {
+        handles.priceLines.push(handles.candles.createPriceLine({
+          price: annotation.stopLoss, color: palette.bear, title: 'SL', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+        }));
+      }
+      if (annotation.takeProfit !== null) {
+        handles.priceLines.push(handles.candles.createPriceLine({
+          price: annotation.takeProfit, color: palette.bull, title: 'TP', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+        }));
+      }
+      if (annotation.levels) {
+        annotation.levels.forEach((lvl) => {
+          const isSupport = lvl.levelType === 'SUPPORT' || lvl.levelType === 'RANGE_LOW';
+          const isResistance = lvl.levelType === 'RESISTANCE' || lvl.levelType === 'RANGE_HIGH';
+          const color = isSupport ? palette.bullSoft : isResistance ? palette.bearSoft : palette.axis;
+          handles.priceLines.push(handles.candles.createPriceLine({
+            price: lvl.price, color, title: lvl.name, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true,
+          }));
+        });
+      }
     }
     if (!hasFitContentRef.current && adapted.length > 0) { handles.chart.timeScale().fitContent(); hasFitContentRef.current = true; }
-  }, [candles, signal, markers, symbol]);
+  }, [candles, signal, setup, markers, symbol]);
 
   useEffect(() => {
     const handles = handlesRef.current;

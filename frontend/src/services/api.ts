@@ -19,6 +19,10 @@ import {
   ExperimentListResponse,
   ExperimentDetailDTO,
   ExperimentComparisonResponse,
+  MarketSetup,
+  PaperExecutionOutcomeDTO,
+  ActiveMarketAnalysisResponse,
+  OfflineMonitoringResponse,
 } from '../types/api';
 
 const API_BASE = '/api/v1';
@@ -56,6 +60,13 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const jqeApi = {
+  async getOfflineMonitoring(signal?: AbortSignal): Promise<OfflineMonitoringResponse> {
+    return fetchJson(`${API_BASE}/monitoring/offline`, { signal });
+  },
+  async runOfflineAnalysis(symbol: string, timeframe: string, signal?: AbortSignal): Promise<MarketSetup> {
+    const params = new URLSearchParams({ symbol, timeframe });
+    return fetchJson(`${API_BASE}/monitoring/offline/analyze?${params}`, { method: 'POST', signal });
+  },
   /** Health check endpoint */
   async getHealth(): Promise<{ status: string; environment: string }> {
     return fetchJson('/health');
@@ -94,6 +105,30 @@ export const jqeApi = {
     if (count) params.append('count', count.toString());
     const query = params.toString() ? `?${params.toString()}` : '';
     return fetchJson(`${API_BASE}/signal${query}`, { signal });
+  },
+
+  async getMarketSetup(symbol?: string, timeframe?: string, count?: number, signal?: AbortSignal): Promise<MarketSetup> {
+    const params = new URLSearchParams();
+    if (symbol) params.append('symbol', symbol);
+    if (timeframe) params.append('timeframe', timeframe);
+    if (count) params.append('count', count.toString());
+    const query = params.size ? `?${params.toString()}` : '';
+    return fetchJson(`${API_BASE}/market/setup${query}`, { signal });
+  },
+
+  async getActiveMarketAnalysis(symbol?: string, timeframe?: string, count?: number, signal?: AbortSignal): Promise<ActiveMarketAnalysisResponse> {
+    const params = new URLSearchParams();
+    if (symbol) params.append('symbol', symbol);
+    if (timeframe) params.append('timeframe', timeframe);
+    if (count) params.append('count', count.toString());
+    const query = params.size ? `?${params.toString()}` : '';
+    return fetchJson(`${API_BASE}/market/active-analysis${query}`, { signal });
+  },
+
+  async executePaperSetup(setupId: string, signal?: AbortSignal): Promise<PaperExecutionOutcomeDTO> {
+    return fetchJson(`${API_BASE}/market/setups/${encodeURIComponent(setupId)}/paper-execute`, {
+      method: 'POST', signal,
+    });
   },
 
   /** Broker-neutral risk authorization and typed quantity observation */

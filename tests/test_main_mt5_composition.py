@@ -20,7 +20,7 @@ from execution.reconciliation import BrokerReconciliationState, MT5Reconciliatio
 
 
 @pytest.mark.asyncio
-async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_lifetime_cap(tmp_path) -> None:
+async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_daily_instrument_cap(tmp_path) -> None:
     settings = Settings(
         _env_file=None,
         broker="mt5",
@@ -29,7 +29,7 @@ async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_life
         default_symbol="EURUSD",
         intent_store_path=tmp_path / "intents.sqlite3",
         execution_position_ledger_path=tmp_path / "positions.sqlite3",
-        execution_lifetime_store_path=tmp_path / "lifetime.sqlite3",
+        daily_instrument_trade_store_path=tmp_path / "daily.sqlite3",
     )
     gateway = MagicMock()
     gateway.get_account_info = AsyncMock(return_value=AccountInfo(
@@ -76,12 +76,12 @@ async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_life
     assert sizing.expected_loss_at_stop == 4.8
     gateway.authorize_account_currency_risk.assert_awaited_once()
 
-    composition.lifetime_guard.consume(composition.identity.scope)
+    composition.daily_instrument_guard.consume(composition.identity.scope, "EURUSD")
     # A consumed submission slot must not block read-only startup composition.
     second = await main.build_execution_composition(
         gateway, broker="mt5", active_settings=settings
     )
-    assert second.lifetime_guard.count(second.identity.scope) == 1
+    assert second.daily_instrument_guard.usage(second.identity.scope, "EURUSD").count == 1
 
 
 @pytest.mark.asyncio
@@ -91,7 +91,7 @@ async def test_mt5_composition_rejects_simulated_identity(tmp_path) -> None:
         mt5_expected_environment="demo",
         intent_store_path=tmp_path / "intents.sqlite3",
         execution_position_ledger_path=tmp_path / "positions.sqlite3",
-        execution_lifetime_store_path=tmp_path / "lifetime.sqlite3",
+        daily_instrument_trade_store_path=tmp_path / "daily.sqlite3",
     )
     gateway = MagicMock()
     gateway.get_account_info = AsyncMock(return_value=AccountInfo(

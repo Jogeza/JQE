@@ -123,7 +123,7 @@ class TestSubmitOrder:
     async def test_order_fills_immediately(self, gateway: SimulationGateway) -> None:
         await gateway.connect()
         result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS))
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), stop_loss=90.0)
         )
         assert result.status is OrderStatus.FILLED
         assert result.order_id.startswith("SIM-")
@@ -132,7 +132,7 @@ class TestSubmitOrder:
     async def test_filled_order_appears_in_positions(self, gateway: SimulationGateway) -> None:
         await gateway.connect()
         result = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.SELL, quantity=ExecutionQuantity(value=2.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS))
+            OrderRequest(symbol="R_100", side=OrderSide.SELL, quantity=ExecutionQuantity(value=2.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), stop_loss=110.0)
         )
         positions = await gateway.get_positions()
         assert any(p.position_id == result.order_id for p in positions)
@@ -140,10 +140,10 @@ class TestSubmitOrder:
     async def test_order_ids_are_unique(self, gateway: SimulationGateway) -> None:
         await gateway.connect()
         first = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS))
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), stop_loss=90.0)
         )
         second = await gateway.submit_order(
-            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS))
+            OrderRequest(symbol="R_100", side=OrderSide.BUY, quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), stop_loss=90.0)
         )
         assert first.order_id != second.order_id
 

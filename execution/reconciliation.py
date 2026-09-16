@@ -239,7 +239,7 @@ class MT5ReconciliationAdapter:
             history = tuple(await self._gateway.get_trade_history())
             ledger_entries = () if self._ledger is None else self._ledger.open_entries(broker=self._broker)
         except Exception:
-            return _result(BrokerReconciliationState.UNAVAILABLE, "MT5 state unavailable", broker="mt5", idempotency_key=idempotency_key)
+            return _result(BrokerReconciliationState.UNAVAILABLE, f"{self._broker} state unavailable", broker=self._broker, idempotency_key=idempotency_key)
         records = (*positions, *history)
         if order_id is not None:
             ledger_positions = {
@@ -253,16 +253,23 @@ class MT5ReconciliationAdapter:
                     return _result(
                         BrokerReconciliationState.CONFIRMED_MATCH,
                         "MT5 ledger order mapped to authoritative broker position",
-                        broker="mt5", idempotency_key=idempotency_key, item=item,
+                        broker=self._broker, idempotency_key=idempotency_key, item=item,
                         order_id=order_id, position_id=str(observed_position),
                     )
         for item in records:
             if _matches_id(item, order_id, ("order_id", "order")) or _matches_id(item, deal_id, ("deal_id", "deal", "trade_id")) or _matches_id(item, position_id, ("position_id", "position_identifier")) or _matches_id(item, request_id, ("request_id",)):
-                return _result(BrokerReconciliationState.CONFIRMED_MATCH, "MT5 broker identifier matched", broker="mt5", idempotency_key=idempotency_key, item=item, order_id=order_id, deal_id=deal_id, position_id=position_id, request_id=request_id)
+                return _result(BrokerReconciliationState.CONFIRMED_MATCH, f"{self._broker} broker identifier matched", broker=self._broker, idempotency_key=idempotency_key, item=item, order_id=order_id, deal_id=deal_id, position_id=position_id, request_id=request_id)
         evidence_present = bool(records) and any(_has_evidence(item) for item in records)
         if evidence_present or symbol:
-            return _result(BrokerReconciliationState.AMBIGUOUS, "MT5 evidence lacks intent correlation", broker="mt5", idempotency_key=idempotency_key, symbol=symbol)
-        return _result(BrokerReconciliationState.CONFIRMED_ABSENCE, "MT5 query returned no usable evidence", broker="mt5", idempotency_key=idempotency_key)
+            return _result(BrokerReconciliationState.AMBIGUOUS, f"{self._broker} evidence lacks intent correlation", broker=self._broker, idempotency_key=idempotency_key, symbol=symbol)
+        return _result(BrokerReconciliationState.CONFIRMED_ABSENCE, f"{self._broker} query returned no usable evidence", broker=self._broker, idempotency_key=idempotency_key)
+
+
+class WeltradeReconciliationAdapter(MT5ReconciliationAdapter):
+    """Weltrade reconciliation uses authoritative MT5 tickets and deals."""
+
+    def __init__(self, gateway: MT5ObservationGateway, *, ledger: PositionLedger | None = None, broker: str = "weltrade") -> None:
+        super().__init__(gateway, ledger=ledger, broker=broker)
 
 
 def get_reconciliation_adapter(*, broker: str, gateway: object, ledger: PositionLedger | None = None) -> object:
@@ -272,6 +279,8 @@ def get_reconciliation_adapter(*, broker: str, gateway: object, ledger: Position
         return SimulationReconciliationAdapter(gateway)  # type: ignore[arg-type]
     if normalized in {"mt5", "mt5_demo"}:
         return MT5ReconciliationAdapter(gateway, ledger=ledger, broker=normalized)  # type: ignore[arg-type]
+    if normalized in {"weltrade", "weltrade_demo"}:
+        return WeltradeReconciliationAdapter(gateway, ledger=ledger, broker=normalized)  # type: ignore[arg-type]
     if normalized in {"deriv", "deriv_demo"}:
         return DerivReconciliationAdapter(gateway)  # type: ignore[arg-type]
     raise ValueError(f"Unsupported reconciliation broker: {broker!r}")

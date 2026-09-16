@@ -8,6 +8,7 @@ from broker.deriv_gateway import DerivGateway
 from broker.factory import get_gateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
+from broker.weltrade_gateway import WeltradeGateway
 from config.settings import Settings
 from core.exceptions import ConfigurationError
 
@@ -29,6 +30,19 @@ class TestGetGateway:
     def test_mt5_broker_returns_mt5_gateway(self) -> None:
         gateway = get_gateway(_settings(broker="mt5"))
         assert isinstance(gateway, MT5Gateway)
+
+    def test_weltrade_demo_returns_weltrade_gateway(self, tmp_path) -> None:
+        terminal = tmp_path / "terminal64.exe"
+        terminal.touch()
+        gateway = get_gateway(_settings(
+            broker="weltrade_demo", weltrade_terminal_path=terminal,
+            weltrade_login=42, weltrade_server="Weltrade-Demo",
+        ))
+        assert isinstance(gateway, WeltradeGateway)
+
+    def test_weltrade_requires_exact_terminal_and_account_identity(self) -> None:
+        with pytest.raises(ConfigurationError, match="TERMINAL_PATH"):
+            get_gateway(_settings(broker="weltrade_demo"))
 
     def test_deriv_broker_returns_deriv_gateway(self) -> None:
         gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_options_account_id="CR1", deriv_expected_environment="demo"))

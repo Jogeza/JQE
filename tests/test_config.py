@@ -11,9 +11,9 @@ from config.settings import EmergencyStopState, Settings, get_settings
 class TestSettingsDefaults:
     """Default values should match JQE's documented institutional defaults."""
 
-    def test_default_symbol_is_xauusd(self) -> None:
+    def test_default_symbol_is_volatility_75(self) -> None:
         settings = Settings(_env_file=None)
-        assert settings.default_symbol == "XAUUSD"
+        assert settings.default_symbol == "R_75"
 
     def test_default_risk_percent(self) -> None:
         settings = Settings(_env_file=None)
@@ -46,6 +46,11 @@ class TestSettingsDefaults:
     def test_default_research_experiment_catalog_is_repository_relative(self) -> None:
         settings = Settings(_env_file=None)
         assert settings.research_experiment_path.as_posix() == "data/experiments"
+
+    def test_observation_mt5_profile_is_unconfigured_by_default(self) -> None:
+        settings = Settings(_env_file=None)
+        assert settings.observation_mt5_terminal_path is None
+        assert settings.observation_mt5_portable_data_path is None
 
 
 class TestSettingsEnvOverrides:

@@ -113,7 +113,7 @@ class Settings(BaseSettings):
 
     environment: Environment = "development"
 
-    broker: Literal["simulation", "mt5", "deriv", "mt5_demo", "deriv_demo"] = "simulation"
+    broker: Literal["simulation", "mt5", "deriv", "weltrade", "mt5_demo", "deriv_demo", "weltrade_demo"] = "simulation"
     broker_execution_enabled: bool = False
     market_data_source: Literal["simulation", "deriv_public"] = "simulation"
 
@@ -122,6 +122,13 @@ class Settings(BaseSettings):
     mt5_server: str | None = None
     mt5_terminal_path: Path | None = None
     mt5_expected_environment: Literal["demo", "live"] | None = None
+    observation_mt5_terminal_path: Path | None = None
+    observation_mt5_portable_data_path: Path | None = None
+
+    weltrade_login: int | None = None
+    weltrade_password: str | None = Field(default=None, repr=False)
+    weltrade_server: str | None = None
+    weltrade_terminal_path: Path | None = None
 
     deriv_api_token: str | None = Field(default=None, repr=False)
     deriv_app_id: str = "1089"
@@ -135,7 +142,7 @@ class Settings(BaseSettings):
     telegram_allowed_chat_id: int | None = None
     telegram_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
-    default_symbol: str = "XAUUSD"
+    default_symbol: str = "R_75"
     default_timeframe: str = "M5"
     default_candle_count: int = Field(default=500, gt=0)
 
@@ -158,6 +165,8 @@ class Settings(BaseSettings):
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     execution_position_ledger_path: Path = Path("state/execution_positions.sqlite3")
     execution_lifetime_store_path: Path = Path("state/execution_lifetime.sqlite3")
+    daily_instrument_trade_store_path: Path = Path("state/daily_instrument_trades.sqlite3")
+    max_daily_trades_per_instrument: int = Field(default=20, gt=0)
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN
     execution_safety_store_path: Path = Path("state/execution_safety.sqlite3")
     execution_safety_freshness_seconds: int = Field(default=15, gt=0)
@@ -169,6 +178,12 @@ class Settings(BaseSettings):
     paper_runtime_max_backoff_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
     paper_runtime_state_path: Path = Path("state/paper_runtime.sqlite3")
     paper_diagnostics_path: Path = Path("state/paper_diagnostics.sqlite3")
+    dashboard_paper_store_path: Path = Path("state/dashboard_paper.sqlite3")
+    dashboard_paper_intent_store_path: Path = Path("state/dashboard_paper_intents.sqlite3")
+    simulation_daily_submission_store_path: Path = Path("state/simulation_daily_submissions.sqlite3")
+    simulation_daily_submission_limit: int = Field(default=5, gt=0)
+    offline_analysis_seed: int = 62061
+    offline_analysis_candle_count: int = Field(default=500, ge=200, le=5000)
     paper_diagnostics_minimum_sample: int = Field(default=100, gt=0)
 
     observation_symbols: str = "R_75:H1"
@@ -182,6 +197,8 @@ class Settings(BaseSettings):
     campaign_mode: Literal["historical", "historical_replay", "live_paper"] = "historical"
     live_paper_max_candles: int | None = Field(default=None, gt=0)
     live_paper_max_duration_seconds: float | None = Field(default=None, gt=0)
+    # Legacy configuration compatibility only. Live broker campaigns must use
+    # SQLiteOneShotExecutionGuard as their sole submission-count authority.
     live_paper_max_orders_per_session: int = Field(default=50, gt=0)
     live_paper_min_order_spacing_seconds: float = Field(default=60.0, ge=0)
     live_paper_order_poll_timeout_seconds: float = Field(default=30.0, gt=0)
@@ -193,7 +210,7 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "live_paper campaign mode requires broker_execution_enabled=True"
                 )
-            if self.broker not in {"mt5_demo", "deriv_demo"}:
+            if self.broker not in {"mt5_demo", "deriv_demo", "weltrade_demo"}:
                 raise ValueError(
                     f"live_paper campaign mode requires a demo broker ('mt5_demo' or 'deriv_demo'), got '{self.broker}'"
                 )

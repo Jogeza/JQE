@@ -48,6 +48,7 @@ def _restore_execution_settings(tmp_path):
         settings.broker_execution_enabled,
         settings.execution_position_ledger_path,
         settings.execution_lifetime_store_path,
+        settings.daily_instrument_trade_store_path,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
@@ -59,6 +60,7 @@ def _restore_execution_settings(tmp_path):
     settings.broker_execution_enabled = False
     settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
     settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
+    settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     yield
     (
         settings.broker,
@@ -71,6 +73,7 @@ def _restore_execution_settings(tmp_path):
         settings.broker_execution_enabled,
         settings.execution_position_ledger_path,
         settings.execution_lifetime_store_path,
+        settings.daily_instrument_trade_store_path,
     ) = original
 
 

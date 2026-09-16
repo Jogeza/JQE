@@ -72,6 +72,39 @@ class HistoricalDataService:
         self.gateway = gateway
         self.store = store or CandleStore()
 
+    async def refresh_latest(
+        self,
+        *,
+        symbol: str,
+        provider_symbol: str,
+        provider: str,
+        timeframe: Timeframe,
+        count: int,
+        force: bool = False,
+    ) -> tuple[list[Candle], int]:
+        """Refresh one provider-qualified active-market cache partition.
+
+        Provider and canonical identities remain separate, preventing a cached
+        simulation series from satisfying a Deriv-public request (or vice versa).
+        Returned candles are always loaded back from the canonical store.
+        """
+        coverage = self.store.get_coverage(symbol, timeframe, provider=provider)
+        step = timedelta(seconds=TIMEFRAME_SECONDS[timeframe])
+        now = datetime.now(timezone.utc)
+        should_fetch = force or coverage is None
+        if coverage is not None and not should_fetch:
+            _, latest_open = coverage
+            should_fetch = now - (latest_open + step) > step * _FRESHNESS_TOLERANCE_CANDLES
+        downloaded = 0
+        if should_fetch or self.store.count(symbol, timeframe, provider=provider) < count:
+            candles = await self.gateway.get_candles(provider_symbol, timeframe, count)
+            downloaded = self.store.save_candles(
+                symbol, timeframe, candles, provider=provider
+            )
+        return self.store.load_latest(
+            symbol, timeframe, count, provider=provider
+        ), downloaded
+
     async def get_candles(
         self, symbol: str, timeframe: Timeframe, count: int, fill_gaps: bool = True
     ) -> list[Candle]:

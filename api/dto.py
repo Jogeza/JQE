@@ -9,7 +9,19 @@ from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 
+from execution.market_setup import (
+    DataFreshnessDTO,
+    HistoricalWinRateDTO,
+    MarketSetup,
+    PaperExecutionOutcomeDTO,
+    SetupAuthorizationDTO,
+    SetupEvidenceDTO,
+)
+from data.active_market import ActiveMarketContext
+from intelligence.analyst import AnalystExplanation
+
 MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "UNAVAILABLE"]
+MarketDataStatus = Literal["CURRENT", "CACHED", "UNAVAILABLE"]
 
 
 class MarketSummaryResponse(BaseModel):
@@ -29,6 +41,9 @@ class MarketSummaryResponse(BaseModel):
     timestamp: str | None = None
     price_decimals: int = Field(default=5, ge=0, le=10)
     market_data_source: MarketDataProvenance = "UNAVAILABLE"
+    market_data_status: MarketDataStatus = "UNAVAILABLE"
+    stale: bool = False
+    degraded: bool = False
 
 
 class CandleItemDTO(BaseModel):
@@ -55,6 +70,9 @@ class CandlesResponse(BaseModel):
     candles: list[CandleItemDTO] = Field(default_factory=list)
     price_decimals: int = Field(default=5, ge=0, le=10)
     market_data_source: MarketDataProvenance = "UNAVAILABLE"
+    market_data_status: MarketDataStatus = "UNAVAILABLE"
+    stale: bool = False
+    degraded: bool = False
 
 
 class ConfidenceBreakdownDTO(BaseModel):
@@ -215,6 +233,39 @@ class ExecutionSafetyResponse(BaseModel):
     reason_codes: list[str] = Field(default_factory=list)
 
 
+class MonitoringGateDTO(BaseModel):
+    state: Literal["LIVE", "FRESH", "STALE", "OFFLINE", "UNAVAILABLE", "BLOCKED"]
+    value: str
+    observed_at: str | None = None
+    source: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class SimulationSubmissionTelemetryDTO(BaseModel):
+    state: Literal["FRESH", "BLOCKED", "UNAVAILABLE"]
+    account_scope: str
+    utc_count: int
+    limit: int
+    utc_date: str
+    reset_at: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class OfflineMonitoringResponse(BaseModel):
+    schema_version: int = 1
+    mode: Literal["OFFLINE_SIMULATION"] = "OFFLINE_SIMULATION"
+    observed_at: str
+    environment: str
+    backend: MonitoringGateDTO
+    strategy: MonitoringGateDTO
+    candle_freshness: MonitoringGateDTO
+    risk: MonitoringGateDTO
+    execution_authorization: MonitoringGateDTO
+    simulation_submissions: SimulationSubmissionTelemetryDTO
+    broker_execution_enabled: bool
+    assessment: MarketSetup | None = None
+
+
 class RecoveryQuantityDTO(BaseModel):
     """Typed broker quantity preserved for operator diagnostics."""
 
@@ -291,6 +342,10 @@ class SystemStatusResponse(BaseModel):
     broker_identity_state: str = "NOT_APPLICABLE"
     broker_identity_verified_at: str | None = None
     broker_identity_environment: str | None = None
+    broker_account_id_masked: str | None = None
+    broker_account_server: str | None = None
+    broker_account_currency: str | None = None
+    broker_account_trade_mode: str | None = None
     telegram_enabled: bool = False
     telegram_configured: bool = False
     telegram_status: str = "DISABLED"
@@ -312,3 +367,12 @@ class PaperRuntimeStatusResponse(BaseModel):
     shutdown_state: str
     paper_execution_enabled: bool
     broker_execution_enabled: bool = False
+
+
+class ActiveMarketAnalysisResponse(BaseModel):
+    context: ActiveMarketContext
+    market: MarketSummaryResponse
+    candles: CandlesResponse
+    signal: SignalResponse
+    setup: MarketSetup
+    explanation: AnalystExplanation

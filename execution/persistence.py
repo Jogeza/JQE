@@ -53,6 +53,10 @@ class PositionLedgerEntry:
     order_id: str
     opened_at: str
     closed_at: str | None = None
+    close_price: float | None = None
+    realized_pnl: float | None = None
+    currency: str | None = None
+    reconciliation_state: str | None = None
 
 
 class SQLitePositionLedger:
@@ -78,10 +82,28 @@ class SQLitePositionLedger:
                     order_id TEXT NOT NULL,
                     opened_at TEXT NOT NULL,
                     closed_at TEXT,
+                    close_price REAL,
+                    realized_pnl REAL,
+                    currency TEXT,
+                    reconciliation_state TEXT,
                     PRIMARY KEY (broker, position_id)
                 )
                 """
             )
+            existing = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(live_paper_positions)")
+            }
+            for name, kind in (
+                ("close_price", "REAL"),
+                ("realized_pnl", "REAL"),
+                ("currency", "TEXT"),
+                ("reconciliation_state", "TEXT"),
+            ):
+                if name not in existing:
+                    connection.execute(
+                        f"ALTER TABLE live_paper_positions ADD COLUMN {name} {kind}"
+                    )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._path, timeout=5.0)
@@ -129,7 +151,17 @@ class SQLitePositionLedger:
                 values,
             )
 
-    def mark_closed(self, *, broker: str, position_id: str, closed_at: datetime) -> bool:
+    def mark_closed(
+        self,
+        *,
+        broker: str,
+        position_id: str,
+        closed_at: datetime,
+        close_price: float | None = None,
+        realized_pnl: float | None = None,
+        currency: str | None = None,
+        reconciliation_state: str | None = None,
+    ) -> bool:
         if closed_at.tzinfo is None or closed_at.utcoffset() is None:
             raise ValueError("closed_at must be timezone-aware")
         with self._connect() as connection:
@@ -137,11 +169,16 @@ class SQLitePositionLedger:
             changed = connection.execute(
                 """
                 UPDATE live_paper_positions
-                SET closed_at=?
+                SET closed_at=?, close_price=?, realized_pnl=?, currency=?,
+                    reconciliation_state=?
                 WHERE broker=? AND position_id=? AND closed_at IS NULL
                 """,
                 (
                     closed_at.astimezone(timezone.utc).isoformat(),
+                    close_price,
+                    realized_pnl,
+                    currency,
+                    reconciliation_state,
                     self._required_text("broker", broker),
                     self._required_text("position_id", position_id),
                 ),
@@ -152,7 +189,8 @@ class SQLitePositionLedger:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT broker, symbol, position_id, order_id, opened_at, closed_at
+                SELECT broker, symbol, position_id, order_id, opened_at, closed_at,
+                       close_price, realized_pnl, currency, reconciliation_state
                 FROM live_paper_positions
                 WHERE broker=? AND closed_at IS NULL
                 ORDER BY opened_at, position_id
@@ -166,7 +204,8 @@ class SQLitePositionLedger:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT broker, symbol, position_id, order_id, opened_at, closed_at
+                SELECT broker, symbol, position_id, order_id, opened_at, closed_at,
+                       close_price, realized_pnl, currency, reconciliation_state
                 FROM live_paper_positions
                 ORDER BY opened_at, position_id
                 """

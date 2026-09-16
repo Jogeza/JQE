@@ -39,9 +39,41 @@ class TestTimeframeSeconds:
 
 class TestOrderRequest:
     def test_valid_order_constructs(self) -> None:
-        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS))
+        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS), stop_loss=1900.0)
         assert order.order_type is OrderType.MARKET
-        assert order.stop_loss is None
+        assert order.stop_loss == 1900.0
+
+    @pytest.mark.parametrize("order_type", list(OrderType))
+    def test_stop_loss_is_mandatory_for_every_order_type(self, order_type: OrderType) -> None:
+        values = {
+            "symbol": "XAUUSD", "side": OrderSide.BUY,
+            "quantity": ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
+            "order_type": order_type,
+        }
+        if order_type is not OrderType.MARKET:
+            values["entry_price"] = 2001.0
+        if order_type is OrderType.STOP_LIMIT:
+            values["stop_limit_price"] = 2000.5
+        with pytest.raises(ValidationError):
+            OrderRequest(**values)
+
+    @pytest.mark.parametrize(
+        ("order_type", "side", "extra"),
+        [
+            (OrderType.MARKET, OrderSide.BUY, {}),
+            (OrderType.BUY_STOP, OrderSide.BUY, {"entry_price": 2001.0}),
+            (OrderType.SELL_STOP, OrderSide.SELL, {"entry_price": 1999.0}),
+            (OrderType.STOP_LIMIT, OrderSide.BUY, {"entry_price": 2001.0, "stop_limit_price": 2000.5}),
+        ],
+    )
+    def test_supported_order_types_construct(self, order_type, side, extra) -> None:
+        order = OrderRequest(
+            symbol="XAUUSD", side=side,
+            quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
+            order_type=order_type, stop_loss=1900.0 if side is OrderSide.BUY else 2100.0,
+            **extra,
+        )
+        assert order.order_type is order_type
 
     def test_zero_volume_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -52,7 +84,7 @@ class TestOrderRequest:
             ExecutionQuantity(value=-1, unit=ExecutionQuantityUnit.MT5_LOTS)
 
     def test_idempotency_key_defaults_to_none(self) -> None:
-        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS))
+        order = OrderRequest(symbol="XAUUSD", side=OrderSide.BUY, quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS), stop_loss=1900.0)
         assert order.idempotency_key is None
 
     def test_accepts_explicit_idempotency_key(self) -> None:
@@ -60,6 +92,7 @@ class TestOrderRequest:
             symbol="XAUUSD",
             side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1900.0,
             idempotency_key="intent-1",
         )
         assert order.idempotency_key == "intent-1"
@@ -82,6 +115,7 @@ class TestOrderRequest:
             symbol="XAUUSD",
             side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.1, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1900.0,
         )
         assert order.volume == order.quantity.value
         with pytest.raises(AttributeError):

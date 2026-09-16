@@ -38,7 +38,8 @@ def _settings(tmp_path):
     original = (
         settings.broker, settings.market_data_source, settings.default_candle_count,
         settings.intent_store_path, settings.execution_safety_store_path,
-        settings.emergency_stop,
+        settings.emergency_stop, settings.default_symbol,
+        settings.daily_instrument_trade_store_path,
     )
     settings.broker = "simulation"
     settings.market_data_source = "deriv_public"
@@ -46,11 +47,14 @@ def _settings(tmp_path):
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
+    settings.default_symbol = "XAUUSD"
+    settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     yield
     (
         settings.broker, settings.market_data_source, settings.default_candle_count,
         settings.intent_store_path, settings.execution_safety_store_path,
-        settings.emergency_stop,
+        settings.emergency_stop, settings.default_symbol,
+        settings.daily_instrument_trade_store_path,
     ) = original
 
 

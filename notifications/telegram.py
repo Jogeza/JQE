@@ -15,6 +15,17 @@ from notifications.types import Notification
 MAX_TELEGRAM_MESSAGE = 4096
 
 
+def daily_instrument_cap_message(*, instrument: str, count: int, limit: int, reset_at: str) -> str:
+    """Dedicated operator message for a daily instrument submission block."""
+    return (
+        "<b>DAILY INSTRUMENT CAP REACHED</b>\n"
+        f"Instrument: {escape(instrument)}\n"
+        f"Submission starts: {count}/{limit}\n"
+        f"Reset: {escape(reset_at)} UTC\n"
+        "Action: New submissions for this instrument are blocked."
+    )
+
+
 class TelegramConfigurationError(ValueError):
     pass
 

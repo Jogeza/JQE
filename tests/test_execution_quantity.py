@@ -64,6 +64,7 @@ async def test_simulation_rejects_deriv_stake() -> None:
         await gateway.submit_order(OrderRequest(
             symbol="XAUUSD", side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=1, unit=ExecutionQuantityUnit.DERIV_STAKE),
+            stop_loss=1.0,
         ))
 
 
@@ -76,6 +77,7 @@ async def test_deriv_rejects_mt5_lots_before_request() -> None:
         await gateway.submit_order(OrderRequest(
             symbol="R_100", side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=1, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1.0,
         ))
     gateway._request.assert_not_awaited()
 
@@ -88,4 +90,5 @@ async def test_mt5_rejects_deriv_stake_before_sdk_use() -> None:
         await gateway.submit_order(OrderRequest(
             symbol="XAUUSD", side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=1, unit=ExecutionQuantityUnit.DERIV_STAKE),
+            stop_loss=1900.0,
         ))

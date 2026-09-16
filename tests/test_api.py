@@ -32,6 +32,8 @@ from api.service import ApplicationService, _maximum_realized_drawdown
 from broker.simulation_gateway import SimulationGateway
 from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
 from config.settings import Settings, settings
+from core.exceptions import BrokerConnectionError, MarketDataError
+from data.storage import CandleStore
 from execution.safety import (
     DailyStateAuthority,
     EmergencyStopState,
@@ -278,6 +280,59 @@ class TestApplicationService:
             with pytest.raises(RuntimeError, match="public source unavailable"):
                 await service.get_market_candles("XAUUSD", "M15", 5)
         gateway_factory.assert_not_called()
+
+    async def test_deriv_market_failure_returns_truthful_cached_candles(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        cache_path = tmp_path / "historical.sqlite3"
+        monkeypatch.setattr(settings, "historical_data_path", cache_path)
+        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
+        cached = await FakePublicMarketData().get_candles(
+            "frxXAUUSD", Timeframe.M5, 20
+        )
+        CandleStore(cache_path).save_candles(
+            "XAUUSD", Timeframe.M5, cached, provider="deriv"
+        )
+        failed_source = FakePublicMarketData()
+        failed_source.get_candles = AsyncMock(
+            side_effect=MarketDataError("public provider unavailable")
+        )
+
+        with patch("api.service.DerivPublicMarketData", return_value=failed_source):
+            response = await ApplicationService().get_market_candles(
+                "XAUUSD", "M5", 20
+            )
+
+        assert response.count == 20
+        assert response.market_data_source == "DERIV_PUBLIC"
+        assert response.market_data_status == "CACHED"
+        assert response.stale is True
+        assert response.degraded is True
+        assert [candle.time for candle in response.candles] == sorted(
+            candle.time for candle in response.candles
+        )
+
+    async def test_deriv_market_failure_without_cache_is_typed_unavailable(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(settings, "historical_data_path", tmp_path / "empty.sqlite3")
+        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
+        failed_source = FakePublicMarketData()
+        failed_source.get_candles = AsyncMock(
+            side_effect=BrokerConnectionError("public provider timed out")
+        )
+
+        with patch("api.service.DerivPublicMarketData", return_value=failed_source):
+            response = await ApplicationService().get_market_candles(
+                "XAUUSD", "M5", 20
+            )
+
+        assert response.count == 0
+        assert response.candles == []
+        assert response.market_data_source == "UNAVAILABLE"
+        assert response.market_data_status == "UNAVAILABLE"
+        assert response.stale is False
+        assert response.degraded is True
 
     async def test_simulation_market_default_never_constructs_deriv_execution(
         self, monkeypatch

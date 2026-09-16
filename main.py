@@ -42,7 +42,8 @@ from data.market_observation import (
 from intelligence.trade_plan import TradePlanBuilder
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
-from execution.persistence import SQLiteIntentRecordStore, SQLiteOneShotExecutionGuard, SQLitePositionLedger
+from execution.persistence import SQLiteIntentRecordStore, SQLitePositionLedger
+from execution.daily_instrument_guard import DailyInstrumentCapReached, DailyInstrumentTradeGuard
 from execution.policy import ExecutionContext, ExecutionIntent
 from execution.reconciliation import get_reconciliation_adapter
 from execution.recovery import StartupRecoveryService
@@ -65,6 +66,7 @@ from risk.risk_controller import (
 )
 from risk.position_sizing import ExecutionSizingDecision, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
+from notifications.telegram import daily_instrument_cap_message, telegram_gateway_from_settings
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _SIDE_BY_SIGNAL: dict[str, OrderSide] = {"BUY": OrderSide.BUY, "SELL": OrderSide.SELL}
@@ -79,7 +81,7 @@ class ExecutionComposition:
     records: SQLiteIntentRecordStore
     position_ledger: SQLitePositionLedger
     reconciler: object
-    lifetime_guard: SQLiteOneShotExecutionGuard
+    daily_instrument_guard: DailyInstrumentTradeGuard
 
 
 async def build_execution_composition(gateway, *, broker: str, active_settings=settings) -> ExecutionComposition:
@@ -93,18 +95,21 @@ async def build_execution_composition(gateway, *, broker: str, active_settings=s
         currency=account.currency,
         trade_mode=trade_mode,
     )
-    if normalized_broker in {"mt5", "mt5_demo"}:
+    if normalized_broker in {"mt5", "mt5_demo", "weltrade", "weltrade_demo"}:
         if identity.account_id.strip().upper() == "SIMULATED":
-            raise ConfigurationError("MT5 startup resolved the legacy SIMULATED account sentinel")
+            raise ConfigurationError("MT5-based startup resolved the legacy SIMULATED account sentinel")
         if identity.trade_mode != "demo":
-            raise ConfigurationError("MT5 startup account identity is not authoritatively DEMO")
+            raise ConfigurationError("MT5-based startup account identity is not authoritatively DEMO")
     position_ledger = SQLitePositionLedger(active_settings.execution_position_ledger_path)
-    lifetime_guard = SQLiteOneShotExecutionGuard(active_settings.execution_lifetime_store_path)
+    daily_instrument_guard = DailyInstrumentTradeGuard(
+        active_settings.daily_instrument_trade_store_path,
+        limit=active_settings.max_daily_trades_per_instrument,
+    )
     records = SQLiteIntentRecordStore(active_settings.intent_store_path)
     reconciler = get_reconciliation_adapter(
         broker=normalized_broker, gateway=gateway, ledger=position_ledger
     )
-    return ExecutionComposition(account, identity, records, position_ledger, reconciler, lifetime_guard)
+    return ExecutionComposition(account, identity, records, position_ledger, reconciler, daily_instrument_guard)
 
 
 async def authorize_broker_execution_quantity(
@@ -112,7 +117,7 @@ async def authorize_broker_execution_quantity(
     risk_percent: float, entry: float, stop_loss: float,
 ) -> ExecutionSizingDecision:
     """Use the gateway's authoritative MT5 P/L and margin model when applicable."""
-    if broker.strip().lower() in {"mt5", "mt5_demo"}:
+    if broker.strip().lower() in {"mt5", "mt5_demo", "weltrade", "weltrade_demo"}:
         quantity, facts = await gateway.authorize_account_currency_risk(
             symbol=symbol, side=side, balance=balance,
             risk_percent=risk_percent, entry=entry, stop_loss=stop_loss,
@@ -518,8 +523,10 @@ async def run() -> None:
 
         def publish_submission_started(_decision) -> None:
             nonlocal submission_started
-            if settings.broker in {"mt5", "mt5_demo"}:
-                composition.lifetime_guard.consume(account_identity.scope)
+            composition.daily_instrument_guard.consume(
+                account_identity.scope,
+                intent.symbol,
+            )
             publish_safety(
                 ExecutionAuthorization.NOT_EVALUATED,
                 ("SUBMISSION_IN_PROGRESS",),
@@ -598,13 +605,40 @@ async def run() -> None:
             )
             terminal_safety_published = True
 
-        result = await executor.submit(
-            intent,
-            context,
-            before_submit=publish_submission_started,
-            context_provider=refresh_execution_context,
-            after_submit=publish_submission_result,
-        )
+        try:
+            result = await executor.submit(
+                intent,
+                context,
+                before_submit=publish_submission_started,
+                context_provider=refresh_execution_context,
+                after_submit=publish_submission_result,
+            )
+        except DailyInstrumentCapReached as exc:
+            usage = composition.daily_instrument_guard.usage(
+                account_identity.scope,
+                intent.symbol,
+            )
+            publish_safety(
+                ExecutionAuthorization.BLOCKED,
+                (exc.reason_code,),
+                daily_authority=DailyStateAuthority.AUTHORITATIVE,
+            )
+            telegram = telegram_gateway_from_settings(settings)
+            if telegram is not None:
+                try:
+                    await telegram.send_text(daily_instrument_cap_message(
+                        instrument=usage.instrument,
+                        count=usage.count,
+                        limit=usage.limit,
+                        reset_at=usage.reset_at.isoformat(),
+                    ))
+                except Exception as notification_error:
+                    logger.error("Daily instrument cap Telegram notification failed: {}", notification_error)
+            logger.warning(
+                "{} instrument={} usage={}/{} reset_at={}",
+                exc.reason_code, usage.instrument, usage.count, usage.limit, usage.reset_at,
+            )
+            return
         if not terminal_safety_published:
             publish_submission_result(result)
         logger.info("Order result: {}", result)

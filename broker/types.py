@@ -17,7 +17,7 @@ from enum import Enum
 import math
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Timeframe(str, Enum):
@@ -58,15 +58,12 @@ class OrderSide(str, Enum):
 
 
 class OrderType(str, Enum):
-    """Order execution type.
-
-    Only ``MARKET`` is supported at this stage — this milestone builds
-    the gateway's mechanical order-submission capability only, not an
-    execution engine with pending/limit order strategies. Extend this
-    enum when that becomes real scope.
-    """
+    """Broker-neutral execution types supported by the order contract."""
 
     MARKET = "MARKET"
+    BUY_STOP = "BUY_STOP"
+    SELL_STOP = "SELL_STOP"
+    STOP_LIMIT = "STOP_LIMIT"
 
 
 class ExecutionQuantityUnit(str, Enum):
@@ -221,10 +218,13 @@ class OrderRequest(BaseModel):
         side: Direction of the order.
         quantity: Explicit value and financial unit. Gateways reject units
             that do not match their broker contract.
-        order_type: Execution type. Only ``MARKET`` is currently
-            supported.
-        stop_loss: Absolute stop-loss price, if any.
-        take_profit: Absolute take-profit price, if any.
+        order_type: Market or pending execution type.
+        entry_price: Trigger price required for pending orders.
+        stop_limit_price: Limit price required for stop-limit orders.
+        stop_loss: Mandatory positive broker-native protective threshold. MT5
+            gateways interpret it as an absolute price; Deriv multiplier
+            contracts interpret it as an account-currency loss amount.
+        take_profit: Optional positive broker-native profit threshold.
         idempotency_key: Execution intent identity propagated to brokers that
             support request metadata. Gateways that do not support such
             metadata still receive the same explicit request type.
@@ -236,11 +236,31 @@ class OrderRequest(BaseModel):
     side: OrderSide
     quantity: ExecutionQuantity
     order_type: OrderType = OrderType.MARKET
-    stop_loss: float | None = None
-    take_profit: float | None = None
+    entry_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    stop_limit_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    stop_loss: float = Field(gt=0, allow_inf_nan=False)
+    take_profit: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     idempotency_key: str | None = None
     magic_number: int | None = None
     order_comment: str | None = None
+
+    @model_validator(mode="after")
+    def validate_order_type_fields(self) -> "OrderRequest":
+        pending = self.order_type is not OrderType.MARKET
+        if pending and self.entry_price is None:
+            raise ValueError("entry_price is required for pending orders")
+        if not pending and (self.entry_price is not None or self.stop_limit_price is not None):
+            raise ValueError("market orders cannot specify pending-order prices")
+        if self.order_type is OrderType.STOP_LIMIT:
+            if self.stop_limit_price is None:
+                raise ValueError("stop_limit_price is required for stop-limit orders")
+        elif self.stop_limit_price is not None:
+            raise ValueError("stop_limit_price is only valid for stop-limit orders")
+        if self.order_type is OrderType.BUY_STOP and self.side is not OrderSide.BUY:
+            raise ValueError("BUY_STOP requires BUY side")
+        if self.order_type is OrderType.SELL_STOP and self.side is not OrderSide.SELL:
+            raise ValueError("SELL_STOP requires SELL side")
+        return self
 
     @property
     def volume(self) -> float:

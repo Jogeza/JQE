@@ -57,6 +57,7 @@ import pandas as pd
 from broker.deriv_demo import DerivDemoGateway
 from broker.mt5_demo import MT5DemoGateway
 from broker.types import (
+    AccountIdentity,
     Candle,
     ClosedMarketObservation,
     ExecutionQuantity,
@@ -72,7 +73,11 @@ from core.logger import logger
 from data.market_observation import closed_observations_from_candles, provider_symbol_for
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.idempotency import build_execution_idempotency_key
-from execution.persistence import SQLiteIntentRecordStore, SQLitePositionLedger
+from execution.persistence import (
+    SQLiteIntentRecordStore,
+    SQLiteOneShotExecutionGuard,
+    SQLitePositionLedger,
+)
 from execution.policy import (
     ExecutionContext,
     ExecutionDecisionCode,
@@ -117,23 +122,29 @@ def _signal_freshness(
 
 
 @dataclass
-class _OrderRateGuard:
-    max_orders_per_session: int = 50
+class _OrderSpacingGuard:
+    """Throttle submission timing only; the durable lifetime guard owns quantity."""
+
     min_spacing_seconds: float = 60.0
-    _submitted: int = 0
     _last_submission_at: datetime | None = None
 
     def check_and_record(self, now: datetime) -> tuple[bool, str]:
-        """Return (allowed, reason_code). Record the attempt if allowed."""
-        if self._submitted >= self.max_orders_per_session:
-            return False, "MAX_ORDERS_EXCEEDED"
+        """Return whether the minimum spacing permits an attempted submission."""
         if self._last_submission_at is not None:
             elapsed = (now - self._last_submission_at).total_seconds()
             if elapsed < self.min_spacing_seconds:
                 return False, "MIN_SPACING_VIOLATED"
-        self._submitted += 1
         self._last_submission_at = now
         return True, "ALLOWED"
+
+
+@dataclass(frozen=True, slots=True)
+class _MT5CloseReconciliation:
+    state: str
+    reason: str
+    pnl: float | None = None
+    exit_price: float | None = None
+    closed_at: datetime | None = None
 
 
 def _round_lots_to_broker_constraints(symbol_info: Any, raw_volume: float) -> float | None:
@@ -187,6 +198,68 @@ async def _fetch_mt5_close_reason(gateway: Any, position_id: str) -> str:
         return _MT5_DEAL_REASON_MAP.get(int(raw_reason), f"MT5_REASON_{raw_reason}")
     except Exception:
         return "POSITION_NO_LONGER_OPEN"
+
+
+async def _reconcile_mt5_close(
+    gateway: Any,
+    position_id: str,
+    *,
+    timeout_seconds: float,
+) -> _MT5CloseReconciliation:
+    """Poll MT5 deal history for authoritative close price and account P&L."""
+    import MetaTrader5 as mt5  # type: ignore
+
+    deadline = time.monotonic() + timeout_seconds
+    poll_seconds = max(0.01, min(float(getattr(gateway, "_tick_poll_interval", 0.25)), timeout_seconds))
+    while True:
+        now = datetime.now(timezone.utc)
+        try:
+            deals = await asyncio.to_thread(
+                mt5.history_deals_get, now - timedelta(days=7), now
+            )
+            closing_types = {mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_INOUT}
+            matches = [
+                deal for deal in (deals or ())
+                if str(getattr(deal, "position_id", "")) == str(position_id)
+                and getattr(deal, "entry", None) in closing_types
+            ]
+            monetary = [
+                deal for deal in matches
+                if isinstance(getattr(deal, "profit", None), (int, float))
+            ]
+            if matches and monetary:
+                latest = max(matches, key=lambda deal: getattr(deal, "time", 0))
+                pnl = sum(
+                    float(getattr(deal, "profit", 0.0))
+                    + float(getattr(deal, "commission", 0.0) or 0.0)
+                    + float(getattr(deal, "swap", 0.0) or 0.0)
+                    + float(getattr(deal, "fee", 0.0) or 0.0)
+                    for deal in monetary
+                )
+                raw_reason = getattr(latest, "reason", None)
+                reason = (
+                    _MT5_DEAL_REASON_MAP.get(int(raw_reason), f"MT5_REASON_{raw_reason}")
+                    if raw_reason is not None
+                    else "POSITION_NO_LONGER_OPEN"
+                )
+                raw_time = getattr(latest, "time", None)
+                closed_at = (
+                    datetime.fromtimestamp(raw_time, tz=timezone.utc)
+                    if isinstance(raw_time, (int, float))
+                    else now
+                )
+                raw_price = getattr(latest, "price", None)
+                exit_price = float(raw_price) if isinstance(raw_price, (int, float)) else None
+                return _MT5CloseReconciliation(
+                    "RECONCILED", reason, pnl, exit_price, closed_at
+                )
+        except Exception as exc:
+            logger.warning("MT5 close-history reconciliation attempt failed: {}", exc)
+        if time.monotonic() >= deadline:
+            return _MT5CloseReconciliation(
+                "PENDING", "MT5_CLOSE_HISTORY_PENDING"
+            )
+        await asyncio.sleep(poll_seconds)
 
 
 def _git_commit() -> str:
@@ -279,6 +352,13 @@ async def run_live_paper_campaign(
 
     # 3. Fetch initial account details
     account = await gateway.get_account_info()
+    account_identity = AccountIdentity(
+        broker="mt5" if broker_name == "mt5_demo" else "deriv",
+        account_id=account.account_id,
+        server=account.server,
+        currency=account.currency,
+        trade_mode=account.trade_mode or "demo",
+    )
     mt5_preflight: Mapping[str, Any] | None = None
     if broker_name == "mt5_demo":
         mt5_preflight = await gateway.verify_instrument_risk_spec(symbol)
@@ -410,10 +490,11 @@ async def run_live_paper_campaign(
     intent_store = SQLiteIntentRecordStore(intent_path)
     position_ledger = SQLitePositionLedger(ledger_path)
     executor = AsyncTradeExecutor(gateway=gateway, records=intent_store)
-    rate_guard = _OrderRateGuard(
-        max_orders_per_session=settings.live_paper_max_orders_per_session,
+    spacing_guard = _OrderSpacingGuard(
         min_spacing_seconds=settings.live_paper_min_order_spacing_seconds,
     )
+    lifetime_guard = SQLiteOneShotExecutionGuard(settings.execution_lifetime_store_path)
+    submissions_started = 0
     confirmation = HistoricalConfirmationState()
 
     _own_order_ids: set[str] = set()
@@ -441,15 +522,23 @@ async def run_live_paper_campaign(
             sp = startup_by_id.get(entry.position_id)
             if sp is None:
                 closed_at = datetime.now(timezone.utc)
-                exit_reason = "CLOSED_WHILE_OFFLINE"
+                close_reconciliation = _MT5CloseReconciliation(
+                    "PENDING", "CLOSED_WHILE_OFFLINE"
+                )
                 if _is_mt5:
-                    mt5_reason = await _fetch_mt5_close_reason(gateway, entry.position_id)
-                    if mt5_reason != "POSITION_NO_LONGER_OPEN":
-                        exit_reason = mt5_reason
+                    close_reconciliation = await _reconcile_mt5_close(
+                        gateway,
+                        entry.position_id,
+                        timeout_seconds=settings.live_paper_order_poll_timeout_seconds,
+                    )
                 position_ledger.mark_closed(
                     broker=broker_name,
                     position_id=entry.position_id,
-                    closed_at=closed_at,
+                    closed_at=close_reconciliation.closed_at or closed_at,
+                    close_price=close_reconciliation.exit_price,
+                    realized_pnl=close_reconciliation.pnl,
+                    currency=account.currency,
+                    reconciliation_state=close_reconciliation.state,
                 )
                 emit("POSITION_CLOSED", closed_at, {
                     "candidate_id": None,
@@ -457,11 +546,16 @@ async def run_live_paper_campaign(
                     "side": "UNKNOWN",
                     "position_id": entry.position_id,
                     "broker_order_id": entry.order_id,
-                    "broker_fill_price": None,
-                    "broker_fill_time": closed_at.isoformat(),
-                    "exit_price": None,
-                    "pnl": None,
-                    "exit_reason": exit_reason,
+                    "broker_fill_price": close_reconciliation.exit_price,
+                    "broker_fill_time": (
+                        close_reconciliation.closed_at.isoformat()
+                        if close_reconciliation.closed_at else None
+                    ),
+                    "exit_price": close_reconciliation.exit_price,
+                    "pnl": close_reconciliation.pnl,
+                    "currency": account.currency,
+                    "reconciliation_state": close_reconciliation.state,
+                    "exit_reason": close_reconciliation.reason,
                     "closed_while_offline": True,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
@@ -683,7 +777,7 @@ async def run_live_paper_campaign(
             side = OrderSide.BUY if candidate.direction == "BUY" else OrderSide.SELL
 
             # i. Defensive Rate Limit check
-            rate_allowed, rate_code = rate_guard.check_and_record(now)
+            rate_allowed, rate_code = spacing_guard.check_and_record(now)
             if not rate_allowed:
                 emit("POLICY", now, {
                     "result": "REJECTED",
@@ -713,15 +807,25 @@ async def run_live_paper_campaign(
                     "order_id": m_id,
                     "candidate_id": trade.get("candidate_id"),
                 }, trade.get("candidate_id"))
-                exit_reason = (
-                    await _fetch_mt5_close_reason(gateway, m_id)
+                close_reconciliation = (
+                    await _reconcile_mt5_close(
+                        gateway,
+                        m_id,
+                        timeout_seconds=settings.live_paper_order_poll_timeout_seconds,
+                    )
                     if _is_mt5
-                    else "POSITION_NO_LONGER_OPEN"
+                    else _MT5CloseReconciliation(
+                        "PENDING", "POSITION_NO_LONGER_OPEN"
+                    )
                 )
                 position_ledger.mark_closed(
                     broker=broker_name,
                     position_id=m_id,
-                    closed_at=now,
+                    closed_at=close_reconciliation.closed_at or now,
+                    close_price=close_reconciliation.exit_price,
+                    realized_pnl=close_reconciliation.pnl,
+                    currency=account.currency,
+                    reconciliation_state=close_reconciliation.state,
                 )
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
@@ -729,11 +833,16 @@ async def run_live_paper_campaign(
                     "side": trade["side"],
                     "position_id": m_id,
                     "broker_order_id": trade.get("order_id", m_id),
-                    "broker_fill_price": float(latest.close),
-                    "broker_fill_time": now.isoformat(),
-                    "exit_price": float(latest.close),
-                    "pnl": 0.0,
-                    "exit_reason": exit_reason,
+                    "broker_fill_price": close_reconciliation.exit_price,
+                    "broker_fill_time": (
+                        close_reconciliation.closed_at.isoformat()
+                        if close_reconciliation.closed_at else None
+                    ),
+                    "exit_price": close_reconciliation.exit_price,
+                    "pnl": close_reconciliation.pnl,
+                    "currency": account.currency,
+                    "reconciliation_state": close_reconciliation.state,
+                    "exit_reason": close_reconciliation.reason,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
@@ -891,7 +1000,30 @@ async def run_live_paper_campaign(
             )
 
             # Execute via canonical AsyncTradeExecutor boundary (NO DIRECT .submit_order CALL!)
-            result = await executor.submit(intent, exec_context)
+            def consume_lifetime_slot(_decision) -> None:
+                nonlocal submissions_started
+                # This is the sole order-count authority. It is durable and
+                # account-scoped; a process restart cannot restore the slot.
+                lifetime_guard.consume(account_identity.scope)
+                submissions_started += 1
+
+            try:
+                result = await executor.submit(
+                    intent,
+                    exec_context,
+                    before_submit=consume_lifetime_slot,
+                )
+            except RuntimeError as exc:
+                if "lifetime execution cap" not in str(exc):
+                    raise
+                emit("POLICY", now, {
+                    "result": "BLOCKED",
+                    "reason_code": "ACCOUNT_LIFETIME_CAP_CONSUMED",
+                    "account_scope": account_identity.scope,
+                    "candidate_id": candidate_id,
+                }, candidate_id)
+                confirmation.save(pending_confirmation_path)
+                continue
 
             # vi. Handle submission result
             if result.decision.code != ExecutionDecisionCode.ALLOWED:
@@ -1011,22 +1143,26 @@ async def run_live_paper_campaign(
         for open_oid in list(_open_trades.keys()):
             if open_oid not in cur_pos_ids:
                 trade = _open_trades.pop(open_oid)
-                exit_price = float(latest.close)
-
-                # Resolve the actual close reason from the broker where possible.
-                # For MT5: query history_deals_get for the position ticket and
-                # read the DEAL_REASON field from the closing deal record.
-                # For Deriv: no equivalent programmatic API exists; record the
-                # neutral label rather than fabricating a causal claim.
-                if _is_mt5:
-                    exit_reason = await _fetch_mt5_close_reason(gateway, open_oid)
-                else:
-                    exit_reason = "POSITION_NO_LONGER_OPEN"
+                close_reconciliation = (
+                    await _reconcile_mt5_close(
+                        gateway,
+                        open_oid,
+                        timeout_seconds=settings.live_paper_order_poll_timeout_seconds,
+                    )
+                    if _is_mt5
+                    else _MT5CloseReconciliation(
+                        "PENDING", "POSITION_NO_LONGER_OPEN"
+                    )
+                )
 
                 position_ledger.mark_closed(
                     broker=broker_name,
                     position_id=open_oid,
-                    closed_at=now,
+                    closed_at=close_reconciliation.closed_at or now,
+                    close_price=close_reconciliation.exit_price,
+                    realized_pnl=close_reconciliation.pnl,
+                    currency=account.currency,
+                    reconciliation_state=close_reconciliation.state,
                 )
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
@@ -1034,11 +1170,16 @@ async def run_live_paper_campaign(
                     "side": trade["side"],
                     "position_id": open_oid,
                     "broker_order_id": trade.get("order_id", open_oid),
-                    "broker_fill_price": exit_price,
-                    "broker_fill_time": now.isoformat(),
-                    "exit_price": exit_price,
-                    "pnl": 0.0,
-                    "exit_reason": exit_reason,
+                    "broker_fill_price": close_reconciliation.exit_price,
+                    "broker_fill_time": (
+                        close_reconciliation.closed_at.isoformat()
+                        if close_reconciliation.closed_at else None
+                    ),
+                    "exit_price": close_reconciliation.exit_price,
+                    "pnl": close_reconciliation.pnl,
+                    "currency": account.currency,
+                    "reconciliation_state": close_reconciliation.state,
+                    "exit_reason": close_reconciliation.reason,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
@@ -1050,7 +1191,8 @@ async def run_live_paper_campaign(
     emit("CAMPAIGN_STOPPED", datetime.now(timezone.utc), {
         "stop_reason": stop_reason,
         "candles_processed": candles_processed,
-        "orders_submitted": rate_guard._submitted,
+        "orders_submitted": submissions_started,
+        "account_scope": account_identity.scope,
     })
     evidence_store.finalize(session_id)
 
@@ -1068,7 +1210,8 @@ async def run_live_paper_campaign(
             "ended_at": ended_at.isoformat(),
             "duration_seconds": time.monotonic() - start_monotonic,
             "stop_reason": stop_reason,
-            "orders_submitted": rate_guard._submitted,
+            "orders_submitted": submissions_started,
+            "account_scope": account_identity.scope,
             "evidence_path": str(evidence_path),
             "position_ledger_path": str(ledger_path),
             "output_path": str(output),

@@ -18,6 +18,10 @@ from api.dto import (
     SignalResponse,
     SystemStatusResponse,
     PaperRuntimeStatusResponse,
+    MarketSetup,
+    PaperExecutionOutcomeDTO,
+    ActiveMarketAnalysisResponse,
+    OfflineMonitoringResponse,
 )
 from api.service import ApplicationService
 from core.exceptions import JQEError
@@ -28,6 +32,24 @@ router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 def get_service() -> ApplicationService:
     """Dependency provider for ApplicationService."""
     return ApplicationService()
+
+
+@router.get("/monitoring/offline", response_model=OfflineMonitoringResponse)
+def get_offline_monitoring(
+    service: ApplicationService = Depends(get_service),
+) -> OfflineMonitoringResponse:
+    """Return persisted offline-simulation gates without selecting a broker."""
+    return service.get_offline_monitoring()
+
+
+@router.post("/monitoring/offline/analyze", response_model=MarketSetup)
+async def run_offline_analysis(
+    symbol: str = "R_75",
+    timeframe: str = "H1",
+    service: ApplicationService = Depends(get_service),
+) -> MarketSetup:
+    """Publish one deterministic analysis-only simulation assessment."""
+    return await service.run_offline_analysis(symbol, timeframe)
 
 
 @router.get("/market", response_model=MarketSummaryResponse)
@@ -71,6 +93,49 @@ async def get_strategy_signal(
         return await service.get_strategy_signal(symbol=symbol, timeframe_str=timeframe, count=count)
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/market/setup", response_model=MarketSetup)
+async def get_market_setup(
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    count: int | None = None,
+    service: ApplicationService = Depends(get_service),
+) -> MarketSetup:
+    """Return one unified strategy/risk/paper-execution setup."""
+    try:
+        return await service.get_market_setup(symbol, timeframe, count)
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/market/active-analysis", response_model=ActiveMarketAnalysisResponse)
+async def get_active_market_analysis(
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    count: int | None = None,
+    service: ApplicationService = Depends(get_service),
+) -> ActiveMarketAnalysisResponse:
+    """Return unified active-market context, telemetry, setup, and explanation."""
+    try:
+        return await service.get_active_market_analysis(symbol, timeframe, count)
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/market/setups/{setup_id}/paper-execute",
+    response_model=PaperExecutionOutcomeDTO,
+)
+async def execute_market_setup(
+    setup_id: str,
+    service: ApplicationService = Depends(get_service),
+) -> PaperExecutionOutcomeDTO:
+    """Record an offline paper execution; this route never selects a broker."""
+    try:
+        return await service.execute_market_setup(setup_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/risk", response_model=RiskStatusResponse)

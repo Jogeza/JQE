@@ -23,14 +23,17 @@ import {
   RecoveryDiagnosticsResponse,
   PaperRuntimeStatusResponse,
   PaperDiagnosticsResponse,
+  MarketSetup,
   ResourceState,
+  OfflineMonitoringResponse,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
+import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry } from './services/telemetryLifecycle';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('XAUUSD');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('R_75');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('H1');
 
   type Resources = {
@@ -45,6 +48,8 @@ export const App: React.FC = () => {
     recovery: ResourceState<RecoveryDiagnosticsResponse>;
     paperRuntime: ResourceState<PaperRuntimeStatusResponse>;
     paperDiagnostics: ResourceState<PaperDiagnosticsResponse>;
+    setup: ResourceState<MarketSetup>;
+    monitoring: ResourceState<OfflineMonitoringResponse>;
   };
   const emptyResource = <T,>(): ResourceState<T> => ({
     data: null, loading: true, error: null, lastUpdated: null, stale: false,
@@ -54,8 +59,13 @@ export const App: React.FC = () => {
     strategy: emptyResource(), risk: emptyResource(), execution: emptyResource(),
     safety: emptyResource(), performance: emptyResource(), recovery: emptyResource(),
     paperRuntime: emptyResource(), paperDiagnostics: emptyResource(),
+    setup: emptyResource(),
+    monitoring: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
+  const [lastSuccessfulContact, setLastSuccessfulContact] = useState<Date | null>(null);
+  const [lifecycleNow, setLifecycleNow] = useState(() => new Date());
+  const [monitoringValidationError, setMonitoringValidationError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const inFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -67,39 +77,63 @@ export const App: React.FC = () => {
     const controller = new AbortController();
     abortRef.current = controller;
     inFlightRef.current = true;
+    const requestedSymbol = selectedSymbol;
+    const requestedTimeframe = selectedTimeframe;
     setResources(previous => Object.fromEntries(
       Object.entries(previous).map(([name, resource]) => [name, {
         ...resource,
-        data: resetData && ['market', 'candles', 'strategy', 'risk'].includes(name) ? null : resource.data,
+        data: resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name) ? null : resource.data,
         loading: true,
         error: null,
-        stale: resetData && ['market', 'candles', 'strategy', 'risk'].includes(name) ? false : resource.stale,
+        stale: resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name) ? false : resource.stale,
       }])
     ) as Resources);
 
     try {
       const results = await Promise.allSettled([
         jqeApi.getSystemStatus(controller.signal),
-        jqeApi.getMarketSummary(selectedSymbol, selectedTimeframe, undefined, controller.signal),
-        jqeApi.getMarketCandles(selectedSymbol, selectedTimeframe, 60, controller.signal),
-        jqeApi.getStrategySignal(selectedSymbol, selectedTimeframe, undefined, controller.signal),
-        jqeApi.getRiskStatus(selectedSymbol, selectedTimeframe, controller.signal),
+        jqeApi.getMarketSummary(requestedSymbol, requestedTimeframe, undefined, controller.signal),
+        jqeApi.getMarketCandles(requestedSymbol, requestedTimeframe, 60, controller.signal),
+        jqeApi.getStrategySignal(requestedSymbol, requestedTimeframe, undefined, controller.signal),
+        jqeApi.getRiskStatus(requestedSymbol, requestedTimeframe, controller.signal),
         jqeApi.getExecutionState(controller.signal),
         jqeApi.getExecutionSafety(controller.signal),
         jqeApi.getPerformanceSummary(controller.signal),
         jqeApi.getRecoveryDiagnostics(controller.signal),
         jqeApi.getPaperRuntimeStatus(controller.signal),
         jqeApi.getPaperDiagnostics(controller.signal),
+        jqeApi.getOfflineMonitoring(controller.signal),
       ]);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
+      if (selectedSymbol !== requestedSymbol || selectedTimeframe !== requestedTimeframe) return;
 
-      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery', 'paperRuntime', 'paperDiagnostics'];
+      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery', 'paperRuntime', 'paperDiagnostics', 'monitoring'];
       const updatedAt = new Date();
       setResources(previous => {
         const next = { ...previous };
         results.forEach((result, index) => {
           const name = names[index];
           const old = previous[name] as ResourceState<unknown>;
+          if (name === 'monitoring' && result.status === 'fulfilled') {
+            try {
+              const validated = validateOfflineTelemetry(result.value);
+              if (isOlderAssessment(previous.monitoring.data, validated)) {
+                next.monitoring = { ...previous.monitoring, loading: false, error: null };
+                return;
+              }
+              next.monitoring = { data: validated, loading: false, error: null, lastUpdated: updatedAt, stale: false };
+              next.setup = { data: validated.assessment, loading: false, error: null, lastUpdated: updatedAt, stale: false };
+              setLastSuccessfulContact(updatedAt);
+              setMonitoringValidationError(null);
+              return;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'MALFORMED_TELEMETRY';
+              next.monitoring = { data: null, loading: false, error: message, lastUpdated: previous.monitoring.lastUpdated, stale: false };
+              next.setup = { data: null, loading: false, error: message, lastUpdated: previous.setup.lastUpdated, stale: false };
+              setMonitoringValidationError(message);
+              return;
+            }
+          }
           next[name] = (result.status === 'fulfilled'
             ? { data: result.value, loading: false, error: null, lastUpdated: updatedAt, stale: false }
             : {
@@ -138,6 +172,7 @@ export const App: React.FC = () => {
   useInterval(() => {
     fetchAllData(false, false);
   }, 4000);
+  useInterval(() => setLifecycleNow(new Date()), 1000);
 
   const systemStatus = resources.system.data;
   const marketSummary = resources.market.data;
@@ -150,6 +185,16 @@ export const App: React.FC = () => {
   const recoveryData = resources.recovery.data;
   const paperRuntimeData = resources.paperRuntime.data;
   const paperDiagnosticsData = resources.paperDiagnostics.data;
+  const setupData = resources.setup.data;
+  const monitoringData = resources.monitoring.data;
+  const telemetryLifecycle = deriveTelemetryLifecycle({
+    snapshot: monitoringData,
+    connected: resources.monitoring.error === null,
+    loading: resources.monitoring.loading,
+    lastSuccessfulContact,
+    now: lifecycleNow,
+    validationError: monitoringValidationError,
+  });
   const loading = Object.values(resources).some(resource => resource.loading);
   const failedResources = Object.entries(resources).filter(([, resource]) => resource.error);
   const apiError = failedResources.length
@@ -179,6 +224,13 @@ export const App: React.FC = () => {
             paperDiagnosticsData={paperDiagnosticsData}
             paperDiagnosticsUnavailable={resources.paperDiagnostics.error !== null}
             paperDiagnosticsStale={resources.paperDiagnostics.stale}
+            setupData={setupData}
+            setupLoading={resources.setup.loading}
+            setupStale={resources.setup.stale}
+            monitoringData={monitoringData}
+            backendOffline={resources.monitoring.error !== null && monitoringData === null}
+            telemetryLifecycle={telemetryLifecycle}
+            onPaperRecorded={() => fetchAllData(true, false)}
             loading={loading}
             selectedSymbol={selectedSymbol}
             selectedTimeframe={selectedTimeframe}
@@ -243,6 +295,11 @@ export const App: React.FC = () => {
           onTimeframeChange={setSelectedTimeframe}
         />
 
+        <div className="offline-simulation-banner" role="status">
+          OFFLINE SIMULATION — NO BROKER ORDERS
+          <span>{telemetryLifecycle.snapshot ? ` ${telemetryLifecycle.snapshot.environment} · ${telemetryLifecycle.snapshot.simulation_submissions.account_scope}` : ` ${telemetryLifecycle.state}`}</span>
+        </div>
+
         {/* API Error Notification Banner */}
         {apiError && (
           <div
@@ -289,18 +346,18 @@ export const App: React.FC = () => {
           }}
         >
           {Object.entries(resources).map(([name, resource]) => {
-            const state = resource.loading && !resource.data ? 'LOADING'
-              : resource.error && !resource.data ? 'ERROR'
+            const state = resource.loading && !resource.data ? 'UNAVAILABLE'
+              : resource.error && !resource.data ? 'OFFLINE'
               : resource.stale ? 'STALE'
               : resource.data ? 'FRESH'
               : 'UNAVAILABLE';
             const color = state === 'FRESH' ? 'var(--status-green)'
               : state === 'STALE' ? 'var(--quant-amber)'
-              : state === 'ERROR' ? 'var(--quant-red)'
+              : state === 'OFFLINE' ? 'var(--quant-red)'
               : 'var(--text-dark-muted)';
             const dotClass = state === 'FRESH' ? 'status-dot-green'
               : state === 'STALE' ? 'status-dot-amber'
-              : state === 'ERROR' ? 'status-dot-red'
+              : state === 'OFFLINE' ? 'status-dot-red'
               : '';
             return (
               <span

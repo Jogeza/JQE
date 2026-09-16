@@ -7,7 +7,7 @@ Typical usage:
 
     >>> from config import settings
     >>> settings.default_symbol
-    'XAUUSD'
+    'R_75'
 
 In tests, or anywhere a fresh instance is required (e.g. after mutating
 environment variables), use :func:`get_settings` directly together with

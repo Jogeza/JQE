@@ -36,12 +36,16 @@ def _durable_simulation_settings(tmp_path):
         settings.execution_safety_store_path,
         settings.emergency_stop,
         settings.market_data_source,
+        settings.daily_instrument_trade_store_path,
+        settings.max_daily_trades_per_instrument,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.market_data_source = "simulation"
+    settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
+    settings.max_daily_trades_per_instrument = 20
     yield
     (
         settings.broker,
@@ -49,6 +53,8 @@ def _durable_simulation_settings(tmp_path):
         settings.execution_safety_store_path,
         settings.emergency_stop,
         settings.market_data_source,
+        settings.daily_instrument_trade_store_path,
+        settings.max_daily_trades_per_instrument,
     ) = original
 
 
@@ -182,7 +188,7 @@ class TestRunSignalRiskExecution:
         assert gateway.get_account_info.await_count == 2
         gateway.submit_order.assert_awaited_once()
         submitted_order = gateway.submit_order.call_args[0][0]
-        assert submitted_order.symbol == "XAUUSD"
+        assert submitted_order.symbol == settings.default_symbol == "R_75"
         assert submitted_order.side is OrderSide.BUY
         assert submitted_order.volume == 2.5
 

@@ -8,7 +8,7 @@ import pytest
 
 from api.service import ApplicationService
 from broker.types import ClosedMarketObservation, ExecutionQuantity, ExecutionQuantityUnit, OrderSide, Timeframe
-from config import settings
+from config import Settings, settings
 from execution.paper_contract import PaperContractEngine
 from execution.paper_runtime import ContinuousPaperRuntime, PaperEntry, PaperRuntimeStateStore
 from execution.persistence import SQLiteIntentRecordStore
@@ -63,8 +63,8 @@ def runtime(tmp_path, source, decide, **changes):
 
 
 def test_runtime_disabled_by_default_and_explicit_opt_in(tmp_path):
-    assert settings.paper_runtime_enabled is False
-    assert settings.runtime_mode == "disabled"
+    assert Settings.model_fields["paper_runtime_enabled"].default is False
+    assert Settings.model_fields["runtime_mode"].default == "disabled"
     with pytest.raises(ValueError, match="explicit opt-in"):
         runtime(tmp_path, AsyncMock(return_value=[obs(0)]), AsyncMock(return_value=None), enabled=False)
 

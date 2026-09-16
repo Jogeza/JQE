@@ -8,7 +8,9 @@ Encapsulates all domain coordination so the API router remains a thin HTTP layer
 from __future__ import annotations
 
 import datetime
+from decimal import Decimal
 from dataclasses import asdict
+from hashlib import sha256
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -33,12 +35,21 @@ from api.dto import (
     PaperRuntimeStatusResponse,
     TradeHistoryDTO,
     TradePlanDTO,
+    MarketSetup,
+    PaperExecutionOutcomeDTO,
+    DataFreshnessDTO,
+    SetupAuthorizationDTO,
+    SetupEvidenceDTO,
+    ActiveMarketAnalysisResponse,
+    OfflineMonitoringResponse,
+    MonitoringGateDTO,
+    SimulationSubmissionTelemetryDTO,
 )
 from broker.base import BrokerGateway
 from broker.factory import get_gateway
 from broker.deriv_public_data import DerivPublicMarketData
 from broker.simulation_gateway import SimulationGateway
-from broker.types import Timeframe
+from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide, Timeframe, TIMEFRAME_SECONDS
 from config.settings import settings
 from core.data_validator import validate_market_data
 from core.exceptions import MarketDataError
@@ -47,13 +58,48 @@ from core.regime import detect_regime
 from execution.safety import RiskEvaluationState, SQLiteExecutionSafetyStore, utc_now
 from execution.persistence import SQLiteIntentRecordStore
 from execution.paper_runtime import PaperRuntimeStateStore
+from execution.dashboard_paper import DashboardPaperGateway, DashboardPaperStore
+from execution.simulation_daily_guard import (
+    DEMO_DAILY_SUBMISSION_CAP_REACHED,
+    SQLiteSimulationDailySubmissionGuard,
+    SimulationDailyCapReached,
+)
+from execution.executor import AsyncTradeExecutor, ReconciliationState
+from execution.policy import ExecutionContext, ExecutionIntent, ExecutionPolicy, PositionSnapshot
 from risk.risk_engine import RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
-from data.historical import CandleDataSource
+from data.historical import CandleDataSource, HistoricalDataService
+from data.storage import CandleStore
+from data.active_market import (
+    ActiveMarketContext,
+    candle_close_time,
+    freshness_facts,
+    fully_closed_candles,
+    symbol_display_name,
+)
+from intelligence.analyst import explain_setup
+from execution.market_setup import MarketLevelDTO, resolve_historical_win_rate
+from monitoring.offline_analysis import run_offline_analysis as build_offline_analysis
 
 _TIMEFRAME_MAP: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _DERIV_PUBLIC_SYMBOLS = {"XAUUSD": "frxXAUUSD"}
+_OFFLINE_SIMULATION_SCOPE = "simulation:JQE-DASHBOARD-PAPER"
+
+
+def _resolve_timeframe(timeframe_str: str | None) -> Timeframe:
+    """Resolve timeframe strictly without silent fallback to M5 when requested."""
+    if timeframe_str is None or not str(timeframe_str).strip():
+        default_tf = settings.default_timeframe.strip().upper()
+        if default_tf in _TIMEFRAME_MAP:
+            return _TIMEFRAME_MAP[default_tf]
+        return Timeframe.H1
+    clean = str(timeframe_str).strip().upper()
+    if clean in _TIMEFRAME_MAP:
+        return _TIMEFRAME_MAP[clean]
+    raise MarketDataError(
+        f"Unsupported timeframe '{timeframe_str}'. Supported timeframes: {list(_TIMEFRAME_MAP.keys())}"
+    )
 
 
 def _price_decimals(symbol: str) -> int:
@@ -87,11 +133,14 @@ class ApplicationService:
         market_data_source: CandleDataSource | None = None,
         strategy_engine: StrategyEngine | None = None,
         risk_engine: RiskEngine | None = None,
+        candle_store: CandleStore | None = None,
     ) -> None:
         self._gateway = gateway
         self._market_data_source = market_data_source
         self.strategy_engine = strategy_engine or StrategyEngine()
         self.risk_engine = risk_engine or RiskEngine()
+        self._candle_store = candle_store or CandleStore(settings.historical_data_path)
+        self._pinned_market_batch: tuple[str, Timeframe, list[Any], str, str] | None = None
 
     def _get_gateway(self) -> BrokerGateway:
         if self._gateway is not None:
@@ -144,14 +193,88 @@ class ApplicationService:
 
     async def _get_market_candle_data(
         self, symbol: str, timeframe: Timeframe, count: int
-    ) -> tuple[list[Any], str]:
-        async with self._market_source() as (source, configured):
-            candles = await source.get_candles(
-                symbol=self._provider_symbol(symbol, configured),
-                timeframe=timeframe,
-                count=count,
+    ) -> tuple[list[Any], str, str, str]:
+        """Return provider candles via HistoricalDataService, or truthful cache metadata.
+
+        Returns: (candles, provenance, data_status, cache_status)
+        """
+        if self._pinned_market_batch is not None:
+            pinned_symbol, pinned_timeframe, candles, provenance, status = self._pinned_market_batch
+            if pinned_symbol == symbol and pinned_timeframe is timeframe:
+                cache_st = "FRESH_CACHE" if status == "CACHED" else "REFRESHED"
+                return candles[-count:], provenance, status, cache_st
+
+        # Explicitly injected sources are test/application boundaries and retain
+        # their original fail-fast behavior.  They must not silently consume an
+        # unrelated on-disk cache partition after a provider failure.
+        if self._market_data_source is not None:
+            async with self._market_source() as (source, configured):
+                candles = await source.get_candles(
+                    symbol=self._provider_symbol(symbol, configured),
+                    timeframe=timeframe,
+                    count=count,
+                )
+            return candles, self._provenance(configured, candles), "CURRENT", "REFRESHED"
+
+        source, configured = self._get_market_data_source()
+
+        # Synthetic data is generated for the observation instant.  Reading it
+        # back from a durable cache can mix independent seeded runs and can make
+        # old/future test fixtures look authoritative, so simulation telemetry
+        # deliberately bypasses the real-provider cache fallback.
+        if configured == "SIMULATION":
+            connect = getattr(source, "connect", None)
+            disconnect = getattr(source, "disconnect", None)
+            if connect is not None:
+                await connect()
+            try:
+                candles = await source.get_candles(symbol, timeframe, count)
+            finally:
+                if disconnect is not None:
+                    await disconnect()
+            return candles, "SIMULATION", "CURRENT", "REFRESHED"
+
+        provider = "deriv" if configured == "DERIV_PUBLIC" else "simulation"
+        provider_symbol = self._provider_symbol(symbol, configured)
+        historical_service = HistoricalDataService(gateway=source, store=self._candle_store)
+
+        try:
+            connect = getattr(source, "connect", None)
+            disconnect = getattr(source, "disconnect", None)
+            if connect is not None:
+                await connect()
+            try:
+                candles, downloaded = await historical_service.refresh_latest(
+                    symbol=symbol,
+                    provider_symbol=provider_symbol,
+                    provider=provider,
+                    timeframe=timeframe,
+                    count=count,
+                )
+            finally:
+                if disconnect is not None:
+                    await disconnect()
+
+            if candles:
+                provenance = self._provenance(configured, candles)
+                cache_status = "REFRESHED" if downloaded > 0 else "FRESH_CACHE"
+                return candles, provenance, "CURRENT", cache_status
+        except Exception:
+            pass
+
+        cached = self._candle_store.load_latest(
+            symbol, timeframe, count, provider=provider
+        )
+        if cached:
+            cached_df = pd.DataFrame([c.model_dump() for c in cached])
+            ordered = all(
+                current.time > previous.time
+                for previous, current in zip(cached, cached[1:])
             )
-        return candles, self._provenance(configured, candles)
+            if ordered and validate_market_data(cached_df):
+                return cached, configured, "CACHED", "CACHE_ONLY"
+
+        return [], "UNAVAILABLE", "UNAVAILABLE", "EMPTY"
 
     async def get_market_summary(
         self,
@@ -160,12 +283,11 @@ class ApplicationService:
         count: int | None = None,
     ) -> MarketSummaryResponse:
         """Retrieves latest market data and computes key indicators."""
-        target_symbol = symbol if isinstance(symbol, str) and symbol else settings.default_symbol
-        tf_name = timeframe_str if isinstance(timeframe_str, str) and timeframe_str else settings.default_timeframe
-        tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
+        target_symbol = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        tf = _resolve_timeframe(timeframe_str)
         candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
 
-        candles, provenance = await self._get_market_candle_data(
+        candles, provenance, data_status, _cache_status = await self._get_market_candle_data(
             target_symbol, tf, candle_count
         )
 
@@ -199,6 +321,9 @@ class ApplicationService:
             timestamp=timestamp,
             price_decimals=_price_decimals(target_symbol),
             market_data_source=provenance,
+            market_data_status=data_status,
+            stale=data_status == "CACHED",
+            degraded=data_status != "CURRENT",
         )
 
     async def get_market_candles(
@@ -208,12 +333,11 @@ class ApplicationService:
         count: int = 50,
     ) -> CandlesResponse:
         """Retrieves recent candles with computed indicators for charting."""
-        target_symbol = symbol if isinstance(symbol, str) and symbol else settings.default_symbol
-        tf_name = timeframe_str if isinstance(timeframe_str, str) and timeframe_str else settings.default_timeframe
-        tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
+        target_symbol = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        tf = _resolve_timeframe(timeframe_str)
         candle_count = count if isinstance(count, int) and count > 0 else 50
 
-        candles, provenance = await self._get_market_candle_data(
+        candles, provenance, data_status, _cache_status = await self._get_market_candle_data(
             target_symbol, tf, candle_count
         )
 
@@ -225,6 +349,9 @@ class ApplicationService:
                 candles=[],
                 price_decimals=_price_decimals(target_symbol),
                 market_data_source=provenance,
+                market_data_status=data_status,
+                stale=False,
+                degraded=True,
             )
 
         df = pd.DataFrame([c.model_dump() for c in candles])
@@ -259,6 +386,9 @@ class ApplicationService:
             candles=candle_items,
             price_decimals=_price_decimals(target_symbol),
             market_data_source=provenance,
+            market_data_status=data_status,
+            stale=data_status == "CACHED",
+            degraded=data_status != "CURRENT",
         )
 
     async def get_strategy_signal(
@@ -268,12 +398,11 @@ class ApplicationService:
         count: int | None = None,
     ) -> SignalResponse:
         """Evaluates current market data through the canonical StrategyEngine."""
-        target_symbol = symbol if isinstance(symbol, str) and symbol else settings.default_symbol
-        tf_name = timeframe_str if isinstance(timeframe_str, str) and timeframe_str else settings.default_timeframe
-        tf = _TIMEFRAME_MAP.get(tf_name, Timeframe.H1)
+        target_symbol = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        tf = _resolve_timeframe(timeframe_str)
         candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
 
-        candles, _provenance = await self._get_market_candle_data(
+        candles, _provenance, _data_status, _cache_status = await self._get_market_candle_data(
             target_symbol, tf, candle_count
         )
 
@@ -323,7 +452,6 @@ class ApplicationService:
                 stop_loss=tp.stop_loss,
                 take_profit=tp.take_profit,
                 risk_reward=tp.risk_reward,
-                position_size=None,
                 risk_percent=tp.risk_percent,
                 risk_amount=tp.risk_amount,
                 invalidation=tp.invalidation,
@@ -349,6 +477,511 @@ class ApplicationService:
             generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             price_decimals=_price_decimals(target_symbol),
         )
+
+    @staticmethod
+    def _paper_store() -> DashboardPaperStore:
+        return DashboardPaperStore(settings.dashboard_paper_store_path)
+
+    def _paper_context(
+        self,
+        *,
+        symbol: str,
+        setup_id: str,
+        store: DashboardPaperStore,
+        now: datetime.datetime,
+    ) -> ExecutionContext:
+        positions = tuple(
+            PositionSnapshot(symbol=item.symbol, side=item.side)
+            for item in store.open_positions()
+        )
+        daily_trades, realized_loss = store.daily_counts(now)
+        balance = Decimal(str(settings.account_balance))
+        loss_percent = (
+            realized_loss * Decimal("100") / balance if balance > 0 else Decimal("100")
+        )
+        emergency_value = getattr(settings.emergency_stop, "value", str(settings.emergency_stop))
+        emergency_stop = True if emergency_value == "ACTIVE" else False if emergency_value == "CLEAR" else None
+        return ExecutionContext(
+            emergency_stop=emergency_stop,
+            daily_loss_percent=float(loss_percent),
+            max_daily_loss_percent=self.risk_engine.max_daily_loss,
+            daily_trade_count=daily_trades,
+            max_daily_trades=self.risk_engine.max_trades_daily,
+            open_positions=positions,
+            max_open_positions=1,
+            used_idempotency_keys=frozenset({setup_id}) if store.get_outcome(setup_id) else frozenset(),
+            execution_enabled=True,
+            dry_run=False,
+            broker="simulation",
+            environment="paper",
+            account_id="JQE-DASHBOARD-PAPER",
+            approved_brokers=frozenset({"simulation"}),
+            approved_environments=frozenset({"paper"}),
+            approved_accounts=frozenset({"JQE-DASHBOARD-PAPER"}),
+            approved_symbols=frozenset({symbol.upper()}),
+            daily_state_authoritative=True,
+        )
+
+    async def get_market_setup(
+        self,
+        symbol: str | None = None,
+        timeframe_str: str | None = None,
+        count: int | None = None,
+    ) -> MarketSetup:
+        """Build one closed-candle setup through strategy, risk, and policy."""
+        target_symbol = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        tf = _resolve_timeframe(timeframe_str)
+        candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
+        candles, provenance, data_status, _cache_status = await self._get_market_candle_data(
+            target_symbol, tf, candle_count
+        )
+        if not candles:
+            raise MarketDataError("Market data unavailable", symbol=target_symbol)
+        df = pd.DataFrame([c.model_dump() for c in candles])
+        if not validate_market_data(df):
+            raise MarketDataError("Market data failed validation", symbol=target_symbol)
+        df = calculate_indicators(df)
+        regime = detect_regime(df)
+        decision = generate_trading_signal(
+            df, symbol=target_symbol, regime=regime, engine=self.strategy_engine,
+            include_details=True,
+        )
+        now = utc_now()
+        closed = fully_closed_candles(candles, tf, now)
+        latest_closed, expected_closed, freshness_age, freshness_state, freshness_reasons = freshness_facts(
+            candles,
+            symbol=target_symbol,
+            timeframe=tf,
+            observed_at=now,
+            cache_only=(data_status == "CACHED"),
+            continuous_market=True if provenance == "SIMULATION" else None,
+        )
+        analyzed_candle = closed[-1] if closed else candles[-1]
+        analyzed_candle_time = (
+            analyzed_candle.time
+            if analyzed_candle.time.tzinfo is not None
+            else analyzed_candle.time.replace(tzinfo=datetime.timezone.utc)
+        )
+        close_time = candle_close_time(analyzed_candle, tf)
+        forming = close_time > now
+        maximum_age = TIMEFRAME_SECONDS[tf] * 2
+        expired = freshness_state == "STALE" or (
+            freshness_age is not None and freshness_age > Decimal(maximum_age)
+        )
+        freshness_status = (
+            "CACHED" if data_status == "CACHED" else
+            "STALE" if expired else
+            "CURRENT"
+        )
+        freshness_reason = (
+            "Provider data is cached and cannot authorize a new paper entry"
+            if data_status == "CACHED" else
+            "Latest candle has not closed" if forming else
+            "Latest closed candle exceeded the setup freshness window" if expired else
+            "Latest provider candle is closed and within the freshness window"
+        )
+        plan = decision.get("trade_plan")
+        breakdown = decision.get("confidence_breakdown")
+        confidence_score = breakdown.total if breakdown is not None else 0
+        max_scores = {
+            "trend": 25, "structure": 20, "liquidity": 20,
+            "momentum": 15, "volatility": 10, "risk": 10,
+        }
+        evidence = []
+        if breakdown is not None:
+            for factor, maximum in max_scores.items():
+                evidence.append(SetupEvidenceDTO(
+                    factor=factor,
+                    assessment=breakdown.factors.get(factor, "UNKNOWN"),
+                    score=getattr(breakdown, f"{factor}_score"),
+                    maximum_score=maximum,
+                ))
+        direction = decision["signal"]
+        reason_codes: list[str] = []
+        conflicts = list(dict.fromkeys([
+            *decision.get("reasons", []),
+            *(plan.warnings if plan is not None else []),
+        ]))
+
+        # Calculate structure levels (20-candle lookback on closed candles)
+        levels: list[MarketLevelDTO] = []
+        if len(df) >= 20:
+            recent = df.tail(20)
+            low_20 = round(float(recent["low"].min()), _price_decimals(target_symbol))
+            high_20 = round(float(recent["high"].max()), _price_decimals(target_symbol))
+            levels.append(MarketLevelDTO(kind="SUPPORT", price=Decimal(str(low_20)), method="RECENT_RANGE_20_V1"))
+            levels.append(MarketLevelDTO(kind="RESISTANCE", price=Decimal(str(high_20)), method="RECENT_RANGE_20_V1"))
+
+        entry = Decimal(str(plan.entry)) if plan is not None and plan.entry is not None else None
+        stop = Decimal(str(plan.stop_loss)) if plan is not None and plan.stop_loss is not None else None
+        targets = [Decimal(str(plan.take_profit))] if plan is not None and plan.take_profit is not None else []
+        rr = Decimal(str(plan.risk_reward)) if plan is not None and plan.risk_reward is not None else None
+        blocked_reason = ""
+        if direction == "NO_TRADE":
+            reason_codes.append("NO_TRADE")
+            blocked_reason = "Strategy produced a normal no-trade decision"
+            entry = None
+            stop = None
+            targets = []
+            rr = None
+        elif plan is None or not plan.is_valid():
+            reason_codes.append("INVALID_TRADE_PLAN")
+            blocked_reason = "Trade-plan invariants did not pass"
+        elif forming:
+            reason_codes.append("CANDLE_FORMING")
+            blocked_reason = freshness_reason
+        elif data_status == "CACHED" or expired:
+            reason_codes.append("DATA_NOT_FRESH")
+            blocked_reason = freshness_reason
+
+        risk_auth = SetupAuthorizationDTO(
+            status="BLOCKED" if blocked_reason else "NOT_EVALUATED",
+            reason=blocked_reason or "Risk evaluation pending",
+            reason_codes=reason_codes.copy(),
+        )
+        intent: ExecutionIntent | None = None
+        store = self._paper_store()
+        setup_material = f"1|{target_symbol.upper()}|{tf.value}|{close_time.isoformat()}"
+        setup_id = sha256(setup_material.encode("utf-8")).hexdigest()[:24]
+        context = self._paper_context(
+            symbol=target_symbol, setup_id=setup_id, store=store, now=now
+        )
+        if not blocked_reason and plan is not None and entry is not None and stop is not None and targets:
+            risk = self.risk_engine.approve_trade(
+                decision, df, balance=settings.account_balance, enforce_limits=False
+            )
+            if risk.get("approved") is not True:
+                reason_codes.append("RISK_REJECTED")
+                blocked_reason = str(risk.get("reason") or "Risk rejected the setup")
+                risk_auth = SetupAuthorizationDTO(
+                    status="BLOCKED", reason=blocked_reason,
+                    reason_codes=["RISK_REJECTED"],
+                )
+            else:
+                sizing = self.risk_engine.authorize_execution_quantity(
+                    broker="simulation", balance=settings.account_balance,
+                    risk_percent=risk["risk_percent"], entry=float(entry), stop_loss=float(stop),
+                )
+                if not sizing.risk_verifiable or sizing.quantity is None or sizing.expected_loss_at_stop is None:
+                    reason_codes.append("QUANTITY_NOT_VERIFIABLE")
+                    blocked_reason = sizing.reason
+                    risk_auth = SetupAuthorizationDTO(
+                        status="BLOCKED", reason=sizing.reason,
+                        reason_codes=["QUANTITY_NOT_VERIFIABLE"],
+                    )
+                else:
+                    risk_auth = SetupAuthorizationDTO(
+                        status="AUTHORIZED", reason=risk["reason"], reason_codes=["RISK_AUTHORIZED"],
+                        authorized_risk_amount=Decimal(str(sizing.authorized_risk_amount)),
+                        authorized_risk_percent=Decimal(str(risk["risk_percent"])),
+                        quantity=Decimal(str(sizing.quantity.value)),
+                        quantity_unit=sizing.quantity.unit.value,
+                        expected_loss_at_stop=Decimal(str(sizing.expected_loss_at_stop)),
+                    )
+                    intent = ExecutionIntent(
+                        symbol=target_symbol, side=OrderSide(direction), quantity=sizing.quantity,
+                        authorized_risk_amount=sizing.authorized_risk_amount,
+                        expected_loss_at_stop=sizing.expected_loss_at_stop,
+                        quantity_risk_verified=True, entry=float(entry), stop_loss=float(stop),
+                        take_profit=float(targets[0]), idempotency_key=setup_id, risk_approved=True,
+                    )
+
+        policy = ExecutionPolicy.evaluate(intent, context) if intent is not None else None
+        if policy is not None and not policy.allowed:
+            reason_codes.append(policy.code.value)
+            blocked_reason = policy.reason
+        execution_auth = SetupAuthorizationDTO(
+            status="AUTHORIZED" if policy is not None and policy.allowed else "BLOCKED",
+            reason=policy.reason if policy is not None else blocked_reason or "No executable direction",
+            reason_codes=[policy.code.value] if policy is not None else reason_codes.copy(),
+            authorized_risk_amount=risk_auth.authorized_risk_amount if policy is not None and policy.allowed else None,
+            authorized_risk_percent=risk_auth.authorized_risk_percent if policy is not None and policy.allowed else None,
+            quantity=risk_auth.quantity if policy is not None and policy.allowed else None,
+            quantity_unit=risk_auth.quantity_unit if policy is not None and policy.allowed else None,
+            expected_loss_at_stop=risk_auth.expected_loss_at_stop if policy is not None and policy.allowed else None,
+        )
+        state = "FORMING" if forming else "EXPIRED" if expired else "READY" if execution_auth.status == "AUTHORIZED" else "BLOCKED"
+        historical_win_rate = resolve_historical_win_rate(target_symbol, tf.value)
+        data_freshness = DataFreshnessDTO(
+            status=freshness_status,
+            source=provenance,
+            age_seconds=freshness_age,
+            maximum_age_seconds=maximum_age,
+            reason=freshness_reason,
+            latest_closed_candle_at=latest_closed,
+            expected_closed_candle_at=expected_closed,
+            freshness_tolerance_seconds=TIMEFRAME_SECONDS[tf],
+            freshness_age_seconds=freshness_age,
+            freshness_state=freshness_state,
+            freshness_reason_codes=freshness_reasons,
+            reason_codes=freshness_reasons.copy(),
+        )
+        setup = MarketSetup(
+            setup_id=setup_id, symbol=target_symbol, timeframe=tf.value,
+            observed_at=now, candle_close_time=close_time,
+            expires_at=close_time + datetime.timedelta(seconds=maximum_age),
+            direction=direction,
+            setup_state=state, entry_price=entry, stop_loss=stop, targets=targets,
+            levels=levels, analyzed_candle_time=analyzed_candle_time,
+            risk_reward_ratio=rr, confidence_score=confidence_score,
+            confidence_method="JQE_DETERMINISTIC_6_FACTOR_V1",
+            evidence=evidence, conflicts=conflicts, market_regime=str(decision["intelligence"].get("regime", "UNKNOWN")),
+            invalidation_condition=plan.invalidation if plan is not None else None,
+            data_freshness=data_freshness,
+            risk_authorization=risk_auth, execution_authorization=execution_auth,
+            reason_codes=list(dict.fromkeys(reason_codes)),
+            historical_win_rate=historical_win_rate,
+        )
+        setup.explanation = explain_setup(setup)
+        store.save_setup(setup)
+        return setup
+
+    async def get_active_market_analysis(
+        self,
+        symbol: str | None = None,
+        timeframe_str: str | None = None,
+        count: int | None = None,
+    ) -> ActiveMarketAnalysisResponse:
+        """Single authoritative entry point for active-market state, setup, and explanation."""
+        target_symbol = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        tf = _resolve_timeframe(timeframe_str)
+        candle_count = count if isinstance(count, int) and count > 0 else settings.default_candle_count
+
+        candles, provenance, data_status, cache_status = await self._get_market_candle_data(
+            target_symbol, tf, candle_count
+        )
+        if not candles:
+            raise MarketDataError("Market data unavailable", symbol=target_symbol)
+
+        # Every projection in this response must describe the exact same candle
+        # batch.  This especially matters for the synthetic source, which creates
+        # a new random-walk batch on every request.
+        self._pinned_market_batch = (
+            target_symbol,
+            tf,
+            candles,
+            provenance,
+            data_status,
+        )
+        try:
+            setup = await self.get_market_setup(target_symbol, tf.value, candle_count)
+            summary = await self.get_market_summary(target_symbol, tf.value, candle_count)
+            market_candles = await self.get_market_candles(target_symbol, tf.value, candle_count)
+            signal = await self.get_strategy_signal(target_symbol, tf.value, candle_count)
+        finally:
+            self._pinned_market_batch = None
+
+        sync_state = (
+            "SYNCHRONIZED" if setup.data_freshness.freshness_state == "FRESH" else
+            "FORMING" if setup.setup_state == "FORMING" else
+            "STALE" if setup.data_freshness.freshness_state == "STALE" else
+            "UNKNOWN"
+        )
+        context = ActiveMarketContext(
+            canonical_symbol=target_symbol,
+            provider_symbol=self._provider_symbol(target_symbol, provenance),
+            display_name=symbol_display_name(target_symbol),
+            selected_timeframe=tf.value,
+            timeframe_seconds=TIMEFRAME_SECONDS[tf],
+            latest_stored_candle_close=setup.candle_close_time,
+            expected_latest_closed_candle=setup.data_freshness.expected_closed_candle_at or setup.candle_close_time,
+            market_data_observation_time=setup.observed_at,
+            strategy_evaluation_time=setup.observed_at,
+            setup_creation_time=setup.observed_at,
+            setup_expiry_time=setup.candle_close_time + datetime.timedelta(seconds=TIMEFRAME_SECONDS[tf] * 2),
+            data_source=provenance,
+            cache_status=cache_status,
+            synchronization_state=sync_state,
+            reason_codes=setup.reason_codes.copy(),
+            latest_closed_candle_at=setup.data_freshness.latest_closed_candle_at,
+            expected_closed_candle_at=setup.data_freshness.expected_closed_candle_at or setup.candle_close_time,
+            freshness_age_seconds=setup.data_freshness.freshness_age_seconds,
+            freshness_tolerance_seconds=setup.data_freshness.freshness_tolerance_seconds or TIMEFRAME_SECONDS[tf],
+            freshness_state=setup.data_freshness.freshness_state or "UNKNOWN",
+            freshness_reason_codes=setup.data_freshness.freshness_reason_codes,
+            schema_version=1,
+        )
+        explanation = setup.explanation or explain_setup(setup)
+        return ActiveMarketAnalysisResponse(
+            context=context,
+            market=summary,
+            candles=market_candles,
+            signal=signal,
+            setup=setup,
+            explanation=explanation,
+        )
+
+    async def execute_market_setup(self, setup_id: str) -> PaperExecutionOutcomeDTO:
+        """Execute a stored setup through the offline paper boundary only."""
+        store = self._paper_store()
+        existing = store.get_outcome(setup_id)
+        if existing is not None:
+            return existing.model_copy(update={
+                "status": "ALREADY_RECORDED",
+                "message": "This paper setup already has a durable outcome",
+            })
+        setup = store.get_setup(setup_id)
+        if setup is None:
+            raise ValueError("Unknown market setup")
+        now = utc_now()
+        expires_at = setup.expires_at or (
+            setup.candle_close_time
+            + datetime.timedelta(
+                seconds=TIMEFRAME_SECONDS[Timeframe(setup.timeframe)] * 2
+            )
+        )
+        expired = now > expires_at
+        if setup.setup_state != "READY" or expired:
+            code = "SETUP_EXPIRED" if expired else "SETUP_NOT_READY"
+            outcome = PaperExecutionOutcomeDTO(
+                outcome_id=f"paper-{setup_id}", setup_id=setup_id, recorded_at=now,
+                status="BLOCKED", setup_state="EXPIRED" if expired else "BLOCKED",
+                reason_codes=[code], message="Paper execution rejected because the setup is not ready",
+            )
+            store.record_outcome(setup, outcome)
+            return outcome
+        auth = setup.execution_authorization
+        if auth.quantity is None or auth.quantity_unit != ExecutionQuantityUnit.SIMULATION_UNITS.value:
+            raise ValueError("Stored paper authorization is incomplete")
+        intent = ExecutionIntent(
+            symbol=setup.symbol, side=OrderSide(setup.direction),
+            quantity=ExecutionQuantity(value=float(auth.quantity), unit=ExecutionQuantityUnit.SIMULATION_UNITS),
+            authorized_risk_amount=float(auth.authorized_risk_amount) if auth.authorized_risk_amount is not None else None,
+            expected_loss_at_stop=float(auth.expected_loss_at_stop) if auth.expected_loss_at_stop is not None else None,
+            quantity_risk_verified=True, entry=float(setup.entry_price),
+            stop_loss=float(setup.stop_loss), take_profit=float(setup.targets[0]),
+            idempotency_key=setup.setup_id, risk_approved=True,
+        )
+        context = self._paper_context(
+            symbol=setup.symbol, setup_id=setup.setup_id, store=store, now=now
+        )
+        guard = SQLiteSimulationDailySubmissionGuard(
+            settings.simulation_daily_submission_store_path,
+            limit=settings.simulation_daily_submission_limit,
+        )
+        try:
+            guard.assert_available(_OFFLINE_SIMULATION_SCOPE, now=now)
+        except SimulationDailyCapReached as exc:
+            outcome = PaperExecutionOutcomeDTO(
+                outcome_id=f"paper-{setup_id}", setup_id=setup_id, recorded_at=now,
+                status="BLOCKED", setup_state="BLOCKED",
+                reason_codes=[DEMO_DAILY_SUBMISSION_CAP_REACHED], message=str(exc),
+            )
+            store.record_outcome(setup, outcome)
+            return outcome
+        executor = AsyncTradeExecutor(
+            DashboardPaperGateway(store, setup, guard, _OFFLINE_SIMULATION_SCOPE),
+            SQLiteIntentRecordStore(settings.dashboard_paper_intent_store_path),
+        )
+        result = await executor.submit(intent, context)
+        opened = result.state is ReconciliationState.ALREADY_EXECUTED and result.order_id is not None
+        outcome_codes = [result.decision.code.value]
+        if not opened and result.decision.allowed:
+            outcome_codes = [
+                "SIMULATED_BROKER_REJECTED"
+                if result.state is ReconciliationState.REJECTED
+                else "SIMULATION_SUBMISSION_OUTCOME_UNKNOWN"
+            ]
+        outcome = PaperExecutionOutcomeDTO(
+            outcome_id=f"paper-{setup_id}", setup_id=setup_id, recorded_at=now,
+            status="OPENED" if opened else "BLOCKED",
+            setup_state="EXECUTED" if opened else "BLOCKED",
+            order_id=result.order_id, execution_price=setup.entry_price if opened else None,
+            quantity=auth.quantity if opened else None,
+            quantity_unit=auth.quantity_unit if opened else None,
+            reason_codes=outcome_codes, message=result.reason,
+        )
+        store.record_outcome(setup, outcome)
+        if opened:
+            store.save_setup(setup.model_copy(update={"setup_state": "EXECUTED"}))
+        return outcome
+
+    def get_offline_monitoring(self) -> OfflineMonitoringResponse:
+        """Build a truthful, read-only view from persisted offline state."""
+        now = utc_now()
+        store = self._paper_store()
+        setup = store.latest_setup()
+        latest_outcome = store.latest_outcome()
+        guard = SQLiteSimulationDailySubmissionGuard(
+            settings.simulation_daily_submission_store_path,
+            limit=settings.simulation_daily_submission_limit,
+        )
+        cap = guard.status(_OFFLINE_SIMULATION_SCOPE, now=now)
+        cap_codes = [] if cap.available else [DEMO_DAILY_SUBMISSION_CAP_REACHED]
+        if setup is None:
+            unavailable = MonitoringGateDTO(
+                state="UNAVAILABLE", value="NOT OBSERVED", source="OFFLINE_EVIDENCE",
+                reason_codes=["NOT_OBSERVED"],
+            )
+            strategy = candle = risk = authorization = unavailable
+        else:
+            observed = setup.observed_at.astimezone(datetime.timezone.utc)
+            expired = setup.expires_at is not None and now > setup.expires_at
+            stale = expired or setup.data_freshness.status in {"CACHED", "STALE", "UNAVAILABLE"}
+            freshness_codes = list(dict.fromkeys(
+                [*setup.data_freshness.reason_codes, *( ["SETUP_EXPIRED"] if expired else [])]
+            ))
+            candle = MonitoringGateDTO(
+                state="STALE" if stale else "FRESH",
+                value=setup.data_freshness.status,
+                observed_at=observed.isoformat(), source=setup.data_freshness.source,
+                reason_codes=freshness_codes,
+            )
+            strategy = MonitoringGateDTO(
+                state="STALE" if stale else "FRESH",
+                value=setup.direction, observed_at=observed.isoformat(),
+                source="CANONICAL_STRATEGY_PIPELINE",
+                reason_codes=list(setup.reason_codes),
+            )
+            risk = MonitoringGateDTO(
+                state="STALE" if stale else ("BLOCKED" if setup.risk_authorization.status == "BLOCKED" else "FRESH"),
+                value=setup.risk_authorization.status, observed_at=observed.isoformat(),
+                source="OFFLINE_SETUP", reason_codes=list(setup.risk_authorization.reason_codes),
+            )
+            authorization = MonitoringGateDTO(
+                state="STALE" if stale else ("BLOCKED" if setup.execution_authorization.status != "AUTHORIZED" else "FRESH"),
+                value=setup.execution_authorization.status, observed_at=observed.isoformat(),
+                source="OFFLINE_SIMULATION_POLICY",
+                reason_codes=list(setup.execution_authorization.reason_codes),
+            )
+            if latest_outcome is not None and latest_outcome.setup_id == setup.setup_id and latest_outcome.status == "BLOCKED":
+                authorization = MonitoringGateDTO(
+                    state="STALE" if stale else "BLOCKED", value="BLOCKED",
+                    observed_at=latest_outcome.recorded_at.astimezone(datetime.timezone.utc).isoformat(),
+                    source="OFFLINE_SIMULATION_OUTCOME",
+                    reason_codes=list(latest_outcome.reason_codes),
+                )
+        return OfflineMonitoringResponse(
+            observed_at=now.isoformat(), environment=settings.environment,
+            backend=MonitoringGateDTO(
+                state="LIVE", value="ONLINE", observed_at=now.isoformat(),
+                source="FASTAPI", reason_codes=[],
+            ),
+            strategy=strategy, candle_freshness=candle, risk=risk,
+            execution_authorization=authorization,
+            simulation_submissions=SimulationSubmissionTelemetryDTO(
+                state="FRESH" if cap.available else "BLOCKED",
+                account_scope=cap.scope, utc_count=cap.count, limit=cap.limit,
+                utc_date=cap.utc_date, reset_at=cap.reset_at.isoformat(),
+                reason_codes=cap_codes,
+            ),
+            broker_execution_enabled=settings.broker_execution_enabled,
+            assessment=setup,
+        )
+
+    async def run_offline_analysis(self, symbol: str, timeframe_str: str) -> MarketSetup:
+        """Publish an analysis-only setup without resolving an execution gateway."""
+        target_symbol = symbol.strip().upper()
+        if not target_symbol:
+            raise MarketDataError("Offline analysis symbol must be nonblank")
+        timeframe = _resolve_timeframe(timeframe_str)
+        setup = await build_offline_analysis(
+            symbol=target_symbol, timeframe=timeframe,
+            seed=settings.offline_analysis_seed,
+            count=settings.offline_analysis_candle_count,
+        )
+        self._paper_store().save_setup(setup)
+        return setup
 
     async def get_risk_status(
         self,
@@ -417,6 +1050,10 @@ class ApplicationService:
             expected_account_id = "SIMULATED"
         elif settings.broker == "deriv" and settings.deriv_options_account_id:
             expected_account_id = settings.deriv_options_account_id.strip() or None
+        elif settings.broker in {"mt5", "mt5_demo"}:
+            observed_account = (snapshot.account_id or "").strip()
+            if observed_account and observed_account.upper() != "SIMULATED":
+                expected_account_id = observed_account
         context_matches = (
             snapshot.broker == settings.broker
             and snapshot.environment == settings.environment
@@ -726,6 +1363,7 @@ class ApplicationService:
         gateway = self._get_gateway()
         async with gateway:
             is_conn = gateway.is_connected
+            account = await gateway.get_account_info()
             identity = getattr(gateway, "account_identity", None)
             identity_state = getattr(gateway, "identity_state", None)
 
@@ -755,6 +1393,12 @@ class ApplicationService:
             broker_identity_environment=(
                 identity.environment if identity is not None else None
             ),
+            broker_account_id_masked=(
+                "*" * max(0, len(account.account_id) - 4) + account.account_id[-4:]
+            ),
+            broker_account_server=account.server,
+            broker_account_currency=account.currency,
+            broker_account_trade_mode=account.trade_mode,
             telegram_enabled=settings.telegram_enabled,
             telegram_configured=telegram_configured,
             telegram_status=(

@@ -37,6 +37,10 @@ export const SystemPage: React.FC<SystemPageProps> = ({ systemStatus, loading })
             <div>[GATEWAY]: {systemStatus?.broker?.toUpperCase() || 'UNKNOWN'}</div>
             <div>[GATEWAY CONNECTION]: {systemStatus ? (systemStatus.broker_connected ? 'CONNECTED' : 'DISCONNECTED') : 'UNKNOWN'}</div>
             <div>[ENVIRONMENT]: {systemStatus?.environment?.toUpperCase() || 'UNKNOWN'}</div>
+            <div>[ACCOUNT]: {systemStatus?.broker_account_id_masked || '—'}</div>
+            <div>[ACCOUNT SERVER]: {systemStatus?.broker_account_server || '—'}</div>
+            <div>[ACCOUNT CURRENCY]: {systemStatus?.broker_account_currency || '—'}</div>
+            <div>[ACCOUNT TRADE MODE]: {systemStatus?.broker_account_trade_mode?.toUpperCase() || 'UNKNOWN'}</div>
             <div>[DEFAULT INSTRUMENT]: {systemStatus?.default_symbol || '—'}</div>
             <div>[DEFAULT TIMEFRAME]: {systemStatus?.default_timeframe || '—'}</div>
             <div>[MIN CONFIDENCE THRESHOLD]: {systemStatus ? `${systemStatus.min_confidence_threshold}%` : '—'}</div>

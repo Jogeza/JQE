@@ -2,13 +2,15 @@
 
 from pathlib import Path
 
+from config import EmergencyStopState, settings
 from tools.paper_forensics import BASELINE_SHA256, analyze
 
 
 ARTIFACT = Path("state/paper_campaigns/xauusd_m15_5000_final.json")
 
 
-def test_baseline_hash_and_emergency_stop_provenance() -> None:
+def test_baseline_hash_and_emergency_stop_provenance(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "emergency_stop", EmergencyStopState.UNKNOWN)
     report = analyze(ARTIFACT)
     assert report["artifact_sha256"] == BASELINE_SHA256
     emergency = report["emergency_stop"]

@@ -16,6 +16,7 @@ from broker.deriv_gateway import DerivGateway
 from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
+from broker.weltrade_gateway import WeltradeGateway
 from config import Settings
 from config import settings as default_settings
 from core.exceptions import ConfigurationError
@@ -84,6 +85,20 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             server=settings.mt5_server,
             expected_environment="demo",
             strict_lifecycle=settings.environment == "production",
+        )
+
+    if settings.broker in ("weltrade", "weltrade_demo"):
+        if not settings.weltrade_terminal_path:
+            raise ConfigurationError("JQE_WELTRADE_TERMINAL_PATH is required for Weltrade")
+        if not settings.weltrade_login or not settings.weltrade_server:
+            raise ConfigurationError("Weltrade demo login and server identity are required")
+        return WeltradeGateway(
+            terminal_path=settings.weltrade_terminal_path,
+            login=settings.weltrade_login,
+            password=settings.weltrade_password,
+            server=settings.weltrade_server,
+            expected_environment="demo",
+            strict_lifecycle=True,
         )
 
     raise ConfigurationError(f"Unknown broker: {settings.broker!r}")

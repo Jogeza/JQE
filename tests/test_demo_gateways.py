@@ -69,6 +69,20 @@ class TestDerivDemoGateway:
                     "is_virtual": 1,
                 }
             },
+            "contracts_for": {
+                "contracts_for": {
+                    "available": [
+                        {
+                            "contract_type": "MULTUP",
+                            "multiplier_range": [100, 200],
+                        },
+                        {
+                            "contract_type": "MULTDOWN",
+                            "multiplier_range": [100, 200],
+                        },
+                    ]
+                }
+            },
             "proposal": {
                 "proposal": {
                     "id": "prop-demo-1",
@@ -91,6 +105,7 @@ class TestDerivDemoGateway:
                 symbol="R_100",
                 side=OrderSide.BUY,
                 quantity=ExecutionQuantity(value=10.0, unit=ExecutionQuantityUnit.DERIV_STAKE),
+                stop_loss=5.0,
                 idempotency_key="idemp-deriv-1",
             )
             result = await gateway.submit_order(order)
@@ -110,6 +125,7 @@ class TestDerivDemoGateway:
             symbol="R_100",
             side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=10.0, unit=ExecutionQuantityUnit.DERIV_STAKE),
+            stop_loss=5.0,
             idempotency_key="idemp-deriv-2",
         )
         with pytest.raises(UnsafeBrokerAccountError):
@@ -139,6 +155,7 @@ class TestMT5DemoGateway:
         order = OrderRequest(
             symbol="XAUUSD", side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1900.0,
         )
         with patch("broker.mt5_demo.mt5.account_info", return_value=account), \
              patch("broker.mt5_gateway.mt5.account_info", return_value=account), \
@@ -237,6 +254,7 @@ class TestMT5DemoGateway:
             symbol="XAUUSD",
             side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1890.0,
             idempotency_key="idemp-mt5-1",
         )
 
@@ -270,6 +288,7 @@ class TestMT5DemoGateway:
             symbol="XAUUSD",
             side=OrderSide.BUY,
             quantity=ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
+            stop_loss=1890.0,
             idempotency_key="idemp-mt5-real",
         )
 

@@ -8,7 +8,9 @@ from execution.reconciliation import (
     CorrelationStrength,
     DerivReconciliationAdapter,
     MT5ReconciliationAdapter,
+    WeltradeReconciliationAdapter,
     classify_observation,
+    get_reconciliation_adapter,
 )
 
 
@@ -165,3 +167,10 @@ async def test_mt5_failure_is_unavailable() -> None:
     result = await MT5ReconciliationAdapter(Failing()).reconcile()
     assert result.state is BrokerReconciliationState.UNAVAILABLE
     assert result.evidence.correlation_strength is CorrelationStrength.UNAVAILABLE
+
+
+@pytest.mark.parametrize("broker", ["weltrade", "weltrade_demo"])
+def test_weltrade_dispatch_uses_ticket_based_mt5_reconciliation(broker: str) -> None:
+    adapter = get_reconciliation_adapter(broker=broker, gateway=Gateway())
+    assert isinstance(adapter, WeltradeReconciliationAdapter)
+    assert adapter._broker == broker

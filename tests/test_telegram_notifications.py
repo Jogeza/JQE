@@ -17,9 +17,19 @@ from notifications.telegram import (
     TelegramConfigurationError,
     TelegramDeliveryError,
     TelegramGateway,
+    daily_instrument_cap_message,
     telegram_gateway_from_settings,
 )
 from notifications.types import Notification, NotificationType
+
+
+def test_daily_instrument_cap_has_distinct_operator_message() -> None:
+    message = daily_instrument_cap_message(
+        instrument="R_75", count=20, limit=20, reset_at="2026-09-17T00:00:00+00:00",
+    )
+    assert "DAILY INSTRUMENT CAP REACHED" in message
+    assert "20/20" in message
+    assert "ORDER_TYPE_UNSUPPORTED_BY_BROKER" not in message
 
 
 @dataclass

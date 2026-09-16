@@ -15,6 +15,10 @@ export interface SystemStatusResponse {
   telegram_enabled: boolean;
   telegram_configured: boolean;
   telegram_status: 'READY' | 'DISABLED' | 'UNAVAILABLE' | string;
+  broker_account_id_masked: string | null;
+  broker_account_server: string | null;
+  broker_account_currency: string | null;
+  broker_account_trade_mode: string | null;
 }
 
 export interface MarketSummaryResponse {
@@ -32,6 +36,9 @@ export interface MarketSummaryResponse {
   timestamp: string | null;
   price_decimals: number;
   market_data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
+  market_data_status: 'CURRENT' | 'CACHED' | 'UNAVAILABLE';
+  stale: boolean;
+  degraded: boolean;
 }
 
 export interface CandleItemDTO {
@@ -54,6 +61,9 @@ export interface CandlesResponse {
   candles: CandleItemDTO[];
   price_decimals: number;
   market_data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
+  market_data_status: 'CURRENT' | 'CACHED' | 'UNAVAILABLE';
+  stale: boolean;
+  degraded: boolean;
 }
 
 export interface ConfidenceBreakdownDTO {
@@ -103,6 +113,157 @@ export interface SignalResponse {
   trade_plan: TradePlanDTO | null;
   generated_at: string | null;
   price_decimals: number;
+}
+
+export type PreciseDecimal = string;
+
+export interface SetupEvidenceDTO {
+  factor: string;
+  assessment: string;
+  score: number;
+  maximum_score: number;
+}
+
+export interface SetupAuthorizationDTO {
+  status: 'AUTHORIZED' | 'BLOCKED' | 'NOT_EVALUATED';
+  reason: string;
+  reason_codes: string[];
+  authorized_risk_amount: PreciseDecimal | null;
+  authorized_risk_percent: PreciseDecimal | null;
+  quantity: PreciseDecimal | null;
+  quantity_unit: string | null;
+  expected_loss_at_stop: PreciseDecimal | null;
+}
+
+export interface MarketLevelDTO {
+  kind: 'SUPPORT' | 'RESISTANCE';
+  price: PreciseDecimal;
+  method: string;
+  name?: string;
+}
+
+export interface AnalystExplanation {
+  state: 'AVAILABLE' | 'UNAVAILABLE' | string;
+  decision_summary: string | null;
+  supporting_evidence: string[];
+  conflicting_evidence: string[];
+  freshness_warning: string | null;
+  invalidation_condition: string | null;
+  additional_evidence_required: string[];
+  method: string;
+}
+
+export interface DataFreshnessDTO {
+  status: 'CURRENT' | 'CACHED' | 'STALE' | 'UNAVAILABLE';
+  source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
+  age_seconds: PreciseDecimal | null;
+  maximum_age_seconds: number;
+  reason: string;
+  latest_closed_candle_at: string | null;
+  expected_closed_candle_at: string | null;
+  freshness_tolerance_seconds: number | null;
+  freshness_age_seconds: PreciseDecimal | null;
+  freshness_state: 'FRESH' | 'STALE' | 'FORMING' | 'UNKNOWN';
+  freshness_reason_codes: string[];
+  reason_codes: string[];
+}
+
+export interface HistoricalWinRateDTO {
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  win_rate_percent: PreciseDecimal | null;
+  sample_size: number | null;
+  evaluation_start: string | null;
+  evaluation_end: string | null;
+  strategy_version: string | null;
+  dataset_hash: string | null;
+  compatibility_state: 'COMPATIBLE' | 'INCOMPATIBLE' | 'UNVERIFIED';
+  reason: string;
+}
+
+export interface MarketSetup {
+  setup_id: string;
+  symbol: string;
+  timeframe: string;
+  observed_at: string;
+  candle_close_time: string;
+  expires_at: string | null;
+  direction: 'BUY' | 'SELL' | 'NO_TRADE';
+  setup_state: 'FORMING' | 'READY' | 'BLOCKED' | 'EXPIRED' | 'EXECUTED';
+  entry_price: PreciseDecimal | null;
+  stop_loss: PreciseDecimal | null;
+  targets: PreciseDecimal[];
+  levels: MarketLevelDTO[];
+  analyzed_candle_time: string | null;
+  risk_reward_ratio: PreciseDecimal | null;
+  confidence_score: number;
+  confidence_method: string;
+  evidence: SetupEvidenceDTO[];
+  conflicts: string[];
+  market_regime: string;
+  invalidation_condition: string | null;
+  data_freshness: DataFreshnessDTO;
+  risk_authorization: SetupAuthorizationDTO;
+  execution_authorization: SetupAuthorizationDTO;
+  reason_codes: string[];
+  historical_win_rate: HistoricalWinRateDTO;
+  explanation?: AnalystExplanation | null;
+  schema_version: number;
+  dataset_source?: string | null;
+  dataset_seed?: number | null;
+  dataset_hash?: string | null;
+  dataset_first_candle?: string | null;
+  dataset_last_candle?: string | null;
+}
+
+export interface ActiveMarketContext {
+  canonical_symbol: string;
+  provider_symbol: string;
+  display_name: string;
+  selected_timeframe: string;
+  timeframe_seconds: number;
+  latest_stored_candle_close: string | null;
+  expected_latest_closed_candle: string;
+  market_data_observation_time: string;
+  strategy_evaluation_time: string;
+  setup_creation_time: string;
+  setup_expiry_time: string;
+  data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
+  cache_status: 'REFRESHED' | 'FRESH_CACHE' | 'CACHE_ONLY' | 'EMPTY';
+  synchronization_state: 'SYNCHRONIZED' | 'STALE' | 'FORMING' | 'UNKNOWN';
+  reason_codes: string[];
+  latest_closed_candle_at: string | null;
+  expected_closed_candle_at: string;
+  freshness_age_seconds: PreciseDecimal | null;
+  freshness_tolerance_seconds: number;
+  freshness_state: 'FRESH' | 'STALE' | 'FORMING' | 'UNKNOWN';
+  freshness_reason_codes: string[];
+  schema_version: number;
+}
+
+export interface ActiveMarketAnalysisResponse {
+  context: ActiveMarketContext;
+  market: MarketSummaryResponse;
+  candles: CandlesResponse;
+  signal: SignalResponse;
+  setup: MarketSetup;
+  explanation: AnalystExplanation;
+}
+
+export interface PaperExecutionOutcomeDTO {
+  outcome_id: string;
+  setup_id: string;
+  recorded_at: string;
+  status: 'OPENED' | 'BLOCKED' | 'ALREADY_RECORDED' | 'UNKNOWN';
+  setup_state: 'READY' | 'BLOCKED' | 'EXPIRED' | 'EXECUTED';
+  order_id: string | null;
+  execution_price: PreciseDecimal | null;
+  quantity: PreciseDecimal | null;
+  quantity_unit: string | null;
+  realized_pnl: PreciseDecimal | null;
+  close_reason: string | null;
+  reason_codes: string[];
+  message: string;
+  paper_only: true;
 }
 
 export interface RiskStatusResponse {
@@ -185,6 +346,39 @@ export interface ExecutionSafetyResponse {
   unresolved_intent_blocked: boolean | null;
   execution_authorization: 'AUTHORIZED' | 'BLOCKED' | 'NOT_EVALUATED' | 'UNKNOWN';
   reason_codes: string[];
+}
+
+export type MonitoringState = 'LIVE' | 'FRESH' | 'STALE' | 'OFFLINE' | 'UNAVAILABLE' | 'BLOCKED';
+
+export interface MonitoringGateDTO {
+  state: MonitoringState;
+  value: string;
+  observed_at: string | null;
+  source: string;
+  reason_codes: string[];
+}
+
+export interface OfflineMonitoringResponse {
+  schema_version: number;
+  mode: 'OFFLINE_SIMULATION';
+  observed_at: string;
+  environment: string;
+  backend: MonitoringGateDTO;
+  strategy: MonitoringGateDTO;
+  candle_freshness: MonitoringGateDTO;
+  risk: MonitoringGateDTO;
+  execution_authorization: MonitoringGateDTO;
+  simulation_submissions: {
+    state: 'FRESH' | 'BLOCKED' | 'UNAVAILABLE';
+    account_scope: string;
+    utc_count: number;
+    limit: number;
+    utc_date: string;
+    reset_at: string;
+    reason_codes: string[];
+  };
+  broker_execution_enabled: false;
+  assessment: MarketSetup | null;
 }
 
 export interface RecoveryQuantity {

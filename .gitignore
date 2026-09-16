@@ -43,6 +43,7 @@ Thumbs.db
 # Local market data
 data/storage/symbols/
 cache/
+mt5-daemon-profile/
 data/historical.sqlite3
 data/historical.sqlite3-shm
 data/historical.sqlite3-wal

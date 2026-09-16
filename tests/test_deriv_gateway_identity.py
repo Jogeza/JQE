@@ -156,6 +156,7 @@ async def test_verified_identity_never_enables_submission() -> None:
         symbol="frxXAUUSD",
         side=OrderSide.BUY,
         quantity=ExecutionQuantity(value=1, unit=ExecutionQuantityUnit.DERIV_STAKE),
+        stop_loss=1.0,
     )
     with pytest.raises(ExecutionError, match="multiplier is unverified"):
         await target.submit_order(order)

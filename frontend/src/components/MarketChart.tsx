@@ -1,7 +1,7 @@
 import React from 'react';
 import { EmptyStateIllustration } from './EmptyStateIllustration';
 import { CandlestickChart as ChartIcon } from 'lucide-react';
-import type { CandleItemDTO, SignalResponse } from '../types/api';
+import type { CandleItemDTO, MarketSetup, SignalResponse } from '../types/api';
 import { JQEChart } from './chart/JQEChart';
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import type { VolumeProfileSnapshotDTO } from '../types/research';
@@ -12,9 +12,11 @@ interface MarketChartProps {
   timeframe: string;
   candles: CandleItemDTO[];
   signal?: SignalResponse | null;
+  setup?: MarketSetup | null;
   priceDecimals?: number;
   loading?: boolean;
   error?: string | null;
+  dataStatus?: 'CURRENT' | 'CACHED' | 'UNAVAILABLE';
   markers?: SeriesMarker<Time>[];
   volumeProfile?: VolumeProfileSnapshotDTO | null;
   indicators?: IndicatorVisibility;
@@ -22,7 +24,7 @@ interface MarketChartProps {
 }
 
 export const MarketChart: React.FC<MarketChartProps> = ({
-  symbol, timeframe, candles, signal = null, priceDecimals, loading = false, error = null, markers = [], volumeProfile = null, indicators, height = 460,
+  symbol, timeframe, candles, signal = null, setup = null, priceDecimals, loading = false, error = null, dataStatus, markers = [], volumeProfile = null, indicators, height = 460,
 }) => (
   <div className="quant-panel chart-panel" style={{ minHeight: '360px' }}>
     <div className="quant-panel-header">
@@ -35,15 +37,17 @@ export const MarketChart: React.FC<MarketChartProps> = ({
           <span className="chart-legend-item rsi"><i className="chart-legend-dot" />RSI(14)</span>
         </span>
       </div>
+      {dataStatus === 'CACHED' && <span className="badge badge-neutral">CACHED · STALE · DEGRADED</span>}
+      {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
     </div>
     {loading && candles.length === 0 ? (
       <ChartState>Loading JQE market telemetry…</ChartState>
     ) : error && candles.length === 0 ? (
-      <ChartState tone="error">MARKET DATA UNAVAILABLE · {error}</ChartState>
+      <ChartState>MARKET DATA UNAVAILABLE · {error}</ChartState>
     ) : candles.length === 0 ? (
       <ChartState>NO CANDLE DATA AVAILABLE</ChartState>
     ) : (
-      <JQEChart symbol={symbol} candles={candles} signal={signal} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} />
+      <JQEChart symbol={symbol} candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} />
     )}
   </div>
 );

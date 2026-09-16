@@ -101,9 +101,10 @@ class DerivDemoGateway(DerivGateway):
             session_id=self.session_id,
         )
 
-        currency = self._currency or "USD"
+        currency = await self._resolve_account_currency()
         quantity = order.quantity.value
-        proposal_request = _build_proposal_request(order, currency)
+        multiplier = await self._resolve_multiplier(order)
+        proposal_request = _build_proposal_request(order, currency, multiplier=multiplier)
 
         proposal_response = await self._request(proposal_request)
         if proposal_response.get("error"):

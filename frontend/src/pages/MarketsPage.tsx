@@ -25,6 +25,15 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
   return (
     <div className="dashboard-page-container markets-page">
       <div className="editorial-heading"><div><span className="editorial-kicker">Market observatory</span><h1>{symbol}<span>.</span></h1></div><p>{timeframe}<small>Latest market snapshot</small></p></div>
+      <div role="status" style={{ display: 'flex', gap: '7px', alignItems: 'center', minHeight: '22px' }}>
+        <span className={`badge ${candles?.degraded ? 'badge-neutral' : 'badge-cyan'}`}>
+          {candles?.market_data_source?.replace('_', ' ') ?? 'UNAVAILABLE'}
+        </span>
+        <span className={`badge ${candles?.market_data_status === 'CURRENT' ? 'badge-cyan' : 'badge-neutral'}`}>
+          {candles?.market_data_status ?? 'UNAVAILABLE'}
+        </span>
+        {candles?.stale && <span className="badge badge-neutral">STALE · DEGRADED</span>}
+      </div>
       {/* Header Snapshot Row */}
       <div
         style={{
@@ -115,6 +124,7 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
         priceDecimals={candles?.price_decimals}
         loading={loading}
         error={candleError}
+        dataStatus={candles?.market_data_status}
         height={520}
       />
     </div>

@@ -57,6 +57,7 @@ from broker.types import (
     OrderResult,
     OrderSide,
     OrderStatus,
+    OrderType,
     Position,
     Tick,
     Timeframe,
@@ -103,22 +104,38 @@ def _positive_financial_number(value: Any, *, field: str) -> float:
     return normalized
 
 
-def _build_proposal_request(order: OrderRequest, currency: str) -> dict[str, Any]:
-    """Build only the verified base proposal schema; add no unproven terms."""
-    if order.stop_loss is not None or order.take_profit is not None:
-        raise ExecutionError(
-            "Deriv monetary limit conversion is unproven; absolute market "
-            "stop-loss/take-profit prices cannot be used as contract loss/profit amounts",
-            symbol=order.symbol,
-        )
-    return {
+def _build_proposal_request(
+    order: OrderRequest, currency: str, multiplier: int | None = None
+) -> dict[str, Any]:
+    """Build the Deriv proposal schema.
+
+    Deriv MULTUP/MULTDOWN contracts use *stake* semantics:
+    - ``amount``: account-currency cash stake (max loss for the position).
+    - ``basis``: always ``"stake"`` for multiplier contracts.
+    - ``multiplier``: leverage factor from ``contracts_for`` ``multiplier_range``.
+
+    Deriv expresses multiplier protection as positive account-currency
+    ``limit_order`` amounts. The shared request's protective values are passed
+    through only after construction-level finite/positive validation.
+    """
+    payload: dict[str, Any] = {
         "proposal": 1,
         "contract_type": "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN",
         "underlying_symbol": _provider_symbol(order.symbol),
         "amount": order.quantity.value,
         "basis": "stake",
         "currency": currency,
+        "limit_order": {"stop_loss": order.stop_loss},
     }
+    if order.take_profit is not None:
+        payload["limit_order"]["take_profit"] = order.take_profit
+    if multiplier is not None:
+        if not isinstance(multiplier, int) or multiplier <= 0:
+            raise ExecutionError(
+                "Deriv multiplier must be a positive integer", symbol=order.symbol
+            )
+        payload["multiplier"] = multiplier
+    return payload
 
 
 def _parse_proposal_response(response: dict[str, Any], *, symbol: str) -> tuple[str, float]:
@@ -373,22 +390,70 @@ class DerivGateway(BrokerGateway):
         self._require_connected()
         return self._tick_stream(symbol)
 
+    async def _resolve_account_currency(self) -> str:
+        """Return the account currency, fetching it via balance if not yet known."""
+        if self._currency:
+            return self._currency
+        # Options WS path does not carry currency in the auth response;
+        # a balance request is the canonical way to learn it.
+        response = await self._request({"balance": 1})
+        balance = response.get("balance", {})
+        currency = balance.get("currency") if isinstance(balance, dict) else None
+        if isinstance(currency, str) and currency.strip():
+            self._currency = currency.strip()
+            return self._currency
+        return "USD"
+
+    async def _resolve_multiplier(self, order: OrderRequest) -> int:
+        """Query contracts_for and return the lowest available multiplier."""
+        provider_sym = _provider_symbol(order.symbol)
+        contract_type = "MULTUP" if order.side is OrderSide.BUY else "MULTDOWN"
+        response = await self._request({"contracts_for": provider_sym})
+        if response.get("error"):
+            raise ExecutionError(
+                "Deriv contracts_for lookup failed",
+                symbol=order.symbol,
+                reason=response["error"].get("message"),
+            )
+        available = response.get("contracts_for", {}).get("available", [])
+        matches = [
+            item for item in available
+            if isinstance(item, dict) and item.get("contract_type") == contract_type
+        ]
+        if not matches:
+            raise ExecutionError(
+                f"Deriv {contract_type} not available for {order.symbol}",
+                symbol=order.symbol,
+            )
+        multiplier_range = matches[0].get("multiplier_range") or []
+        if not multiplier_range or not isinstance(multiplier_range, list):
+            raise ExecutionError(
+                "Deriv multiplier_range is missing or empty for this contract",
+                symbol=order.symbol,
+            )
+        try:
+            return int(multiplier_range[0])
+        except (TypeError, ValueError) as exc:
+            raise ExecutionError(
+                "Deriv multiplier_range value is not an integer", symbol=order.symbol
+            ) from exc
+
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         self._require_connected()
+        if order.order_type is not OrderType.MARKET:
+            raise ExecutionError(
+                "ORDER_TYPE_UNSUPPORTED_BY_BROKER",
+                broker="deriv",
+                order_type=order.order_type.value,
+                symbol=order.symbol,
+            )
         from broker.types import ExecutionQuantityUnit
         if order.quantity.unit is not ExecutionQuantityUnit.DERIV_STAKE:
             raise ExecutionError("Deriv requires DERIV_STAKE")
         quantity = order.quantity.value
-        proposal_request = _build_proposal_request(order, self._currency or "USD")
-
-        # No registered evidence currently supplies an authoritative multiplier.
-        # MULTUP/MULTDOWN execution therefore remains unreachable, and no proposal
-        # request is sent.  The base request above is retained as the corrected,
-        # offline-testable API schema boundary.
-        raise ExecutionError(
-            "Deriv multiplier is unverified; proposal submission is disabled",
-            symbol=order.symbol,
-        )
+        currency = await self._resolve_account_currency()
+        multiplier = await self._resolve_multiplier(order)
+        proposal_request = _build_proposal_request(order, currency, multiplier=multiplier)
 
         proposal_response = await self._request(proposal_request)
         if proposal_response.get("error"):

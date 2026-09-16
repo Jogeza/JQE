@@ -71,8 +71,7 @@ def _ledger_rows(path: Path) -> list[dict[str, Any]]:
     with _read_only_connection(path) as connection:
         rows = connection.execute(
             """
-            SELECT broker, symbol, position_id, order_id, opened_at, closed_at
-            FROM live_paper_positions ORDER BY opened_at DESC, position_id
+            SELECT * FROM live_paper_positions ORDER BY opened_at DESC, position_id
             """
         ).fetchall()
     return [dict(row) for row in rows]

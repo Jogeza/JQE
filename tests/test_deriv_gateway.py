@@ -24,7 +24,7 @@ from broker.deriv_gateway import (
     _build_proposal_request,
     _parse_proposal_response,
 )
-from broker.types import OrderRequest, OrderSide, OrderStatus, Timeframe
+from broker.types import OrderRequest, OrderSide, OrderStatus, OrderType, Timeframe
 from core.exceptions import (
     BrokerAuthenticationError,
     BrokerConnectionError,
@@ -206,12 +206,33 @@ class TestGetCandles:
 
 
 class TestSubmitOrder:
+    @pytest.mark.parametrize(
+        ("order_type", "side", "extra"),
+        [
+            (OrderType.BUY_STOP, OrderSide.BUY, {"entry_price": 101.0}),
+            (OrderType.SELL_STOP, OrderSide.SELL, {"entry_price": 99.0}),
+            (OrderType.STOP_LIMIT, OrderSide.BUY, {"entry_price": 101.0, "stop_limit_price": 100.5}),
+        ],
+    )
+    async def test_pending_order_types_fail_closed_before_api_request(self, order_type, side, extra) -> None:
+        gateway, fake_connection = _connected_gateway({})
+        await _connect_with_fake(gateway, fake_connection)
+        with pytest.raises(ExecutionError, match="ORDER_TYPE_UNSUPPORTED_BY_BROKER"):
+            await gateway.submit_order(OrderRequest(
+                symbol="R_100", side=side,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                order_type=order_type, stop_loss=5.0, **extra,
+            ))
+        assert not any("proposal" in message for message in fake_connection.sent)
+        await gateway.disconnect()
+
     def test_canonical_xauusd_maps_to_deriv_provider_symbol(self) -> None:
         request = _build_proposal_request(
             OrderRequest(
                 symbol="XAUUSD",
                 side=OrderSide.BUY,
                 quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                stop_loss=5.0,
             ),
             "USD",
         )
@@ -223,6 +244,7 @@ class TestSubmitOrder:
                 symbol="R_100",
                 side=OrderSide.BUY,
                 quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                stop_loss=5.0,
             ),
             "USD",
         )
@@ -233,10 +255,11 @@ class TestSubmitOrder:
             "amount": 10.0,
             "basis": "stake",
             "currency": "USD",
+            "limit_order": {"stop_loss": 5.0},
         }
         assert not {
             "symbol", "loginid", "barrier_range", "product_type", "date_start",
-            "trade_risk_profile", "trading_period_start", "multiplier", "limit_order",
+            "trade_risk_profile", "trading_period_start", "multiplier",
         } & request.keys()
 
     def test_sell_preserves_multiplier_contract_design(self) -> None:
@@ -245,36 +268,70 @@ class TestSubmitOrder:
                 symbol="R_100",
                 side=OrderSide.SELL,
                 quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                stop_loss=5.0,
             ),
             "USD",
         )
         assert request["contract_type"] == "MULTDOWN"
 
-    @pytest.mark.parametrize("field", ["stop_loss", "take_profit"])
-    def test_absolute_market_limits_fail_closed(self, field: str) -> None:
-        values = {field: 95.0}
+    def test_market_protection_maps_to_native_limit_order(self) -> None:
         order = OrderRequest(
             symbol="R_100",
             side=OrderSide.BUY,
             quantity={"value": 10.0, "unit": "DERIV_STAKE"},
-            **values,
+            stop_loss=5.0,
+            take_profit=7.0,
         )
-        with pytest.raises(ExecutionError, match="monetary limit conversion is unproven"):
-            _build_proposal_request(order, "USD")
+        request = _build_proposal_request(order, "USD")
+        assert request["limit_order"] == {"stop_loss": 5.0, "take_profit": 7.0}
 
-    async def test_unverified_multiplier_blocks_before_proposal_request(self) -> None:
-        gateway, fake_connection = _connected_gateway({})
+    async def test_contracts_for_missing_raises_execution_error(self) -> None:
+        """When contracts_for finds no matching contract type, submit_order raises."""
+        gateway, fake_connection = _connected_gateway(
+            {
+                "balance": {"balance": {"loginid": "CR12345", "balance": 1000.0, "currency": "USD"}},
+                "contracts_for": {"contracts_for": {"available": []}},
+            }
+        )
         await _connect_with_fake(gateway, fake_connection)
-        with pytest.raises(ExecutionError, match="multiplier is unverified"):
+        with pytest.raises(ExecutionError, match="not available for"):
             await gateway.submit_order(
                 OrderRequest(
                     symbol="R_100",
                     side=OrderSide.BUY,
                     quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                    stop_loss=5.0,
                 )
             )
         assert not any("proposal" in message for message in fake_connection.sent)
         await gateway.disconnect()
+
+    def test_proposal_with_multiplier_includes_it_in_payload(self) -> None:
+        request = _build_proposal_request(
+            OrderRequest(
+                symbol="R_100",
+                side=OrderSide.BUY,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                stop_loss=5.0,
+            ),
+            "USD",
+            multiplier=100,
+        )
+        assert request["multiplier"] == 100
+        assert request["basis"] == "stake"
+        assert request["underlying_symbol"] == "R_100"
+
+    def test_proposal_without_multiplier_excludes_multiplier_key(self) -> None:
+        request = _build_proposal_request(
+            OrderRequest(
+                symbol="R_100",
+                side=OrderSide.BUY,
+                quantity={"value": 10.0, "unit": "DERIV_STAKE"},
+                stop_loss=5.0,
+            ),
+            "USD",
+        )
+        assert "multiplier" not in request
 
     @pytest.mark.parametrize("ask_price", [10, 10.5, "10.50"])
     def test_proposal_price_is_normalized(self, ask_price: object) -> None:

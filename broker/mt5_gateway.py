@@ -25,6 +25,7 @@ from broker.types import (
     OrderResult,
     OrderSide,
     OrderStatus,
+    OrderType,
     Position,
     Tick,
     Timeframe,
@@ -397,103 +398,62 @@ class MT5Gateway(BrokerGateway):
         digits = symbol_info.digits
         point = symbol_info.point
 
-        price = (
-            tick.ask
-            if order.side is OrderSide.BUY
-            else tick.bid
-        )
+        market_price = round(tick.ask if order.side is OrderSide.BUY else tick.bid, digits)
+        price = round(order.entry_price, digits) if order.entry_price is not None else market_price
+        minimum_distance = symbol_info.trade_stops_level * point
+        stop_loss = round(order.stop_loss, digits)
+        take_profit = round(order.take_profit, digits) if order.take_profit is not None else None
 
-        price = round(price, digits)
+        if order.order_type is not OrderType.MARKET:
+            trigger_distance = (
+                price - round(float(tick.ask), digits)
+                if order.side is OrderSide.BUY
+                else round(float(tick.bid), digits) - price
+            )
+            if trigger_distance < minimum_distance:
+                raise ExecutionError("MT5 pending trigger validation failed", symbol=order.symbol)
 
-        minimum_distance = (
-            symbol_info.trade_stops_level * point
-        )
-
-        stop_loss = order.stop_loss
-        take_profit = order.take_profit
+        stop_limit_price = None
+        if order.order_type is OrderType.STOP_LIMIT:
+            stop_limit_price = round(float(order.stop_limit_price), digits)
+            if order.side is OrderSide.BUY and stop_limit_price > price:
+                raise ExecutionError("MT5 buy stop-limit price must not exceed its trigger", symbol=order.symbol)
+            if order.side is OrderSide.SELL and stop_limit_price < price:
+                raise ExecutionError("MT5 sell stop-limit price must not be below its trigger", symbol=order.symbol)
 
         if order.side is OrderSide.BUY:
-
-            if stop_loss:
-                stop_loss = round(
-                    stop_loss,
-                    digits,
-                )
-
-                if (
-                    price - stop_loss
-                    < minimum_distance
-                ):
-                    raise ExecutionError(
-                        "MT5 stop-loss validation failed",
-                        symbol=order.symbol,
-                    )
-
-            if take_profit:
-                take_profit = round(
-                    take_profit,
-                    digits,
-                )
-
-                if (
-                    take_profit - price
-                    < minimum_distance
-                ):
-                    raise ExecutionError(
-                        "MT5 take-profit validation failed",
-                        symbol=order.symbol,
-                    )
-
+            if price - stop_loss < minimum_distance:
+                raise ExecutionError("MT5 stop-loss validation failed", symbol=order.symbol)
+            if take_profit is not None and take_profit - price < minimum_distance:
+                raise ExecutionError("MT5 take-profit validation failed", symbol=order.symbol)
         else:
+            if stop_loss - price < minimum_distance:
+                raise ExecutionError("MT5 stop-loss validation failed", symbol=order.symbol)
+            if take_profit is not None and price - take_profit < minimum_distance:
+                raise ExecutionError("MT5 take-profit validation failed", symbol=order.symbol)
 
-            if stop_loss:
-                stop_loss = round(
-                    stop_loss,
-                    digits,
-                )
-
-                if (
-                    stop_loss - price
-                    < minimum_distance
-                ):
-                    raise ExecutionError(
-                        "MT5 stop-loss validation failed",
-                        symbol=order.symbol,
-                    )
-
-            if take_profit:
-                take_profit = round(
-                    take_profit,
-                    digits,
-                )
-
-                if (
-                    price - take_profit
-                    < minimum_distance
-                ):
-                    raise ExecutionError(
-                        "MT5 take-profit validation failed",
-                        symbol=order.symbol,
-                    )
-
+        native_type = {
+            OrderType.MARKET: mt5.ORDER_TYPE_BUY if order.side is OrderSide.BUY else mt5.ORDER_TYPE_SELL,
+            OrderType.BUY_STOP: mt5.ORDER_TYPE_BUY_STOP,
+            OrderType.SELL_STOP: mt5.ORDER_TYPE_SELL_STOP,
+            OrderType.STOP_LIMIT: mt5.ORDER_TYPE_BUY_STOP_LIMIT if order.side is OrderSide.BUY else mt5.ORDER_TYPE_SELL_STOP_LIMIT,
+        }[order.order_type]
         request = {
-            "action": mt5.TRADE_ACTION_DEAL,
+            "action": mt5.TRADE_ACTION_DEAL if order.order_type is OrderType.MARKET else mt5.TRADE_ACTION_PENDING,
             "symbol": real_symbol,
             "volume": quantity,
-            "type": (
-                mt5.ORDER_TYPE_BUY
-                if order.side is OrderSide.BUY
-                else mt5.ORDER_TYPE_SELL
-            ),
+            "type": native_type,
             "price": price,
-            "sl": stop_loss or 0.0,
+            "sl": stop_loss,
             "tp": take_profit or 0.0,
             "deviation": 20,
             "magic": order.magic_number or 20260802,
             "comment": order.order_comment or "JQE Gateway Execution",
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": _select_filling_mode(symbol_info),
+            "type_filling": _select_filling_mode(symbol_info) if order.order_type is OrderType.MARKET else mt5.ORDER_FILLING_RETURN,
         }
+        if stop_limit_price is not None:
+            request["stoplimit"] = stop_limit_price
 
         logger.info(
             "MT5 order request: {}",
@@ -520,7 +480,10 @@ class MT5Gateway(BrokerGateway):
                 request=request,
             )
 
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
+        accepted_retcodes = {mt5.TRADE_RETCODE_DONE}
+        if order.order_type is not OrderType.MARKET:
+            accepted_retcodes.add(mt5.TRADE_RETCODE_PLACED)
+        if result.retcode not in accepted_retcodes:
 
             return OrderResult(
                 order_id="",
@@ -547,16 +510,19 @@ class MT5Gateway(BrokerGateway):
 
         result_order = getattr(result, "order", None) or getattr(result, "deal", None)
         result_price = getattr(result, "price", None)
-        if result_order in (None, "") or not isinstance(result_price, (int, float)) or isinstance(result_price, bool):
+        if result_order in (None, "") or (
+            order.order_type is OrderType.MARKET
+            and (not isinstance(result_price, (int, float)) or isinstance(result_price, bool))
+        ):
             raise ExecutionError("MT5 successful response lacked execution evidence", symbol=order.symbol, retcode=result.retcode)
 
         return OrderResult(
             order_id=str(result_order),
-            status=OrderStatus.FILLED,
+            status=OrderStatus.FILLED if order.order_type is OrderType.MARKET else OrderStatus.SUBMITTED,
             symbol=order.symbol,
             side=order.side,
             volume=quantity,
-            filled_price=float(result_price),
+            filled_price=float(result_price) if order.order_type is OrderType.MARKET else None,
             raw={
                 "retcode": result.retcode,
                 "comment": getattr(result, "comment", ""),
@@ -565,6 +531,10 @@ class MT5Gateway(BrokerGateway):
                 "requested_volume": requested_quantity,
                 "filled_volume": _numeric_attr(result, "volume", quantity),
                 "requested_price": price,
+                "order_type": order.order_type.value,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "stop_limit_price": stop_limit_price,
                 "request": request,
             },
         )
