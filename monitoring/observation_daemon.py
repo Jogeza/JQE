@@ -23,18 +23,9 @@ from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
 from data.market_observation import closed_observations_from_candles, provider_symbol_for
+from data.watchlist import WatchPair, WatchlistStore
 from research.campaign_provenance import CampaignEvidence, canonical_json
 from strategy.pipeline import generate_trading_signal
-
-
-@dataclass(frozen=True, slots=True)
-class WatchPair:
-    symbol: str
-    timeframe: Timeframe
-
-    @property
-    def scope(self) -> str:
-        return f"{self.symbol}:{self.timeframe.value}"
 
 
 def parse_watch_list(value: str) -> tuple[WatchPair, ...]:
@@ -60,15 +51,23 @@ class DaemonConfig:
     close_grace_seconds: float
     max_backoff_seconds: float
     heartbeat_stale_cycles: int
+    watchlist_store: WatchlistStore | None = None
+    poll_interval_seconds: float = 5.0
 
     @classmethod
     def from_settings(cls, source: Settings) -> "DaemonConfig":
+        store = (
+            WatchlistStore(source.watchlist_store_path)
+            if getattr(source, "watchlist_store_path", None)
+            else None
+        )
         return cls(
             watches=parse_watch_list(source.observation_symbols),
             evidence_path=Path(source.observation_evidence_path),
             close_grace_seconds=source.observation_close_grace_seconds,
             max_backoff_seconds=source.observation_max_backoff_seconds,
             heartbeat_stale_cycles=source.observation_heartbeat_stale_cycles,
+            watchlist_store=store,
         )
 
 
@@ -176,13 +175,26 @@ def _evaluate(observations: list[ClosedMarketObservation], symbol: str) -> tuple
 class ObservationDaemon:
     EXPECTED_ERRORS = (BrokerAuthenticationError, BrokerConnectionError, MarketDataError, UnsafeBrokerAccountError)
 
-    def __init__(self, config: DaemonConfig, telemetry_factory: Callable[[], MT5Telemetry]) -> None:
+    def __init__(
+        self,
+        config: DaemonConfig,
+        telemetry_factory: Callable[[], MT5Telemetry],
+        watchlist_store: WatchlistStore | None = None,
+    ) -> None:
         self.config = config
         self.telemetry_factory = telemetry_factory
+        self.watchlist_store = watchlist_store or config.watchlist_store
         self.session_id = uuid4().hex
         self.store = ObservationDaemonStore(config.evidence_path, self.session_id)
         self.cycles_completed = 0
         self.last_success_at: str | None = None
+
+    def get_active_watches(self) -> tuple[WatchPair, ...]:
+        if self.watchlist_store is not None:
+            pairs = self.watchlist_store.get_watch_pairs()
+            if pairs:
+                return pairs
+        return self.config.watches
 
     async def observe_pair(self, telemetry: MT5Telemetry, pair: WatchPair, now: datetime) -> bool:
         candles = await telemetry.get_candles(pair.symbol, pair.timeframe, 501)
@@ -239,12 +251,21 @@ class ObservationDaemon:
                     raise UnsafeBrokerAccountError("Observation daemon requires verified demo identity")
                 backoff = 1.0
                 while True:
+                    active_watches = self.get_active_watches()
+                    if not active_watches:
+                        await asyncio.sleep(self.config.poll_interval_seconds)
+                        continue
                     now = datetime.now(timezone.utc)
-                    target = min(next_close_boundary(pair, now) for pair in self.config.watches)
-                    await asyncio.sleep(max(0.0, (target - now).total_seconds()) + self.config.close_grace_seconds)
+                    target = min(next_close_boundary(pair, now) for pair in active_watches)
+                    delay = max(0.0, (target - now).total_seconds()) + self.config.close_grace_seconds
+                    if delay > self.config.poll_interval_seconds:
+                        await asyncio.sleep(self.config.poll_interval_seconds)
+                        continue
+                    await asyncio.sleep(delay)
                     cycle_now = datetime.now(timezone.utc)
                     cycle_error: str | None = None
-                    for pair in self.config.watches:
+                    active_watches = self.get_active_watches()
+                    for pair in active_watches:
                         try:
                             await self.observe_pair(telemetry, pair, cycle_now)
                         except self.EXPECTED_ERRORS as exc:
