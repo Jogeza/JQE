@@ -37,8 +37,23 @@ def _terminal_snapshot() -> tuple[str, str]:
 def _account_snapshot() -> tuple[object, bool]:
     info = mt5.account_info()
     if info is None:
-        raise RuntimeError("account_info unavailable")
-    return getattr(info, "login", None), type(getattr(info, "trade_mode", None)) is int and info.trade_mode == 0
+        raise RuntimeError("Account environment unavailable; DEMO confirmation required")
+    mode = getattr(info, "trade_mode", None)
+    # MT5's explicit DEMO value is integer 0; bools and coercible strings fail.
+    if type(mode) is not int or mode != 0:
+        raise RuntimeError("Account environment is not explicitly DEMO; audit refused")
+    account_id = getattr(info, "login", None)
+    if type(account_id) is not int or account_id <= 0:
+        raise RuntimeError("Account identity unavailable or malformed; audit refused")
+    return account_id, True
+
+
+def _require_consistent_demo_read(read: object, account_id: object) -> None:
+    mode = getattr(read, "trade_mode", None)
+    if type(mode) is not str or mode != "demo":
+        raise RuntimeError("Gateway account environment is not explicitly DEMO; audit refused")
+    if getattr(read, "account_id", None) != str(account_id):
+        raise RuntimeError("Account observations conflict; audit refused")
 
 
 async def main() -> int:
@@ -56,6 +71,7 @@ async def main() -> int:
         first_path, first_data_path = _terminal_snapshot()
         first_account_id, first_is_demo = _account_snapshot()
         first_read = await first_handle.get_account_info()
+        _require_consistent_demo_read(first_read, first_account_id)
 
         second_initialized = bool(mt5.initialize(path=str(WELTRADE_TERMINAL)))
         if not second_initialized:
@@ -64,6 +80,7 @@ async def main() -> int:
         second_account_id, second_is_demo = _account_snapshot()
 
         first_handle_after = await first_handle.get_account_info()
+        _require_consistent_demo_read(first_handle_after, second_account_id)
         after_path, after_data_path = _terminal_snapshot()
 
         output = {
