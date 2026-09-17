@@ -11,6 +11,7 @@ Consolidates:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from config.settings import settings
@@ -29,6 +30,18 @@ MIN_ATR = 1.0
 MAX_SPREAD = 30.0
 
 _DEFAULT_BALANCE = 50.0
+
+
+class RiskDecisionCode(str, Enum):
+    MISSING_SIGNAL = "MISSING_SIGNAL"
+    NO_TRADE_SIGNAL = "NO_TRADE_SIGNAL"
+    CONFIDENCE_TOO_LOW = "CONFIDENCE_TOO_LOW"
+    DAILY_TRADE_LIMIT_REACHED = "DAILY_TRADE_LIMIT_REACHED"
+    DAILY_LOSS_LIMIT_REACHED = "DAILY_LOSS_LIMIT_REACHED"
+    INVALID_MARKET_DATA = "INVALID_MARKET_DATA"
+    LOW_VOLATILITY = "LOW_VOLATILITY"
+    SPREAD_TOO_HIGH = "SPREAD_TOO_HIGH"
+    RISK_APPROVED = "RISK_APPROVED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +159,7 @@ class RiskEngine:
         decision: dict[str, Any] = {
             "approved": False,
             "reason": "",
+            "reason_code": "",
             "risk_percent": 0.0,
             "authorized_risk_amount": 0.0,
         }
@@ -153,17 +167,20 @@ class RiskEngine:
         # 1. Signal presence check
         if signal is None:
             decision["reason"] = "Missing signal"
+            decision["reason_code"] = RiskDecisionCode.MISSING_SIGNAL.value
             return decision
 
         direction = signal.get("signal")
         if direction not in ("BUY", "SELL"):
             decision["reason"] = "No trade signal"
+            decision["reason_code"] = RiskDecisionCode.NO_TRADE_SIGNAL.value
             return decision
 
         # 2. Confidence filter
         confidence = signal.get("confidence", 0)
         if confidence < self.min_confidence:
             decision["reason"] = "Confidence too low"
+            decision["reason_code"] = RiskDecisionCode.CONFIDENCE_TOO_LOW.value
             return decision
 
         # 3. Optional daily limits
@@ -171,6 +188,11 @@ class RiskEngine:
             limits_ok, limit_reason = self.evaluate_limits()
             if not limits_ok:
                 decision["reason"] = limit_reason
+                decision["reason_code"] = (
+                    RiskDecisionCode.DAILY_TRADE_LIMIT_REACHED.value
+                    if "trade" in limit_reason.lower()
+                    else RiskDecisionCode.DAILY_LOSS_LIMIT_REACHED.value
+                )
                 return decision
 
         # 4. Market validation
@@ -178,16 +200,19 @@ class RiskEngine:
             candle = market_data.iloc[-1]
         except (AttributeError, IndexError, TypeError):
             decision["reason"] = "Invalid market data"
+            decision["reason_code"] = RiskDecisionCode.INVALID_MARKET_DATA.value
             return decision
 
         atr = candle.get("ATR", 0)
         if atr < self.min_atr:
             decision["reason"] = "Low volatility"
+            decision["reason_code"] = RiskDecisionCode.LOW_VOLATILITY.value
             return decision
 
         spread = candle.get("spread", 0)
         if spread > self.max_spread:
             decision["reason"] = "Spread too high"
+            decision["reason_code"] = RiskDecisionCode.SPREAD_TOO_HIGH.value
             return decision
 
         # 5. Dynamic / Institutional risk percent sizing
@@ -195,6 +220,7 @@ class RiskEngine:
 
         decision["approved"] = True
         decision["reason"] = "Institutional risk passed"
+        decision["reason_code"] = RiskDecisionCode.RISK_APPROVED.value
         decision["risk_percent"] = risk_percent
         decision["authorized_risk_amount"] = balance * (risk_percent / 100.0)
 
