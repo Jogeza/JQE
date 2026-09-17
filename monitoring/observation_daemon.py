@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import sqlite3
 import time
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
 import pandas as pd
@@ -24,8 +24,12 @@ from core.logger import logger
 from core.regime import detect_regime
 from data.market_observation import closed_observations_from_candles, provider_symbol_for
 from data.watchlist import WatchPair, WatchlistStore
+from notifications.telegram import InstrumentDigestSnapshot, TelegramDigestService, format_daily_digest
 from research.campaign_provenance import CampaignEvidence, canonical_json
 from strategy.pipeline import generate_trading_signal
+
+if TYPE_CHECKING:
+    from execution.daily_instrument_guard import DailyInstrumentTradeGuard
 
 
 def parse_watch_list(value: str) -> tuple[WatchPair, ...]:
@@ -96,6 +100,12 @@ class ObservationDaemonStore:
             connection.execute("CREATE TABLE IF NOT EXISTS observation_cursor(scope TEXT PRIMARY KEY,closed_at TEXT NOT NULL)")
             connection.execute("CREATE TABLE IF NOT EXISTS observation_heartbeat(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL)")
             connection.execute(
+                """CREATE TABLE IF NOT EXISTS digest_sent_log (
+                    utc_date TEXT PRIMARY KEY,
+                    sent_at  TEXT NOT NULL
+                )"""
+            )
+            connection.execute(
                 "INSERT OR IGNORE INTO campaign VALUES(?,?,?)",
                 (session_id, canonical_json({"kind": "READ_ONLY_OBSERVATION_DAEMON"}), "RUNNING"),
             )
@@ -153,6 +163,42 @@ class ObservationDaemonStore:
             return DaemonHeartbeat(False, False, heartbeat.updated_at, heartbeat.last_success_at, "STALE_HEARTBEAT", heartbeat.cycles_completed, heartbeat.session_id)
         return heartbeat
 
+    def digest_already_sent(self, utc_date: str) -> bool:
+        """Return True if a digest has already been durably recorded for *utc_date*."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM digest_sent_log WHERE utc_date=?", (utc_date,)
+            ).fetchone()
+        return row is not None
+
+    def mark_digest_sent(self, utc_date: str, sent_at: datetime) -> None:
+        """Durably record that the daily digest was dispatched for *utc_date*."""
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO digest_sent_log (utc_date, sent_at) VALUES (?, ?)",
+                (utc_date, sent_at.isoformat()),
+            )
+
+    def last_signal_facts(self, scope: str) -> dict | None:
+        """Return the most-recently stored evidence payload for *scope*, or None."""
+        with self._connect() as connection:
+            # evidence rows for a scope are keyed observation-<scope>-<iso-ts>;
+            # fetch the lexicographically latest one.
+            row = connection.execute(
+                """SELECT payload FROM evidence
+                   WHERE event_id LIKE ? AND json_extract(payload, '$.event_type') = 'SIGNAL'
+                   ORDER BY event_id DESC LIMIT 1""",
+                (f"observation-{scope}-%",),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            outer = json.loads(row[0])
+            # CampaignEvidence stores facts inside the 'facts' key
+            return outer.get("facts") or outer
+        except (json.JSONDecodeError, AttributeError):
+            return None
+
 
 def next_close_boundary(pair: WatchPair, now: datetime) -> datetime:
     seconds = TIMEFRAME_SECONDS[pair.timeframe]
@@ -172,6 +218,78 @@ def _evaluate(observations: list[ClosedMarketObservation], symbol: str) -> tuple
     return generate_trading_signal(frame, symbol, regime=regime), str(regime)
 
 
+# Quality labels from SignalScorer that indicate a tradeable signal
+_TRADEABLE_QUALITY: frozenset[str] = frozenset({"HIGH", "GOOD"})
+
+
+class DigestAssembler:
+    """Assembles real InstrumentDigestSnapshot objects from durable evidence.
+
+    Reads the latest signal facts for each watch pair from *store*, and
+    optionally queries *trade_guard* for today's submission count.  This
+    class has no import of execution policy or order submission code —
+    it only calls the read-only ``DailyInstrumentTradeGuard.usage()``
+    method when one is supplied.
+    """
+
+    def __init__(
+        self,
+        store: ObservationDaemonStore,
+        trade_guard: "DailyInstrumentTradeGuard | None" = None,
+        account_scope: str = "default",
+    ) -> None:
+        self._store = store
+        self._trade_guard = trade_guard
+        self._account_scope = account_scope
+
+    def build_snapshots(
+        self,
+        pairs: tuple[WatchPair, ...],
+        *,
+        at: datetime | None = None,
+    ) -> list[InstrumentDigestSnapshot]:
+        """Return one snapshot per *pair* using the latest persisted evidence."""
+        snapshots: list[InstrumentDigestSnapshot] = []
+        cap_limit = getattr(self._trade_guard, "limit", 20) if self._trade_guard else 20
+        for pair in pairs:
+            facts = self._store.last_signal_facts(pair.scope)
+            if facts is None:
+                conclusion = "NO_TRADE"
+                quality_score: int | float | None = None
+                quality_label = "POOR"
+            else:
+                conclusion = str(facts.get("conclusion", "NO_TRADE"))
+                raw_score = facts.get("quality_score") or facts.get("confidence")
+                quality_score = float(raw_score) if raw_score is not None else None
+                quality_label = str(facts.get("quality", "POOR"))
+            is_steady = conclusion != "NO_TRADE" and quality_label in _TRADEABLE_QUALITY
+            if self._trade_guard is not None:
+                try:
+                    usage = self._trade_guard.usage(
+                        self._account_scope, pair.symbol, at=at
+                    )
+                    cap_count = usage.count
+                    cap_limit = usage.limit
+                except Exception:
+                    cap_count = 0
+            else:
+                cap_count = 0
+            snapshots.append(InstrumentDigestSnapshot(
+                symbol=pair.symbol,
+                timeframe=pair.timeframe.value,
+                conclusion=conclusion,
+                quality_score=quality_score,
+                is_steady=is_steady,
+                cap_count=cap_count,
+                cap_limit=cap_limit,
+            ))
+        return snapshots
+
+    async def get_digest_snapshots(self) -> list[InstrumentDigestSnapshot]:
+        """Protocol-compatible async wrapper (TelegramDigestProvider)."""
+        raise NotImplementedError("Call build_snapshots() directly from the daemon loop")
+
+
 class ObservationDaemon:
     EXPECTED_ERRORS = (BrokerAuthenticationError, BrokerConnectionError, MarketDataError, UnsafeBrokerAccountError)
 
@@ -180,6 +298,8 @@ class ObservationDaemon:
         config: DaemonConfig,
         telemetry_factory: Callable[[], MT5Telemetry],
         watchlist_store: WatchlistStore | None = None,
+        telegram_digest_service: TelegramDigestService | None = None,
+        digest_assembler: DigestAssembler | None = None,
     ) -> None:
         self.config = config
         self.telemetry_factory = telemetry_factory
@@ -188,6 +308,8 @@ class ObservationDaemon:
         self.store = ObservationDaemonStore(config.evidence_path, self.session_id)
         self.cycles_completed = 0
         self.last_success_at: str | None = None
+        self._telegram_digest_service = telegram_digest_service
+        self._digest_assembler = digest_assembler
 
     def get_active_watches(self) -> tuple[WatchPair, ...]:
         if self.watchlist_store is not None:
@@ -219,6 +341,7 @@ class ObservationDaemon:
             "symbol": pair.symbol, "timeframe": pair.timeframe.value,
             "conclusion": conclusion, "direction": conclusion,
             "quality_score": signal.get("confidence"), "confidence": signal.get("confidence"),
+            "quality": signal.get("quality", "POOR"),
             "data_freshness": freshness, "regime": regime,
             "observed_at": now.isoformat(), "candle_closed_at": latest.closed_at.isoformat(),
             "expires_at": (latest.closed_at + timedelta(seconds=interval)).isoformat(),
@@ -278,6 +401,7 @@ class ObservationDaemon:
                     self._heartbeat(
                         cycle_now, healthy=cycle_error is None, error=cycle_error
                     )
+                    await self._maybe_send_digest(cycle_now)
             except self.EXPECTED_ERRORS as exc:
                 now = datetime.now(timezone.utc)
                 category = type(exc).__name__
@@ -290,6 +414,23 @@ class ObservationDaemon:
                     await telemetry.disconnect()
                 except self.EXPECTED_ERRORS:
                     logger.warning("OBSERVATION_DISCONNECT_FAILED")
+
+    async def _maybe_send_digest(self, now: datetime) -> None:
+        """Send the daily digest once per UTC day if wired up."""
+        if self._telegram_digest_service is None or self._digest_assembler is None:
+            return
+        utc_date = now.date().isoformat()
+        if self.store.digest_already_sent(utc_date):
+            return
+        try:
+            pairs = self.get_active_watches()
+            snapshots = self._digest_assembler.build_snapshots(pairs, at=now)
+            message = format_daily_digest(snapshots, as_of=now)
+            await self._telegram_digest_service._gateway.send_text(message)
+            self.store.mark_digest_sent(utc_date, now)
+            logger.info("DAILY_DIGEST_SENT utc_date={} instruments={}", utc_date, len(snapshots))
+        except Exception as exc:
+            logger.error("DAILY_DIGEST_FAILED error={}", exc)
 
 
 def main() -> int:

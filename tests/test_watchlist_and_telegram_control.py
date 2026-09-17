@@ -312,3 +312,125 @@ def test_structural_isolation_no_execution_in_watchlist_or_telegram() -> None:
                     assert not node.module.startswith("execution"), (
                         f"Forbidden import from '{node.module}' in {mod.__name__}"
                     )
+
+
+def test_digest_assembler_real_evidence_to_snapshot(tmp_path: Path) -> None:
+    from dataclasses import asdict
+    from execution.daily_instrument_guard import DailyInstrumentTradeGuard
+    from monitoring.observation_daemon import (
+        DigestAssembler,
+        ObservationDaemonStore,
+        _TRADEABLE_QUALITY,
+    )
+    from research.campaign_provenance import CampaignEvidence, canonical_json
+
+    store = ObservationDaemonStore(tmp_path / "evidence.sqlite3", "test-session")
+    guard = DailyInstrumentTradeGuard(tmp_path / "guard.sqlite3", limit=20)
+    pair = WatchPair("R_75", Timeframe.H1)
+    now = datetime(2026, 9, 17, 8, 0, 0, tzinfo=timezone.utc)
+
+    # Seed real evidence for R_75
+    facts = {
+        "symbol": "R_75",
+        "timeframe": "H1",
+        "conclusion": "BUY",
+        "quality_score": 82.0,
+        "confidence": 82.0,
+        "quality": "HIGH",
+        "data_freshness": "fresh",
+        "regime": "TRENDING",
+        "observed_at": now.isoformat(),
+        "candle_closed_at": now.isoformat(),
+        "expires_at": now.isoformat(),
+        "missed_candles": 0,
+    }
+    event_id = f"observation-{pair.scope}-{now.isoformat()}"
+    event = CampaignEvidence(event_id, "SIGNAL", None, now.isoformat(), facts)
+    with store._connect() as conn:
+        conn.execute(
+            "INSERT INTO evidence VALUES (?,?,?)",
+            ("test-session", event_id, canonical_json(asdict(event))),
+        )
+
+    # Record 1 trade consumption for R_75
+    guard.consume("default", "R_75", at=now)
+
+    # Assemble snapshots
+    assembler = DigestAssembler(store, trade_guard=guard, account_scope="default")
+    snapshots = assembler.build_snapshots((pair,), at=now)
+
+    assert len(snapshots) == 1
+    s = snapshots[0]
+    assert s.symbol == "R_75"
+    assert s.timeframe == "H1"
+    assert s.conclusion == "BUY"
+    assert s.quality_score == 82.0
+    assert s.is_steady is True  # BUY + HIGH
+    assert s.cap_count == 1
+    assert s.cap_limit == 20
+
+    # Pair with no evidence produces NO_TRADE fallback
+    pair2 = WatchPair("FX VOL 20", Timeframe.H1)
+    snapshots2 = assembler.build_snapshots((pair2,), at=now)
+    assert len(snapshots2) == 1
+    s2 = snapshots2[0]
+    assert s2.symbol == "FX VOL 20"
+    assert s2.conclusion == "NO_TRADE"
+    assert s2.quality_score is None
+    assert s2.is_steady is False
+    assert s2.cap_count == 0
+
+    # Verify formatting produces expected digest text
+    digest = format_daily_digest([s, s2], as_of=now)
+    assert "<b>DAILY MARKET &amp; WATCHLIST DIGEST</b>" in digest
+    assert "<b>R_75 (H1)</b>" in digest
+    assert "• Conclusion: BUY" in digest
+    assert "• Steady / Worth Trading: YES (STEADY)" in digest
+    assert "• Daily Cap Usage: 1/20" in digest
+    assert "<b>FX VOL 20 (H1)</b>" in digest
+    assert "• Conclusion: NO_TRADE" in digest
+    assert "• Steady / Worth Trading: NO (UNSTEADY)" in digest
+
+
+@pytest.mark.asyncio
+async def test_digest_scheduling_durable_flag_prevents_double_send(tmp_path: Path) -> None:
+    from monitoring.observation_daemon import DigestAssembler, ObservationDaemonStore
+
+    store_path = tmp_path / "evidence.sqlite3"
+    daemon_store = ObservationDaemonStore(store_path, "session-123")
+    pair = WatchPair("R_75", Timeframe.H1)
+    now = datetime(2026, 9, 17, 10, 0, 0, tzinfo=timezone.utc)
+
+    mock_gateway = AsyncMock()
+    mock_gateway.send_text = AsyncMock()
+    service = TelegramDigestService(mock_gateway, AsyncMock())
+    assembler = DigestAssembler(daemon_store, trade_guard=None, account_scope="default")
+
+    config = DaemonConfig(
+        watches=(pair,),
+        evidence_path=store_path,
+        close_grace_seconds=5.0,
+        max_backoff_seconds=30.0,
+        heartbeat_stale_cycles=2,
+    )
+    daemon = ObservationDaemon(
+        config,
+        MagicMock(),
+        telegram_digest_service=service,
+        digest_assembler=assembler,
+    )
+
+    # First cycle sends digest
+    await daemon._maybe_send_digest(now)
+    assert mock_gateway.send_text.await_count == 1
+    assert daemon.store.digest_already_sent("2026-09-17") is True
+
+    # Second cycle on same UTC day is suppressed
+    await daemon._maybe_send_digest(now)
+    assert mock_gateway.send_text.await_count == 1  # unchanged
+
+    # Next UTC day triggers send again
+    next_day = datetime(2026, 9, 18, 10, 0, 0, tzinfo=timezone.utc)
+    await daemon._maybe_send_digest(next_day)
+    assert mock_gateway.send_text.await_count == 2
+    assert daemon.store.digest_already_sent("2026-09-18") is True
