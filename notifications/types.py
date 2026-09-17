@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
+from datetime import datetime
 from typing import Mapping
 
 
@@ -15,9 +16,12 @@ class NotificationType(str, Enum):
     ORDER_ACCEPTED = "ORDER_ACCEPTED"
     ORDER_REJECTED = "ORDER_REJECTED"
     POSITION_OPENED = "POSITION_OPENED"
+    POSITION_MODIFIED = "POSITION_MODIFIED"
     POSITION_CLOSED = "POSITION_CLOSED"
     EMERGENCY_STOP = "EMERGENCY_STOP"
     RUNTIME_HEALTH = "RUNTIME_HEALTH"
+    BROKER_CONNECTION = "BROKER_CONNECTION"
+    DAILY_DIGEST = "DAILY_DIGEST"
     DERIV_IDENTITY_VERIFIED = "DERIV_IDENTITY_VERIFIED"
     DERIV_IDENTITY_REJECTED = "DERIV_IDENTITY_REJECTED"
     PAPER_POSITION_OPENED = "PAPER_POSITION_OPENED"
@@ -33,10 +37,23 @@ class NotificationType(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class DigestSnapshot:
+    symbol: str
+    timeframe: str
+    conclusion: str
+    quality_score: int | float | None
+    is_steady: bool
+    cap_count: int
+    cap_limit: int
+
+
+@dataclass(frozen=True, slots=True)
 class Notification:
     kind: NotificationType
     title: str
     facts: Mapping[str, str] = field(default_factory=dict)
+    digest_snapshots: tuple[DigestSnapshot, ...] = ()
+    occurred_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():

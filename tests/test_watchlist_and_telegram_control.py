@@ -34,6 +34,8 @@ from notifications.telegram import (
     TelegramConfig,
     format_daily_digest,
 )
+from notifications.events import JQENotificationEvents
+from notifications.service import NotificationService
 
 
 def test_watchlist_store_seeds_synthetics_and_persists(tmp_path: Path) -> None:
@@ -402,8 +404,7 @@ async def test_digest_scheduling_durable_flag_prevents_double_send(tmp_path: Pat
     now = datetime(2026, 9, 17, 10, 0, 0, tzinfo=timezone.utc)
 
     mock_gateway = AsyncMock()
-    mock_gateway.send_text = AsyncMock()
-    service = TelegramDigestService(mock_gateway, AsyncMock())
+    events = JQENotificationEvents(NotificationService(mock_gateway))
     assembler = DigestAssembler(daemon_store, trade_guard=None, account_scope="default")
 
     config = DaemonConfig(
@@ -416,21 +417,21 @@ async def test_digest_scheduling_durable_flag_prevents_double_send(tmp_path: Pat
     daemon = ObservationDaemon(
         config,
         MagicMock(),
-        telegram_digest_service=service,
+        notification_events=events,
         digest_assembler=assembler,
     )
 
     # First cycle sends digest
     await daemon._maybe_send_digest(now)
-    assert mock_gateway.send_text.await_count == 1
+    assert mock_gateway.send.await_count == 1
     assert daemon.store.digest_already_sent("2026-09-17") is True
 
     # Second cycle on same UTC day is suppressed
     await daemon._maybe_send_digest(now)
-    assert mock_gateway.send_text.await_count == 1  # unchanged
+    assert mock_gateway.send.await_count == 1  # unchanged
 
     # Next UTC day triggers send again
     next_day = datetime(2026, 9, 18, 10, 0, 0, tzinfo=timezone.utc)
     await daemon._maybe_send_digest(next_day)
-    assert mock_gateway.send_text.await_count == 2
+    assert mock_gateway.send.await_count == 2
     assert daemon.store.digest_already_sent("2026-09-18") is True

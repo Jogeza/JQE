@@ -156,6 +156,8 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_allowed_chat_id: int | None = None
     telegram_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
+    slack_webhook_url: str | None = Field(default=None, repr=False)
+    slack_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
     default_symbol: str = "R_75"
     default_timeframe: str = "M5"

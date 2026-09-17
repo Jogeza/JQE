@@ -11,20 +11,86 @@ from typing import Awaitable, Callable, Protocol, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from notifications.types import Notification
+from notifications.types import DigestSnapshot, Notification, NotificationType
 
 MAX_TELEGRAM_MESSAGE = 4096
 
 
-@dataclass(frozen=True, slots=True)
-class InstrumentDigestSnapshot:
-    symbol: str
-    timeframe: str
-    conclusion: str
-    quality_score: int | float | None
-    is_steady: bool
-    cap_count: int
-    cap_limit: int
+InstrumentDigestSnapshot = DigestSnapshot
+
+
+_TELEGRAM_EMOJI = {
+    NotificationType.ORDER_REJECTED: "❌",
+    NotificationType.TRADE_BLOCKED: "❌",
+    NotificationType.PAPER_TRADE_BLOCKED: "❌",
+    NotificationType.DERIV_IDENTITY_REJECTED: "❌",
+    NotificationType.POSITION_OPENED: "✅",
+    NotificationType.POSITION_MODIFIED: "✅",
+    NotificationType.POSITION_CLOSED: "✅",
+    NotificationType.PAPER_POSITION_OPENED: "✅",
+    NotificationType.PAPER_POSITION_CLOSED: "✅",
+    NotificationType.DERIV_IDENTITY_VERIFIED: "✅",
+    NotificationType.EMERGENCY_STOP: "⚠️",
+    NotificationType.RUNTIME_HEALTH: "⚠️",
+    NotificationType.PAPER_RUNTIME_ERROR: "⚠️",
+    NotificationType.DAILY_DIGEST: "📊",
+    NotificationType.PAPER_PERFORMANCE: "📊",
+    NotificationType.BROKER_CONNECTION: "🔌",
+}
+
+
+def _is_numeric_like(value: str) -> bool:
+    v = value.strip().rstrip("%").lstrip("$").lstrip("+-")
+    if not v:
+        return False
+    try:
+        float(v)
+        return True
+    except ValueError:
+        pass
+    if "/" in v:
+        parts = v.split("/")
+        if len(parts) == 2:
+            try:
+                float(parts[0].strip())
+                float(parts[1].strip())
+                return True
+            except ValueError:
+                pass
+    if v.upper().endswith("R"):
+        try:
+            float(v[:-1].strip())
+            return True
+        except ValueError:
+            pass
+    return False
+
+
+def _telegram_value(key: str, value: str) -> str:
+    escaped = escape(value)
+    numeric_keys = (
+        "price", "loss", "profit", "risk", "volume", "count", "limit", "cap",
+        "p/l", "sl", "tp", "entry", "exit", "balance", "drawdown", "spread",
+        "atr", "age", "starts", "score",
+    )
+    return (
+        f"<code>{escaped}</code>"
+        if any(token in key.lower() for token in numeric_keys) or _is_numeric_like(value)
+        else escaped
+    )
+
+
+def render_telegram(notification: Notification) -> str:
+    emoji = _TELEGRAM_EMOJI.get(notification.kind, "ℹ️")
+    if notification.kind is NotificationType.DAILY_DIGEST:
+        digest = format_daily_digest(notification.digest_snapshots, as_of=notification.occurred_at)
+        return f"{emoji} {digest}"
+    lines = [f"{emoji} <b>{escape(notification.title)}</b>"]
+    lines.extend(
+        f"<b>{escape(key)}:</b> {_telegram_value(key, value)}"
+        for key, value in notification.facts.items()
+    )
+    return "\n".join(lines)
 
 
 def format_daily_digest(
@@ -106,9 +172,7 @@ class TelegramGateway:
         self._post = post or self._default_post
 
     async def send(self, notification: Notification) -> None:
-        lines = [f"<b>{escape(notification.title)}</b>"]
-        lines.extend(f"{escape(key)}: {escape(value)}" for key, value in notification.facts.items())
-        await self.send_text("\n".join(lines))
+        await self.send_text(render_telegram(notification))
 
     async def send_text(self, text: str) -> None:
         message = text[:MAX_TELEGRAM_MESSAGE]

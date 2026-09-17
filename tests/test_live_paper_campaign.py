@@ -36,6 +36,8 @@ from core.exceptions import ConfigurationError, UnsafeBrokerAccountError
 from execution.executor import ReconciliationState
 from execution.persistence import SQLitePositionLedger
 from execution.policy import ExecutionDecisionCode
+from notifications.service import NotificationService
+from notifications.types import NotificationType
 from research.campaign_provenance import CampaignEvidenceStore
 from research.live_safety import LivePaperSafetyContext
 from tools import live_paper_campaign
@@ -54,7 +56,9 @@ async def test_campaign_sends_factual_no_trade_signal_to_telegram(
     telegram = AsyncMock()
     monkeypatch.setattr(settings, "telegram_enabled", True)
     monkeypatch.setattr(
-        live_paper_campaign, "telegram_gateway_from_settings", lambda _settings: telegram
+        live_paper_campaign,
+        "notification_service_from_settings",
+        lambda _settings: NotificationService(telegram),
     )
 
     async def no_trade(_window):
@@ -73,8 +77,11 @@ async def test_campaign_sends_factual_no_trade_signal_to_telegram(
         max_candles=1,
     )
 
-    telegram.send.assert_awaited_once()
-    notification = telegram.send.await_args.args[0]
+    notification = next(
+        call.args[0]
+        for call in telegram.send.await_args_list
+        if call.args[0].kind is NotificationType.PAPER_SIGNAL
+    )
     assert "NO_TRADE / ANALYSIS ONLY" in notification.title
     assert notification.facts["Symbol / timeframe"] == "XAUUSD / M15"
     assert notification.facts["Conclusion"] == "NO_TRADE"

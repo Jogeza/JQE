@@ -85,8 +85,7 @@ from execution.policy import (
     PositionSnapshot,
 )
 from notifications.events import JQENotificationEvents
-from notifications.service import NotificationService
-from notifications.telegram import TelegramConfigurationError, telegram_gateway_from_settings
+from notifications.factory import notification_service_from_settings
 from research.campaign_provenance import (
     CampaignEvidence,
     CampaignEvidenceStore,
@@ -365,12 +364,11 @@ async def run_live_paper_campaign(
 
     # Notifications are downstream observations only. Configuration or delivery
     # failure must never grant authority, submit an order, or stop the campaign.
-    try:
-        telegram_gateway = telegram_gateway_from_settings(settings)
-    except TelegramConfigurationError:
-        logger.warning("Telegram signal notifications are unavailable: invalid configuration")
-        telegram_gateway = None
-    notification_events = JQENotificationEvents(NotificationService(telegram_gateway))
+    notification_events = JQENotificationEvents(notification_service_from_settings(settings))
+    await notification_events.broker_connection(
+        connected=True,
+        facts={"Broker": broker_name, "Environment": "DEMO"},
+    )
 
     # 4. Initialize safety context
     if safety_context is None:
@@ -559,6 +557,14 @@ async def run_live_paper_campaign(
                     "closed_while_offline": True,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
+                })
+                await notification_events.demo_trade(kind="CLOSED", facts={
+                    "Symbol": entry.symbol,
+                    "Position": entry.position_id,
+                    "Exit": str(close_reconciliation.exit_price),
+                    "P/L": str(close_reconciliation.pnl),
+                    "Exit reason": str(close_reconciliation.reason),
+                    "Recovery": "CLOSED_WHILE_OFFLINE",
                 })
                 continue
 
@@ -785,6 +791,9 @@ async def run_live_paper_campaign(
                     "rate_limit_reason": rate_code,
                     "candidate_id": candidate_id,
                 }, candidate_id)
+                await notification_events.trade_rejected(
+                    reason="ACCOUNT_LIFETIME_CAP_CONSUMED", facts={"Symbol": symbol}
+                )
                 confirmation.save(pending_confirmation_path)
                 continue
 
@@ -846,6 +855,14 @@ async def run_live_paper_campaign(
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
+                await notification_events.demo_trade(kind="CLOSED", facts={
+                    "Symbol": str(trade["symbol"]),
+                    "Side": str(trade["side"]),
+                    "Position": str(m_id),
+                    "Exit": str(close_reconciliation.exit_price),
+                    "P/L": str(close_reconciliation.pnl),
+                    "Exit reason": str(close_reconciliation.reason),
+                })
 
             own_open = [p for p in broker_positions if p.position_id in _own_order_ids]
 
@@ -1033,6 +1050,10 @@ async def run_live_paper_campaign(
                     "reason": result.decision.reason,
                     "candidate_id": candidate_id,
                 }, candidate_id)
+                await notification_events.trade_rejected(
+                    reason=result.decision.code.value,
+                    facts={"Symbol": symbol, "Details": result.decision.reason},
+                )
             elif result.state == ReconciliationState.ALREADY_EXECUTED or result.order_id:
                 order_id = result.order_id or "ORDER_UNKNOWN"
                 _used_idempotency_keys.add(idempotency_key)
@@ -1086,6 +1107,16 @@ async def run_live_paper_campaign(
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, candidate_id)
+                await notification_events.demo_trade(kind="OPENED", facts={
+                    "Symbol": symbol,
+                    "Side": side.value,
+                    "Position": str(position_id),
+                    "Entry": str(fill_price),
+                    "Stop loss": str(matched_pos.stop_loss if matched_pos else stop_loss),
+                    "Take profit": str(matched_pos.take_profit if matched_pos else take_profit),
+                    "Risk amount": str(intent.authorized_risk_amount),
+                    "Volume": str(filled_vol),
+                })
 
                 _open_trades[position_id] = {
                     "candidate_id": candidate_id,
@@ -1104,6 +1135,10 @@ async def run_live_paper_campaign(
                     "reason_code": "BROKER_REJECTED",
                     "campaign_mode": "live_paper",
                 }, candidate_id)
+                await notification_events.trade_rejected(
+                    reason="BROKER_REJECTED",
+                    facts={"Symbol": symbol, "Broker reason": str(result.reason)},
+                )
             elif result.state == ReconciliationState.PENDING:
                 # Order remained in PENDING state; poll or time out
                 emit("ENTRY_TIMEOUT", now, {
@@ -1183,6 +1218,14 @@ async def run_live_paper_campaign(
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
+                await notification_events.demo_trade(kind="CLOSED", facts={
+                    "Symbol": str(trade["symbol"]),
+                    "Side": str(trade["side"]),
+                    "Position": str(open_oid),
+                    "Exit": str(close_reconciliation.exit_price),
+                    "P/L": str(close_reconciliation.pnl),
+                    "Exit reason": str(close_reconciliation.reason),
+                })
 
         if poll_interval_seconds > 0:
             await asyncio.sleep(poll_interval_seconds)

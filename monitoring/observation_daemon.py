@@ -24,7 +24,9 @@ from core.logger import logger
 from core.regime import detect_regime
 from data.market_observation import closed_observations_from_candles, provider_symbol_for
 from data.watchlist import WatchPair, WatchlistStore
-from notifications.telegram import InstrumentDigestSnapshot, TelegramDigestService, format_daily_digest
+from notifications.events import JQENotificationEvents
+from notifications.factory import notification_service_from_settings
+from notifications.telegram import InstrumentDigestSnapshot
 from research.campaign_provenance import CampaignEvidence, canonical_json
 from strategy.pipeline import generate_trading_signal
 
@@ -298,7 +300,7 @@ class ObservationDaemon:
         config: DaemonConfig,
         telemetry_factory: Callable[[], MT5Telemetry],
         watchlist_store: WatchlistStore | None = None,
-        telegram_digest_service: TelegramDigestService | None = None,
+        notification_events: JQENotificationEvents | None = None,
         digest_assembler: DigestAssembler | None = None,
     ) -> None:
         self.config = config
@@ -308,8 +310,10 @@ class ObservationDaemon:
         self.store = ObservationDaemonStore(config.evidence_path, self.session_id)
         self.cycles_completed = 0
         self.last_success_at: str | None = None
-        self._telegram_digest_service = telegram_digest_service
-        self._digest_assembler = digest_assembler
+        self._notification_events = notification_events
+        self._digest_assembler = digest_assembler or (
+            DigestAssembler(self.store) if notification_events is not None else None
+        )
 
     def get_active_watches(self) -> tuple[WatchPair, ...]:
         if self.watchlist_store is not None:
@@ -350,6 +354,16 @@ class ObservationDaemon:
         if appended:
             self.cycles_completed += 1
             self.last_success_at = now.isoformat()
+            if freshness == "stale" and self._notification_events is not None:
+                await self._notification_events.runtime_health(
+                    state="STALE",
+                    facts={
+                        "Reason": "STALE_MARKET_DATA",
+                        "Symbol": pair.symbol,
+                        "Timeframe": pair.timeframe.value,
+                        "Age seconds": str(age),
+                    },
+                )
         return appended
 
     def _heartbeat(self, now: datetime, *, healthy: bool, error: str | None) -> None:
@@ -372,6 +386,11 @@ class ObservationDaemon:
                 account = await telemetry.get_account_info()
                 if (account.trade_mode or "").lower() != "demo":
                     raise UnsafeBrokerAccountError("Observation daemon requires verified demo identity")
+                if self._notification_events is not None:
+                    await self._notification_events.broker_connection(
+                        connected=True,
+                        facts={"Broker": "MT5", "Environment": "DEMO"},
+                    )
                 backoff = 1.0
                 while True:
                     active_watches = self.get_active_watches()
@@ -407,17 +426,33 @@ class ObservationDaemon:
                 category = type(exc).__name__
                 logger.error("OBSERVATION_CONNECTION_FAILED category={} retry_seconds={}", category, backoff)
                 self._heartbeat(now, healthy=False, error=category)
+                if self._notification_events is not None:
+                    await self._notification_events.runtime_health(
+                        state="UNAVAILABLE",
+                        facts={"Reason": category, "Retry seconds": str(backoff)},
+                    )
                 await asyncio.sleep(backoff)
                 backoff = min(self.config.max_backoff_seconds, backoff * 2)
+            except Exception as exc:
+                if self._notification_events is not None:
+                    await self._notification_events.runtime_health(
+                        state="CRASHED", facts={"Reason": type(exc).__name__}
+                    )
+                raise
             finally:
                 try:
                     await telemetry.disconnect()
+                    if self._notification_events is not None:
+                        await self._notification_events.broker_connection(
+                            connected=False,
+                            facts={"Broker": "MT5", "Environment": "DEMO"},
+                        )
                 except self.EXPECTED_ERRORS:
                     logger.warning("OBSERVATION_DISCONNECT_FAILED")
 
     async def _maybe_send_digest(self, now: datetime) -> None:
         """Send the daily digest once per UTC day if wired up."""
-        if self._telegram_digest_service is None or self._digest_assembler is None:
+        if self._notification_events is None or self._digest_assembler is None:
             return
         utc_date = now.date().isoformat()
         if self.store.digest_already_sent(utc_date):
@@ -425,8 +460,11 @@ class ObservationDaemon:
         try:
             pairs = self.get_active_watches()
             snapshots = self._digest_assembler.build_snapshots(pairs, at=now)
-            message = format_daily_digest(snapshots, as_of=now)
-            await self._telegram_digest_service._gateway.send_text(message)
+            delivered = await self._notification_events.daily_digest(
+                snapshots=snapshots, as_of=now
+            )
+            if not delivered:
+                raise RuntimeError("No notification channel accepted the daily digest")
             self.store.mark_digest_sent(utc_date, now)
             logger.info("DAILY_DIGEST_SENT utc_date={} instruments={}", utc_date, len(snapshots))
         except Exception as exc:
@@ -435,7 +473,12 @@ class ObservationDaemon:
 
 def main() -> int:
     config = DaemonConfig.from_settings(settings)
-    daemon = ObservationDaemon(config, lambda: verified_demo_mt5_telemetry(settings))
+    events = JQENotificationEvents(notification_service_from_settings(settings))
+    daemon = ObservationDaemon(
+        config,
+        lambda: verified_demo_mt5_telemetry(settings),
+        notification_events=events,
+    )
     try:
         asyncio.run(daemon.run_forever())
     except KeyboardInterrupt:

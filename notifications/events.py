@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from notifications.service import NotificationService
-from notifications.types import Notification, NotificationType
+from datetime import datetime
+from collections.abc import Sequence
+
+from notifications.types import DigestSnapshot, Notification, NotificationType
 
 
 def masked_identifier(value: str) -> str:
@@ -55,6 +58,59 @@ class JQENotificationEvents:
             NotificationType.EMERGENCY_STOP,
             "JQE EMERGENCY STOP",
             {"State": state},
+        ))
+
+    async def broker_connection(self, *, connected: bool, facts: dict[str, str]) -> bool:
+        state = "CONNECTED" if connected else "DISCONNECTED"
+        payload = dict(facts)
+        payload["State"] = state
+        return await self._service.publish(Notification(
+            NotificationType.BROKER_CONNECTION,
+            f"JQE MT5 {state}",
+            payload,
+        ))
+
+    async def demo_trade(self, *, kind: str, facts: dict[str, str]) -> bool:
+        mapping = {
+            "OPENED": (NotificationType.POSITION_OPENED, "JQE DEMO TRADE OPENED"),
+            "MODIFIED": (NotificationType.POSITION_MODIFIED, "JQE DEMO TRADE MODIFIED"),
+            "CLOSED": (NotificationType.POSITION_CLOSED, "JQE DEMO TRADE CLOSED"),
+        }
+        if kind not in mapping:
+            raise ValueError("unknown demo trade notification event")
+        notification_type, title = mapping[kind]
+        return await self._service.publish(Notification(notification_type, title, facts))
+
+    async def trade_rejected(self, *, reason: str, facts: dict[str, str] | None = None) -> bool:
+        payload = dict(facts or {})
+        payload["Reason"] = reason
+        return await self._service.publish(Notification(
+            NotificationType.ORDER_REJECTED,
+            "JQE TRADE REJECTED",
+            payload,
+        ))
+
+    async def runtime_health(self, *, state: str, facts: dict[str, str]) -> bool:
+        payload = dict(facts)
+        payload["State"] = state
+        return await self._service.publish(Notification(
+            NotificationType.RUNTIME_HEALTH,
+            f"JQE RUNTIME {state}",
+            payload,
+        ))
+
+    async def daily_digest(
+        self,
+        *,
+        snapshots: Sequence[DigestSnapshot],
+        as_of: datetime | None = None,
+    ) -> bool:
+        return await self._service.publish(Notification(
+            NotificationType.DAILY_DIGEST,
+            "JQE DAILY PERFORMANCE / WATCHLIST DIGEST",
+            {"Active Instruments": str(len(snapshots))},
+            digest_snapshots=tuple(snapshots),
+            occurred_at=as_of,
         ))
 
     async def paper_event(self, *, kind: str, facts: dict[str, str]) -> bool:

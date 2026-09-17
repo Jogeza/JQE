@@ -60,13 +60,15 @@ from execution.safety import (
 )
 from execution.trade_manager import PositionSnapshotAdapter
 from risk.risk_controller import (
+    RiskDecisionCode,
     approve_trade,
     get_reconciled_daily_state,
     reconcile_daily_history,
 )
 from risk.position_sizing import ExecutionSizingDecision, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
-from notifications.telegram import daily_instrument_cap_message, telegram_gateway_from_settings
+from notifications.events import JQENotificationEvents
+from notifications.factory import notification_service_from_settings
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _SIDE_BY_SIGNAL: dict[str, OrderSide] = {"BUY": OrderSide.BUY, "SELL": OrderSide.SELL}
@@ -154,6 +156,7 @@ async def run() -> None:
     logger.info(
         "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
     )
+    notification_events = JQENotificationEvents(notification_service_from_settings(settings))
 
     if settings.broker not in ("simulation", "deriv", "deriv_demo", "mt5", "mt5_demo"):
         raise ConfigurationError(f"Unsupported broker: {settings.broker}")
@@ -376,6 +379,31 @@ async def run() -> None:
                 max_daily_loss=max_daily_loss,
                 max_daily_trades=max_daily_trades,
             )
+            reason_code = risk_decision.get("reason_code")
+            if not reason_code:
+                reason_str = str(risk_decision.get("reason", "")).strip().lower()
+                if "no trade" in reason_str:
+                    reason_code = RiskDecisionCode.NO_TRADE_SIGNAL.value
+                elif "confidence" in reason_str:
+                    reason_code = RiskDecisionCode.CONFIDENCE_TOO_LOW.value
+                elif "trade limit" in reason_str or "daily trade" in reason_str:
+                    reason_code = RiskDecisionCode.DAILY_TRADE_LIMIT_REACHED.value
+                elif "loss limit" in reason_str or "daily loss" in reason_str:
+                    reason_code = RiskDecisionCode.DAILY_LOSS_LIMIT_REACHED.value
+                elif "volatility" in reason_str:
+                    reason_code = RiskDecisionCode.LOW_VOLATILITY.value
+                elif "spread" in reason_str:
+                    reason_code = RiskDecisionCode.SPREAD_TOO_HIGH.value
+                elif "market data" in reason_str:
+                    reason_code = RiskDecisionCode.INVALID_MARKET_DATA.value
+                elif "missing signal" in reason_str:
+                    reason_code = RiskDecisionCode.MISSING_SIGNAL.value
+                else:
+                    reason_code = "RISK_REJECTED"
+            await notification_events.trade_rejected(
+                reason=str(reason_code),
+                facts={"Details": str(risk_decision["reason"])},
+            )
             logger.info("Cycle complete — no order submitted ({})", risk_decision["reason"])
             return
 
@@ -409,6 +437,10 @@ async def run() -> None:
                 max_daily_trades=max_daily_trades,
                 authorized_risk_amount=risk_decision["authorized_risk_amount"],
                 authorized_risk_percent=risk_decision["risk_percent"],
+            )
+            await notification_events.trade_rejected(
+                reason="MISSING_OR_INVALID_STOP_LOSS_TAKE_PROFIT",
+                facts={"Symbol": settings.default_symbol},
             )
             logger.info(
                 "Cycle complete — Trade plan invalid: {}",
@@ -623,17 +655,14 @@ async def run() -> None:
                 (exc.reason_code,),
                 daily_authority=DailyStateAuthority.AUTHORITATIVE,
             )
-            telegram = telegram_gateway_from_settings(settings)
-            if telegram is not None:
-                try:
-                    await telegram.send_text(daily_instrument_cap_message(
-                        instrument=usage.instrument,
-                        count=usage.count,
-                        limit=usage.limit,
-                        reset_at=usage.reset_at.isoformat(),
-                    ))
-                except Exception as notification_error:
-                    logger.error("Daily instrument cap Telegram notification failed: {}", notification_error)
+            await notification_events.trade_rejected(
+                reason=exc.reason_code,
+                facts={
+                    "Instrument": usage.instrument,
+                    "Submission starts": f"{usage.count}/{usage.limit}",
+                    "Reset": f"{usage.reset_at.isoformat()} UTC",
+                },
+            )
             logger.warning(
                 "{} instrument={} usage={}/{} reset_at={}",
                 exc.reason_code, usage.instrument, usage.count, usage.limit, usage.reset_at,
@@ -641,6 +670,14 @@ async def run() -> None:
             return
         if not terminal_safety_published:
             publish_submission_result(result)
+        if not result.decision.allowed:
+            await notification_events.trade_rejected(
+                reason=result.decision.code.value, facts={"Symbol": intent.symbol}
+            )
+        elif result.state is ReconciliationState.REJECTED:
+            await notification_events.trade_rejected(
+                reason="BROKER_REJECTED", facts={"Symbol": intent.symbol}
+            )
         logger.info("Order result: {}", result)
 
 

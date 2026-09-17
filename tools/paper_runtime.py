@@ -21,8 +21,7 @@ from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
 from intelligence.trade_plan import TradePlanBuilder
 from notifications.events import JQENotificationEvents
-from notifications.service import NotificationService
-from notifications.telegram import telegram_gateway_from_settings
+from notifications.factory import notification_service_from_settings
 from risk.risk_controller import approve_trade, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
 
@@ -178,7 +177,7 @@ async def run(*, once: bool) -> int:
         symbols=(settings.default_symbol,), enabled=settings.paper_runtime_enabled,
         runtime_mode=settings.runtime_mode, poll_seconds=settings.paper_runtime_poll_seconds,
         max_backoff_seconds=settings.paper_runtime_max_backoff_seconds,
-        notifications=JQENotificationEvents(NotificationService(telegram_gateway_from_settings(settings))),
+        notifications=JQENotificationEvents(notification_service_from_settings(settings)),
     )
     loop = asyncio.get_running_loop()
     for shutdown_signal in (process_signal.SIGINT, process_signal.SIGTERM):
