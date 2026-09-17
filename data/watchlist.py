@@ -32,16 +32,27 @@ class WatchlistItem:
         return f"{self.symbol}:{self.timeframe}"
 
 
+# Seed list derived directly from the Weltrade demo smoke-test run
+# (tools/weltrade_demo_smoke.py, 2026-09-17, synthetic_symbol_count=29).
+# Only a representative subset is seeded; operators may add further
+# instruments via /add or the watchlist API.
 DEFAULT_SYNTHETIC_SEEDS: tuple[tuple[str, str], ...] = (
+    # Deriv Volatility 75 (MT5 native)
     ("R_75", "H1"),
+    # Weltrade FX Vol series
     ("FX Vol 20", "H1"),
     ("SFX Vol 20", "H1"),
+    # PainX / GainX
     ("PainX 400", "H1"),
     ("GainX 400", "H1"),
+    # TrendX
     ("TrendX 600", "H1"),
-    ("FiboX 500", "H1"),
-    ("QuadX 1000", "H1"),
-    ("MAX 500", "H1"),
+    # FiboX and QuadX — exact names from terminal, no trailing number
+    ("FiboX", "H1"),
+    ("QuadX", "H1"),
+    # MAX series — real names as returned by mt5.symbols_get()
+    ("MAX PainX 1000", "H1"),
+    ("MAX GainX 1000", "H1"),
 )
 
 

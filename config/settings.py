@@ -201,8 +201,19 @@ class Settings(BaseSettings):
     offline_analysis_candle_count: int = Field(default=500, ge=200, le=5000)
     paper_diagnostics_minimum_sample: int = Field(default=100, gt=0)
 
+    # Fallback static list used when no WatchlistStore is injected.
+    # Must be kept in sync with DEFAULT_SYNTHETIC_SEEDS in data/watchlist.py.
     observation_symbols: str = (
-        "R_75:H1,FX Vol 20:H1,SFX Vol 20:H1,PainX 400:H1,GainX 400:H1,TrendX 600:H1,FiboX 500:H1,QuadX 1000:H1,MAX 500:H1"
+        "R_75:H1,"
+        "FX Vol 20:H1,"
+        "SFX Vol 20:H1,"
+        "PainX 400:H1,"
+        "GainX 400:H1,"
+        "TrendX 600:H1,"
+        "FiboX:H1,"
+        "QuadX:H1,"
+        "MAX PainX 1000:H1,"
+        "MAX GainX 1000:H1"
     )
     watchlist_store_path: Path = Path("state/watchlist.sqlite3")
     observation_evidence_path: Path = Path(
