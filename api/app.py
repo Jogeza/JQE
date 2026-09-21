@@ -14,6 +14,7 @@ from api.routes import router
 from api.observation import router as observation_router
 from api.research import router as research_router
 from api.watchlist import router as watchlist_router
+from api.assistant import router as assistant_router
 from config.settings import settings
 from core.exceptions import JQEError
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(observation_router)
     app.include_router(research_router)
     app.include_router(watchlist_router)
+    app.include_router(assistant_router)
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

@@ -35,6 +35,9 @@ plotly
 fastapi
 uvicorn[standard]
 
+# --- Read-only advisory assistant ---------------------------
+anthropic==1.7.0  # official Anthropic Messages API client; pinned for reproducible requests
+
 # --- Persistence (Milestone: portfolio/, journal/) --------------
 SQLAlchemy>=2.0
 alembic

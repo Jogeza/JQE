@@ -169,6 +169,17 @@ class Settings(BaseSettings):
     slack_webhook_url: str | None = Field(default=None, repr=False)
     slack_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
+    anthropic_api_key: str | None = Field(default=None, repr=False, exclude=True)
+    ai_assistant_enabled: bool = False
+    ai_assistant_kill_switch: bool = True
+    ai_assistant_model: str = "claude-haiku-4-5-20251001"
+    ai_assistant_max_output_tokens: int = Field(default=512, ge=1, le=4096)
+    ai_assistant_timeout_seconds: float = Field(default=12.0, gt=0, le=60)
+    ai_assistant_max_message_chars: int = Field(default=1000, ge=1, le=10000)
+    ai_assistant_max_context_bytes: int = Field(default=32768, ge=1024, le=262144)
+    ai_assistant_requests_per_minute: int = Field(default=6, ge=1, le=60)
+    ai_assistant_daily_request_limit: int = Field(default=100, ge=1, le=10000)
+
     default_symbol: str = "R_75"
     default_timeframe: str = "M5"
     default_candle_count: int = Field(default=500, gt=0)
