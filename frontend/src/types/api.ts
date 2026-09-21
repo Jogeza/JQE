@@ -381,6 +381,26 @@ export interface OfflineMonitoringResponse {
   assessment: MarketSetup | null;
 }
 
+export interface ObservationHealthResponse {
+  running: boolean;
+  healthy: boolean;
+  updated_at: string;
+  last_success_at: string | null;
+  last_error: string | null;
+  cycles_completed: number;
+  session_id: string;
+}
+
+export interface ObservationHealthResponse {
+  running: boolean;
+  healthy: boolean;
+  updated_at: string;
+  last_success_at: string | null;
+  last_error: string | null;
+  cycles_completed: number;
+  session_id: string;
+}
+
 export interface RecoveryQuantity {
   value: number;
   unit: string;
@@ -598,4 +618,96 @@ export interface ResourceState<T> {
   error: string | null;
   lastUpdated: Date | null;
   stale: boolean;
+}
+
+export interface BrokerItemStatusDTO {
+  broker: string;
+  name: string;
+  is_active: boolean;
+  connected: boolean;
+  is_configured: boolean;
+  is_available: boolean;
+  error_message: string | null;
+  can_switch: boolean;
+  switch_blocked_reason: string | null;
+  demo_guard_status: string; // 'PASSED' | 'FAILED' | 'UNVERIFIED'
+  demo_guard_verified_at: string | null;
+  account_id_masked: string | null;
+  account_server: string | null;
+  account_currency: string | null;
+  account_trade_mode: string | null;
+  environment: string | null;
+  notes?: string | null;
+}
+
+export interface ActiveBrokerIdentityDTO {
+  broker: string;
+  account_id_masked: string | null;
+  server: string | null;
+  trade_mode: string;
+  currency: string | null;
+  verified_at: string | null;
+  demo_guard_passed: boolean;
+}
+
+export interface BrokerStatusResponse {
+  brokers: BrokerItemStatusDTO[];
+  active_broker: string;
+  active_broker_identity: ActiveBrokerIdentityDTO | null;
+  emergency_stop_state: string;
+  execution_authorization: string;
+  observed_at: string | null;
+  observation_state: string;
+  can_switch: boolean;
+  switch_blocked_reason: string | null;
+  unresolved_intent_count: number;
+  broker: string;
+  environment: string;
+  connected: boolean;
+  last_verified_at: string | null;
+  identity_state: string;
+  account_id_masked: string | null;
+  account_server: string | null;
+  account_currency: string | null;
+  account_trade_mode: string | null;
+}
+
+export interface SelectBrokerRequest {
+  broker: string;
+  reason?: string;
+}
+
+export interface SelectBrokerResponse {
+  selected_broker: string;
+  persisted: boolean;
+  status: BrokerStatusResponse;
+}
+
+export interface WatchlistItemDTO {
+  symbol: string;
+  timeframe: string;
+  scope: string;
+  added_at: string;
+}
+
+export interface WatchlistResponse {
+  items: WatchlistItemDTO[];
+  count: number;
+}
+
+export interface WatchlistCapUsageDTO {
+  symbol: string;
+  timeframe: string;
+  scope: string;
+  daily_count: number;
+  daily_limit: number;
+  daily_remaining: number;
+  utc_date: string;
+  reset_at: string;
+  available: boolean;
+}
+
+export interface WatchlistCapUsageResponse {
+  items: WatchlistCapUsageDTO[];
+  observed_at: string;
 }

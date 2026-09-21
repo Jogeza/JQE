@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
+  LayoutGrid,
   CandlestickChart,
   Briefcase,
   History,
@@ -15,12 +16,17 @@ import {
   Menu,
   X,
   Activity,
+  ListChecks,
+  Plug,
   type LucideIcon,
 } from 'lucide-react';
 
 export type TabType =
+  | 'workspace'
   | 'overview'
   | 'markets'
+  | 'watchlist'
+  | 'brokers'
   | 'positions'
   | 'trades'
   | 'strategy'
@@ -33,7 +39,7 @@ export type TabType =
 interface SidebarProps {
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
-  openPositionsCount: number;
+  openPositionsCount?: number;
   riskAllowed?: boolean;
   riskStale?: boolean;
 }
@@ -42,6 +48,7 @@ interface NavItem {
   id: TabType;
   label: string;
   icon: LucideIcon;
+  group: 'Overview' | 'Markets' | 'Analysis' | 'System';
   badge?: string | number;
   badgeType?: 'green' | 'red' | 'neutral' | 'amber' | 'cyan';
 }
@@ -58,16 +65,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const drawer = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const navItems: NavItem[] = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'markets', label: 'Markets', icon: CandlestickChart },
-    { id: 'positions', label: 'Positions', icon: Briefcase, badge: openPositionsCount > 0 ? openPositionsCount : undefined },
-    { id: 'trades', label: 'Trades', icon: History },
-    { id: 'strategy', label: 'Strategy', icon: BrainCircuit },
-    { id: 'risk', label: 'Risk Control', icon: ShieldAlert, badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : 'LOCK' },
-    { id: 'performance', label: 'Performance', icon: LineChart },
-    { id: 'backtesting', label: 'Research', icon: PlayCircle },
-    { id: 'system', label: 'System Logs', icon: Terminal },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon },
+    { id: 'workspace', label: 'Workspace', icon: LayoutGrid, group: 'Overview' },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Overview' },
+    { id: 'markets', label: 'Markets', icon: CandlestickChart, group: 'Markets' },
+    { id: 'watchlist', label: 'Watchlist', icon: ListChecks, group: 'Markets' },
+    { id: 'brokers', label: 'Brokers', icon: Plug, group: 'Markets' },
+    { id: 'positions', label: 'Positions', icon: Briefcase, group: 'Analysis', badge: openPositionsCount !== undefined && openPositionsCount > 0 ? openPositionsCount : undefined },
+    { id: 'trades', label: 'Trades', icon: History, group: 'Analysis' },
+    { id: 'strategy', label: 'Strategy', icon: BrainCircuit, group: 'Analysis' },
+    { id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis', badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : 'LOCK' },
+    { id: 'performance', label: 'Performance', icon: LineChart, group: 'Analysis' },
+    { id: 'backtesting', label: 'Research', icon: PlayCircle, group: 'Analysis' },
+    { id: 'system', label: 'System Logs', icon: Terminal, group: 'System' },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon, group: 'System' },
   ];
   useEffect(() => {
     if (!drawerOpen) return;
@@ -87,11 +97,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [drawerOpen]);
   const navigation = (mobile = false) => (
     <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'}>
-      <p className="nav-section-label">Workspace</p>
       {navItems.map((item, index) => {
         const Icon = item.icon;
         return <React.Fragment key={item.id}>
-          {index === 8 && <p className="nav-section-label">System</p>}
+          {(index === 0 || navItems[index - 1].group !== item.group) && <p className="nav-section-label">{item.group}</p>}
           <button className={activeTab === item.id ? 'nav-link active' : 'nav-link'}
             aria-current={activeTab === item.id ? 'page' : undefined}
             aria-label={`${item.label}${item.badge !== undefined ? ', ' + item.badge : ''}`}

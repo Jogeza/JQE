@@ -26,9 +26,11 @@ import {
   PaperDiagnosticsResponse,
   MarketSetup,
   OfflineMonitoringResponse,
+  BrokerStatusResponse,
 } from '../types/api';
 import { canonicalSignalFromAssessment, TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { TelemetryLifecyclePanel } from '../components/TelemetryLifecyclePanel';
+import { ActiveBrokerIdentityPanel } from '../components/ActiveBrokerIdentityPanel';
 import { formatMoney } from '../utils/format';
 
 interface OverviewPageProps {
@@ -62,6 +64,7 @@ interface OverviewPageProps {
   selectedTimeframe: string;
   candleError: string | null;
   telemetryStale: { system: boolean; strategy: boolean; risk: boolean };
+  brokerStatus?: BrokerStatusResponse | null;
 }
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({
@@ -95,6 +98,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   selectedTimeframe,
   candleError,
   telemetryStale,
+  brokerStatus,
 }) => {
   const assessmentIsLive = telemetryLifecycle.state === 'LIVE';
   const assessmentIsStale = !assessmentIsLive;
@@ -121,6 +125,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       </div>
 
       <TelemetryLifecyclePanel lifecycle={telemetryLifecycle} />
+
+      <div style={{ margin: '12px 0' }}>
+        <ActiveBrokerIdentityPanel brokerStatus={brokerStatus ?? null} loading={loading} />
+      </div>
+
 
       {/* Active Market Telemetry Synchronization Strip */}
       <div className="active-market-freshness-bar" aria-label="Telemetry Freshness and Synchronization">

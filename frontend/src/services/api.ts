@@ -23,6 +23,13 @@ import {
   PaperExecutionOutcomeDTO,
   ActiveMarketAnalysisResponse,
   OfflineMonitoringResponse,
+  ObservationHealthResponse,
+  BrokerStatusResponse,
+  SelectBrokerRequest,
+  SelectBrokerResponse,
+  WatchlistResponse,
+  WatchlistItemDTO,
+  WatchlistCapUsageResponse,
 } from '../types/api';
 
 const API_BASE = '/api/v1';
@@ -62,6 +69,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 export const jqeApi = {
   async getOfflineMonitoring(signal?: AbortSignal): Promise<OfflineMonitoringResponse> {
     return fetchJson(`${API_BASE}/monitoring/offline`, { signal });
+  },
+  async getObservationHealth(signal?: AbortSignal): Promise<ObservationHealthResponse> {
+    return fetchJson(`${API_BASE}/observation/health`, { signal });
   },
   async runOfflineAnalysis(symbol: string, timeframe: string, signal?: AbortSignal): Promise<MarketSetup> {
     const params = new URLSearchParams({ symbol, timeframe });
@@ -184,6 +194,49 @@ export const jqeApi = {
   async compareExperiments(leftId: string, rightId: string, signal?: AbortSignal): Promise<ExperimentComparisonResponse> {
     const params = new URLSearchParams({ left: leftId, right: rightId });
     return fetchJson(`${API_BASE}/research/experiments/compare?${params.toString()}`, { signal });
+  },
+
+  /** Multi-broker connection status and DemoOnlyGuard verification */
+  async getBrokerStatus(signal?: AbortSignal): Promise<BrokerStatusResponse> {
+    return fetchJson(`${API_BASE}/brokers/status`, { signal });
+  },
+
+  /** Validate and persist the operator broker selection */
+  async selectBroker(broker: string, reason: string = '', signal?: AbortSignal): Promise<SelectBrokerResponse> {
+    return fetchJson(`${API_BASE}/brokers/select`, {
+      method: 'POST',
+      body: JSON.stringify({ broker, reason } satisfies SelectBrokerRequest),
+      signal,
+    });
+  },
+
+  /** Persisted watchlist of observed instruments */
+  async getWatchlist(signal?: AbortSignal): Promise<WatchlistResponse> {
+    return fetchJson(`${API_BASE}/watchlist`, { signal });
+  },
+
+  /** Add an instrument to the durable watchlist */
+  async addToWatchlist(symbol: string, timeframe: string = 'H1', signal?: AbortSignal): Promise<WatchlistItemDTO> {
+    return fetchJson(`${API_BASE}/watchlist`, {
+      method: 'POST',
+      body: JSON.stringify({ symbol, timeframe }),
+      signal,
+    });
+  },
+
+  /** Remove an instrument from the durable watchlist */
+  async deleteFromWatchlist(symbol: string, timeframe?: string, signal?: AbortSignal): Promise<{ deleted: boolean; symbol: string }> {
+    const query = timeframe ? `?timeframe=${encodeURIComponent(timeframe)}` : '';
+    return fetchJson(`${API_BASE}/watchlist/${encodeURIComponent(symbol)}${query}`, {
+      method: 'DELETE',
+      signal,
+    });
+  },
+
+  /** Daily cap usage for watchlisted instruments from DailyInstrumentTradeGuard */
+  async getWatchlistCapUsage(accountScope?: string, signal?: AbortSignal): Promise<WatchlistCapUsageResponse> {
+    const query = accountScope ? `?account_scope=${encodeURIComponent(accountScope)}` : '';
+    return fetchJson(`${API_BASE}/watchlist/cap-usage${query}`, { signal });
   },
 };
 

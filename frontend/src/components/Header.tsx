@@ -16,7 +16,8 @@ const SYMBOL_OPTIONS = [
   { value: 'USDJPY', label: 'USDJPY', search: 'usdjpy dollar yen' },
   { value: 'BTCUSD', label: 'BTCUSD', search: 'btcusd bitcoin dollar' },
 ];
-import { SystemStatusResponse } from '../types/api';
+import { SystemStatusResponse, BrokerStatusResponse } from '../types/api';
+import { BrokerSelector } from './BrokerSelector';
 
 interface HeaderProps {
   systemStatus: SystemStatusResponse | null;
@@ -28,6 +29,8 @@ interface HeaderProps {
   onTimeframeChange: (tf: string) => void;
   telemetryStale?: boolean;
   pageTitle: string;
+  brokerStatus?: BrokerStatusResponse | null;
+  onSelectBroker?: (broker: string) => Promise<void>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -40,6 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   onTimeframeChange,
   telemetryStale,
   pageTitle,
+  brokerStatus,
+  onSelectBroker,
 }) => {
   const [time, setTime] = useState<string>('');
   const [utcTime, setUtcTime] = useState<string>('');
@@ -196,8 +201,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Group: Connection, Clocks, Refresh */}
+      {/* Right Group: Broker Selector, Connection, Clocks, Refresh */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {onSelectBroker && (
+          <BrokerSelector brokerStatus={brokerStatus ?? null} onSelectBroker={onSelectBroker} />
+        )}
         {/* Connection Indicator */}
         <div
           style={{

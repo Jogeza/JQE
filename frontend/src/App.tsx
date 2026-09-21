@@ -10,6 +10,9 @@ import { RiskPage } from './pages/RiskPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ResearchPage } from './pages/ResearchPage';
 import { SystemPage } from './pages/SystemPage';
+import { BrokersPage } from './pages/BrokersPage';
+import { WatchlistPage } from './pages/WatchlistPage';
+import { WorkspacePage } from './pages/WorkspacePage';
 import { jqeApi } from './services/api';
 import {
   SystemStatusResponse,
@@ -26,13 +29,27 @@ import {
   MarketSetup,
   ResourceState,
   OfflineMonitoringResponse,
+  ObservationHealthResponse,
+  BrokerStatusResponse,
+  WatchlistResponse,
+  WatchlistCapUsageResponse,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
 import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry } from './services/telemetryLifecycle';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
+const workspaceProfile = [
+  'brokerStatus', 'safety', 'risk', 'monitoring', 'observationHealth',
+  'watchlist', 'watchlistCapUsage',
+] as const;
+const legacyProfile = [
+  'system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety',
+  'performance', 'recovery', 'paperRuntime', 'paperDiagnostics', 'monitoring',
+  'observationHealth', 'brokerStatus', 'watchlist', 'watchlistCapUsage',
+] as const;
+
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('workspace');
   const [selectedSymbol, setSelectedSymbol] = useState<string>('R_75');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('H1');
 
@@ -50,6 +67,10 @@ export const App: React.FC = () => {
     paperDiagnostics: ResourceState<PaperDiagnosticsResponse>;
     setup: ResourceState<MarketSetup>;
     monitoring: ResourceState<OfflineMonitoringResponse>;
+    observationHealth: ResourceState<ObservationHealthResponse>;
+    brokerStatus: ResourceState<BrokerStatusResponse>;
+    watchlist: ResourceState<WatchlistResponse>;
+    watchlistCapUsage: ResourceState<WatchlistCapUsageResponse>;
   };
   const emptyResource = <T,>(): ResourceState<T> => ({
     data: null, loading: true, error: null, lastUpdated: null, stale: false,
@@ -61,6 +82,10 @@ export const App: React.FC = () => {
     paperRuntime: emptyResource(), paperDiagnostics: emptyResource(),
     setup: emptyResource(),
     monitoring: emptyResource(),
+    observationHealth: emptyResource(),
+    brokerStatus: emptyResource(),
+    watchlist: emptyResource(),
+    watchlistCapUsage: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const [lastSuccessfulContact, setLastSuccessfulContact] = useState<Date | null>(null);
@@ -79,41 +104,56 @@ export const App: React.FC = () => {
     inFlightRef.current = true;
     const requestedSymbol = selectedSymbol;
     const requestedTimeframe = selectedTimeframe;
-    setResources(previous => Object.fromEntries(
-      Object.entries(previous).map(([name, resource]) => [name, {
-        ...resource,
-        data: resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name) ? null : resource.data,
-        loading: true,
-        error: null,
-        stale: resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name) ? false : resource.stale,
-      }])
-    ) as Resources);
+    const names: readonly (keyof Resources)[] = activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+    const requestFor = (name: keyof Resources): Promise<unknown> => {
+      switch (name) {
+        case 'system': return jqeApi.getSystemStatus(controller.signal);
+        case 'market': return jqeApi.getMarketSummary(requestedSymbol, requestedTimeframe, undefined, controller.signal);
+        case 'candles': return jqeApi.getMarketCandles(requestedSymbol, requestedTimeframe, 60, controller.signal);
+        case 'strategy': return jqeApi.getStrategySignal(requestedSymbol, requestedTimeframe, undefined, controller.signal);
+        case 'risk': return jqeApi.getRiskStatus(requestedSymbol, requestedTimeframe, controller.signal);
+        case 'execution': return jqeApi.getExecutionState(controller.signal);
+        case 'safety': return jqeApi.getExecutionSafety(controller.signal);
+        case 'performance': return jqeApi.getPerformanceSummary(controller.signal);
+        case 'recovery': return jqeApi.getRecoveryDiagnostics(controller.signal);
+        case 'paperRuntime': return jqeApi.getPaperRuntimeStatus(controller.signal);
+        case 'paperDiagnostics': return jqeApi.getPaperDiagnostics(controller.signal);
+        case 'monitoring': return jqeApi.getOfflineMonitoring(controller.signal);
+        case 'observationHealth': return jqeApi.getObservationHealth(controller.signal);
+        case 'brokerStatus': return jqeApi.getBrokerStatus(controller.signal);
+        case 'watchlist': return jqeApi.getWatchlist(controller.signal);
+        case 'watchlistCapUsage': return jqeApi.getWatchlistCapUsage(undefined, controller.signal);
+        default: throw new Error(`No polling request for ${name}`);
+      }
+    };
+    setResources(previous => {
+      const next = { ...previous };
+      names.forEach(name => {
+        const resource = previous[name] as ResourceState<unknown>;
+        const clear = resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name);
+        next[name] = {
+          ...resource, data: clear ? null : resource.data, loading: true,
+          stale: clear ? false : resource.data !== null || resource.stale,
+        } as never;
+      });
+      return next;
+    });
 
     try {
-      const results = await Promise.allSettled([
-        jqeApi.getSystemStatus(controller.signal),
-        jqeApi.getMarketSummary(requestedSymbol, requestedTimeframe, undefined, controller.signal),
-        jqeApi.getMarketCandles(requestedSymbol, requestedTimeframe, 60, controller.signal),
-        jqeApi.getStrategySignal(requestedSymbol, requestedTimeframe, undefined, controller.signal),
-        jqeApi.getRiskStatus(requestedSymbol, requestedTimeframe, controller.signal),
-        jqeApi.getExecutionState(controller.signal),
-        jqeApi.getExecutionSafety(controller.signal),
-        jqeApi.getPerformanceSummary(controller.signal),
-        jqeApi.getRecoveryDiagnostics(controller.signal),
-        jqeApi.getPaperRuntimeStatus(controller.signal),
-        jqeApi.getPaperDiagnostics(controller.signal),
-        jqeApi.getOfflineMonitoring(controller.signal),
-      ]);
+      const results = await Promise.allSettled(names.map(requestFor));
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       if (selectedSymbol !== requestedSymbol || selectedTimeframe !== requestedTimeframe) return;
 
-      const names: (keyof Resources)[] = ['system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety', 'performance', 'recovery', 'paperRuntime', 'paperDiagnostics', 'monitoring'];
       const updatedAt = new Date();
       setResources(previous => {
         const next = { ...previous };
         results.forEach((result, index) => {
           const name = names[index];
           const old = previous[name] as ResourceState<unknown>;
+          if (result.status === 'rejected' && result.reason?.name === 'AbortError') {
+            next[name] = { ...old, loading: false } as never;
+            return;
+          }
           if (name === 'monitoring' && result.status === 'fulfilled') {
             try {
               const validated = validateOfflineTelemetry(result.value);
@@ -148,19 +188,28 @@ export const App: React.FC = () => {
       setLastRefreshAttempt(updatedAt);
     } catch (err) {
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
       const message = err instanceof Error ? err.message : 'API connection error';
-      setResources(previous => Object.fromEntries(
-        Object.entries(previous).map(([name, resource]) => [name, {
-          ...resource, loading: false, error: message, stale: resource.data !== null,
-        }])
-      ) as Resources);
+      setResources(previous => {
+        const next = { ...previous };
+        names.forEach(name => {
+          const resource = previous[name] as ResourceState<unknown>;
+          next[name] = { ...resource, loading: false, error: message, stale: resource.data !== null } as never;
+        });
+        return next;
+      });
       setLastRefreshAttempt(new Date());
     } finally {
       if (requestId === requestIdRef.current) {
         inFlightRef.current = false;
       }
     }
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [activeTab, selectedSymbol, selectedTimeframe]);
+
+  const handleSelectBroker = useCallback(async (broker: string) => {
+    await jqeApi.selectBroker(broker, 'dashboard');
+    await fetchAllData(true, false);
+  }, [fetchAllData]);
 
   // Initial fetch and symbol/timeframe reaction
   useEffect(() => {
@@ -187,7 +236,7 @@ export const App: React.FC = () => {
   const paperDiagnosticsData = resources.paperDiagnostics.data;
   const setupData = resources.setup.data;
   const monitoringData = resources.monitoring.data;
-  const telemetryLifecycle = deriveTelemetryLifecycle({
+  const derivedTelemetryLifecycle = deriveTelemetryLifecycle({
     snapshot: monitoringData,
     connected: resources.monitoring.error === null,
     loading: resources.monitoring.loading,
@@ -195,14 +244,32 @@ export const App: React.FC = () => {
     now: lifecycleNow,
     validationError: monitoringValidationError,
   });
+  const telemetryLifecycle = resources.monitoring.loading && monitoringData && derivedTelemetryLifecycle.state === 'LIVE'
+    ? { ...derivedTelemetryLifecycle, state: 'STALE' as const, reason: 'Refreshing retained telemetry' }
+    : derivedTelemetryLifecycle;
   const loading = Object.values(resources).some(resource => resource.loading);
-  const failedResources = Object.entries(resources).filter(([, resource]) => resource.error);
+  const activeProfile = activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+  const failedResources = activeProfile.filter(name => resources[name].error);
   const apiError = failedResources.length
-    ? `Telemetry errors: ${failedResources.map(([name]) => name).join(', ')}. Prior values, when available, are marked stale.`
+    ? `Telemetry errors: ${failedResources.join(', ')}. Prior values, when available, are marked stale.`
     : null;
 
   const renderActiveTab = () => {
     switch (activeTab) {
+      case 'workspace':
+        return <WorkspacePage
+          broker={resources.brokerStatus}
+          safety={resources.safety}
+          risk={resources.risk}
+          monitoring={resources.monitoring}
+          observationHealth={resources.observationHealth}
+          watchlist={resources.watchlist}
+          caps={resources.watchlistCapUsage}
+          selectedSymbol={selectedSymbol}
+          selectedTimeframe={selectedTimeframe}
+          lifecycle={telemetryLifecycle}
+          onNavigate={setActiveTab}
+        />;
       case 'overview':
         return (
           <OverviewPage
@@ -236,6 +303,7 @@ export const App: React.FC = () => {
             selectedTimeframe={selectedTimeframe}
             candleError={resources.candles.error}
             telemetryStale={{ system: resources.system.stale, strategy: resources.strategy.stale, risk: resources.risk.stale }}
+            brokerStatus={resources.brokerStatus.data}
           />
         );
       case 'markets':
@@ -258,6 +326,24 @@ export const App: React.FC = () => {
         return <StrategyPage signal={signalData} loading={resources.strategy.loading} stale={resources.strategy.stale} />;
       case 'risk':
         return <RiskPage risk={riskData} loading={resources.risk.loading} brokerConnected={systemStatus?.broker_connected} stale={resources.risk.stale || resources.system.stale} />;
+      case 'watchlist':
+        return (
+          <WatchlistPage
+            watchlist={resources.watchlist.data?.items}
+            capUsage={resources.watchlistCapUsage.data?.items}
+            loading={resources.watchlist.loading || resources.watchlistCapUsage.loading}
+            onRefresh={() => fetchAllData(true, false)}
+          />
+        );
+      case 'brokers':
+        return (
+          <BrokersPage
+            brokerStatus={resources.brokerStatus.data}
+            loading={resources.brokerStatus.loading}
+            onRefresh={() => fetchAllData(true, false)}
+            onSelectBroker={handleSelectBroker}
+          />
+        );
       case 'performance':
         return <PerformancePage performance={performanceData} execution={executionData} loading={loading} currency={performanceData?.currency ?? undefined} />;
       case 'backtesting':
@@ -276,15 +362,25 @@ export const App: React.FC = () => {
       <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        openPositionsCount={executionData?.open_positions_count ?? 0}
+        openPositionsCount={activeTab === 'workspace' ? undefined : executionData?.open_positions_count ?? 0}
         riskAllowed={riskData?.risk_allowed}
         riskStale={resources.risk.stale}
       />
 
       {/* Main Content Area */}
       <div className="main-content-wrapper">
-        <Header
-          pageTitle={activeTab === 'backtesting' ? 'Research' : activeTab === 'risk' ? 'Risk Control' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+        {activeTab !== 'workspace' && <Header
+          pageTitle={
+            activeTab === 'backtesting'
+              ? 'Research'
+              : activeTab === 'risk'
+              ? 'Risk Control'
+              : activeTab === 'brokers'
+              ? 'Brokers & Gateways'
+              : activeTab === 'watchlist'
+              ? 'Watchlist & Caps'
+              : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
+          }
           systemStatus={systemStatus}
           loading={loading}
           telemetryStale={resources.system.stale}
@@ -293,7 +389,9 @@ export const App: React.FC = () => {
           onSymbolChange={setSelectedSymbol}
           selectedTimeframe={selectedTimeframe}
           onTimeframeChange={setSelectedTimeframe}
-        />
+          brokerStatus={resources.brokerStatus.data}
+          onSelectBroker={handleSelectBroker}
+        />}
 
         <div className="offline-simulation-banner" role="status">
           OFFLINE SIMULATION — NO BROKER ORDERS
@@ -331,7 +429,7 @@ export const App: React.FC = () => {
         )}
 
         {/* Telemetry Status Ribbon / System Health Rail */}
-        <div className="telemetry-ribbon"
+        {activeTab !== 'workspace' && <div className="telemetry-ribbon"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -380,7 +478,7 @@ export const App: React.FC = () => {
               </span>
             );
           })}
-        </div>
+        </div>}
 
         {/* Dynamic Page View */}
         {renderActiveTab()}
