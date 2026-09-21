@@ -7,6 +7,16 @@ venv/
 
 # Environment
 .env
+.env*
+!.env.example
+secrets.env
+credentials.env
+credentials.json
+*.secret
+*.secrets
+
+# Local deployment metadata
+.vercel/
 
 # IDE
 .vscode/
@@ -53,6 +63,9 @@ state/*.sqlite3
 state/*.sqlite3-shm
 state/*.sqlite3-wal
 state/live_paper_operational/
+
+# Other runtime-generated application state
+/state/*
 
 # Python cache
 __pycache__/
