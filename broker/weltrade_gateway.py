@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
+from typing import Any
 
 import MetaTrader5 as mt5
 
@@ -34,6 +34,8 @@ def _symbol_key(value: str) -> str:
 
 class WeltradeGateway(MT5DemoGateway):
     """Weltrade-only identity and symbol policy over shared MT5 mechanics."""
+
+    demo_guard_broker = "weltrade"
 
     def __init__(
         self,
@@ -79,12 +81,14 @@ class WeltradeGateway(MT5DemoGateway):
             )
         return super()._initialize_session()
 
-    async def connect(self) -> None:
-        await super().connect()
-        info = await asyncio.to_thread(mt5.account_info)
-        server = str(getattr(info, "server", "") or "").strip()
+    def _assert_broker_terminal_identity(self, account_info: Any) -> None:
+        """Reject any terminal that is not authoritatively a Weltrade server.
+
+        Runs before DemoOnlyGuard so demo evidence is never attributed to
+        Weltrade for a terminal that is not actually Weltrade.
+        """
+        server = str(getattr(account_info, "server", "") or "").strip()
         if "WELTRADE" not in server.upper():
-            await self.disconnect()
             raise BrokerConnectionError(
                 "Weltrade terminal identity verification failed",
                 expected_broker="WELTRADE",

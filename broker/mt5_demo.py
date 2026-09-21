@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import math
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import MetaTrader5 as mt5
@@ -28,6 +29,11 @@ class MT5DemoGateway(MT5Gateway):
 
     No order or session can be initiated or submitted against a real account.
     """
+
+    #: Broker identity recorded with DemoOnlyGuard evidence. Subclasses that
+    #: reach the market through the MT5 terminal but are a distinct broker
+    #: (Weltrade) override this so their evidence is never attributed to MT5.
+    demo_guard_broker: str = "mt5"
 
     def __init__(
         self,
@@ -54,8 +60,11 @@ class MT5DemoGateway(MT5Gateway):
             expected_environment="demo",
             strict_lifecycle=strict_lifecycle,
         )
-        self.session_id = session_id or f"mt5-demo-{uuid4().hex[:8]}"
+        self.session_id = session_id or f"{self.demo_guard_broker}-demo-{uuid4().hex[:8]}"
         self._demo_verified = False
+
+    def _assert_broker_terminal_identity(self, account_info: Any) -> None:
+        """Hook for subclasses that must prove terminal/server identity pre-guard."""
 
     async def connect(self) -> None:
         """Connect to MT5 terminal and authoritatively verify that the account is DEMO."""
@@ -64,13 +73,14 @@ class MT5DemoGateway(MT5Gateway):
         # Fetch account info from terminal to verify trade_mode via DemoOnlyGuard
         info = await asyncio.to_thread(mt5.account_info)
         try:
+            self._assert_broker_terminal_identity(info)
             DemoOnlyGuard.assert_demo_account(
-                "mt5",
+                self.demo_guard_broker,
                 info,
                 session_id=self.session_id,
             )
             self._demo_verified = True
-        except UnsafeBrokerAccountError:
+        except (UnsafeBrokerAccountError, BrokerConnectionError):
             self._demo_verified = False
             await self.disconnect()
             raise
@@ -82,7 +92,7 @@ class MT5DemoGateway(MT5Gateway):
         # Authoritatively verify live broker state immediately prior to submission
         info = await asyncio.to_thread(mt5.account_info)
         DemoOnlyGuard.assert_demo_account(
-            "mt5",
+            self.demo_guard_broker,
             info,
             session_id=self.session_id,
         )

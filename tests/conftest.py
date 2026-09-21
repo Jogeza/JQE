@@ -61,6 +61,20 @@ def _isolated_broker_selection_store(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_broker_evidence_store(tmp_path, monkeypatch):
+    """Isolate DemoOnlyGuard evidence so tests never touch the real state/ store.
+
+    Gateways that verify without an explicit ``evidence_store_path`` fall back to
+    the module constant, which points at the production evidence database.
+    """
+    evidence_path = tmp_path / "broker_evidence.sqlite3"
+    monkeypatch.setattr(
+        "broker.demo_guard.DEFAULT_BROKER_EVIDENCE_PATH", evidence_path
+    )
+    yield evidence_path
+
+
+@pytest.fixture(autouse=True)
 def _fresh_mt5_session_authority(monkeypatch, request):
     """Each test has a fresh process authority; within-test ownership is real."""
     from core.mt5_session import mt5_session

@@ -27,7 +27,7 @@ async def run() -> None:
         raise SystemExit("Set JQE_WELTRADE_TERMINAL_PATH to the Weltrade terminal executable")
     gateway = (
         get_gateway(settings)
-        if settings.broker in {"weltrade", "weltrade_demo"}
+        if settings.effective_broker == "weltrade"
         and settings.effective_weltrade_login is not None
         and settings.effective_weltrade_server
         else WeltradeGateway(

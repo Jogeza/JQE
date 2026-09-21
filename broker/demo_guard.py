@@ -65,7 +65,10 @@ class DemoOnlyGuard:
         """Verify that broker-returned account data authoritatively proves a demo account.
 
         Args:
-            broker: Broker identifier (e.g. "deriv", "deriv_demo", "mt5", "mt5_demo").
+            broker: Broker identity used for verification and evidence
+                attribution ("deriv", "deriv_demo", "mt5", "mt5_demo",
+                "weltrade", "weltrade_demo"). Weltrade trades through the MT5
+                terminal API but its evidence is recorded as "weltrade".
             account_data: Broker-returned payload (dict, SDK object, or response).
             session_id: Optional tracking session ID for evidence store.
             evidence_store_path: Optional SQLite store path for verification events.
@@ -97,7 +100,7 @@ class DemoOnlyGuard:
                 campaign_evidence_store=campaign_evidence_store,
             )
 
-        if broker_norm in ("mt5", "mt5_demo"):
+        if broker_norm in ("mt5", "mt5_demo", "weltrade", "weltrade_demo"):
             return DemoOnlyGuard._verify_mt5(
                 account_data,
                 broker=broker_norm,
@@ -178,6 +181,9 @@ class DemoOnlyGuard:
     ) -> DemoAccountVerification:
         # MT5 SDK returns an AccountInfo namedtuple containing `trade_mode` and `login`.
         # May also be passed as a dict in tests.
+        # Weltrade trades through the MT5 terminal API but is a distinct broker
+        # identity, so its evidence must never be recorded as generic MT5.
+        evidence_broker = "weltrade" if str(broker).strip().lower().startswith("weltrade") else "mt5"
         if isinstance(account_data, Mapping):
             trade_mode = account_data.get("trade_mode")
             account_id = str(account_data.get("login") or "").strip()
@@ -188,20 +194,22 @@ class DemoOnlyGuard:
         # Refuse to proceed if trade_mode != 0 (e.g. REAL=2, CONTEST=1, None, bool, str)
         if type(trade_mode) is not int or trade_mode != MT5_ACCOUNT_TRADE_MODE_DEMO:
             logger.critical(
-                "SECURITY ALERT: Non-demo or ambiguous MT5 account rejected: trade_mode={!r}, account={!r}",
+                "SECURITY ALERT: Non-demo or ambiguous {} account rejected: trade_mode={!r}, account={!r}",
+                evidence_broker,
                 trade_mode,
                 account_id,
             )
             raise UnsafeBrokerAccountError(
-                "MT5 account is NOT authoritatively verified as DEMO (trade_mode must be 0/ACCOUNT_TRADE_MODE_DEMO)",
-                broker="mt5",
+                f"{evidence_broker.upper()} account is NOT authoritatively verified as DEMO "
+                "(trade_mode must be 0/ACCOUNT_TRADE_MODE_DEMO)",
+                broker=evidence_broker,
                 trade_mode=trade_mode,
                 account_id=account_id,
             )
 
         verification = DemoAccountVerification(
-            broker="mt5",
-            account_id=account_id or "UNKNOWN_MT5",
+            broker=evidence_broker,
+            account_id=account_id or f"UNKNOWN_{evidence_broker.upper()}",
             checked_field="trade_mode",
             observed_value=0,
             verified_at=now_utc,

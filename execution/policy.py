@@ -236,6 +236,8 @@ class ExecutionPolicy:
             "deriv_demo": ExecutionQuantityUnit.DERIV_STAKE,
             "mt5": ExecutionQuantityUnit.MT5_LOTS,
             "mt5_demo": ExecutionQuantityUnit.MT5_LOTS,
+            "weltrade": ExecutionQuantityUnit.MT5_LOTS,
+            "weltrade_demo": ExecutionQuantityUnit.MT5_LOTS,
         }.get(context.broker)
         if intent.quantity_risk_verified is not True:
             return _reject(
