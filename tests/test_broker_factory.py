@@ -18,12 +18,16 @@ def _settings(**overrides: object) -> Settings:
 
 
 class TestGetGateway:
-    def test_defaults_to_simulation(self) -> None:
+    def test_defaults_to_mt5_without_persisted_selection(self) -> None:
         gateway = get_gateway(_settings())
+        assert isinstance(gateway, MT5Gateway)
+
+    def test_explicit_simulation_returns_simulation_gateway(self) -> None:
+        gateway = get_gateway(_settings(broker="simulation"))
         assert isinstance(gateway, SimulationGateway)
 
     def test_simulation_uses_configured_account_balance(self) -> None:
-        gateway = get_gateway(_settings(account_balance=2500.0))
+        gateway = get_gateway(_settings(broker="simulation", account_balance=2500.0))
         assert isinstance(gateway, SimulationGateway)
         assert gateway.starting_balance == 2500.0
 

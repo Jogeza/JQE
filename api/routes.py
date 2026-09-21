@@ -22,8 +22,16 @@ from api.dto import (
     PaperExecutionOutcomeDTO,
     ActiveMarketAnalysisResponse,
     OfflineMonitoringResponse,
+    BrokerStatusResponse,
+    SelectBrokerRequest,
+    SelectBrokerResponse,
+    WatchlistCapUsageResponse,
 )
-from api.service import ApplicationService
+from api.service import (
+    ApplicationService,
+    BrokerSwitchConflictError,
+    BrokerUnavailableError,
+)
 from core.exceptions import JQEError
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
@@ -65,8 +73,6 @@ async def get_market_summary(
         return await service.get_market_summary(symbol=symbol, timeframe_str=timeframe, count=count)
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 @router.get("/market/candles", response_model=CandlesResponse)
 async def get_market_candles(
     symbol: str | None = None,
@@ -79,7 +85,6 @@ async def get_market_candles(
         return await service.get_market_candles(symbol=symbol, timeframe_str=timeframe, count=count)
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
 
 @router.get("/signal", response_model=SignalResponse)
 async def get_strategy_signal(
@@ -204,5 +209,44 @@ async def get_system_status(
     """Returns system configuration, broker status, and server health."""
     try:
         return await service.get_system_status()
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/brokers/status", response_model=BrokerStatusResponse)
+def get_broker_status(
+    service: ApplicationService = Depends(get_service),
+) -> BrokerStatusResponse:
+    """Returns multi-broker connection state and DemoOnlyGuard verification status."""
+    try:
+        return service.get_broker_status()
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/brokers/select", response_model=SelectBrokerResponse)
+def select_broker(
+    request: SelectBrokerRequest,
+    service: ApplicationService = Depends(get_service),
+) -> SelectBrokerResponse:
+    """Validates and persists the operator broker selection; never falls back to simulation."""
+    try:
+        return service.select_broker(request.broker, reason=request.reason)
+    except BrokerSwitchConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BrokerUnavailableError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/watchlist/cap-usage", response_model=WatchlistCapUsageResponse)
+def get_watchlist_cap_usage(
+    account_scope: str = Query(default="default", description="Account scope for daily instrument guard"),
+    service: ApplicationService = Depends(get_service),
+) -> WatchlistCapUsageResponse:
+    """Returns daily instrument cap usage for each watchlisted instrument."""
+    try:
+        return service.get_watchlist_cap_usage(account_scope=account_scope)
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

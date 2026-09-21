@@ -44,8 +44,15 @@ from api.dto import (
     OfflineMonitoringResponse,
     MonitoringGateDTO,
     SimulationSubmissionTelemetryDTO,
+    BrokerItemStatusDTO,
+    ActiveBrokerIdentityDTO,
+    BrokerStatusResponse,
+    SelectBrokerResponse,
+    WatchlistCapUsageDTO,
+    WatchlistCapUsageResponse,
 )
 from broker.base import BrokerGateway
+from broker.demo_guard import DEFAULT_BROKER_EVIDENCE_PATH
 from broker.factory import get_gateway
 from broker.deriv_public_data import DerivPublicMarketData
 from broker.simulation_gateway import SimulationGateway
@@ -55,6 +62,9 @@ from core.data_validator import validate_market_data
 from core.exceptions import MarketDataError
 from core.indicators import calculate_indicators
 from core.regime import detect_regime
+from data.broker_selection import BrokerSelectionStore, normalize_broker_name
+from data.watchlist import WatchlistStore
+from execution.daily_instrument_guard import DailyInstrumentTradeGuard
 from execution.safety import RiskEvaluationState, SQLiteExecutionSafetyStore, utc_now
 from execution.persistence import SQLiteIntentRecordStore
 from execution.paper_runtime import PaperRuntimeStateStore
@@ -85,6 +95,14 @@ from monitoring.offline_analysis import run_offline_analysis as build_offline_an
 _TIMEFRAME_MAP: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _DERIV_PUBLIC_SYMBOLS = {"XAUUSD": "frxXAUUSD"}
 _OFFLINE_SIMULATION_SCOPE = "simulation:JQE-DASHBOARD-PAPER"
+
+
+class BrokerSwitchConflictError(RuntimeError):
+    """Broker switching is blocked by unresolved durable execution intents."""
+
+
+class BrokerUnavailableError(RuntimeError):
+    """The requested real broker is not configured or not demo-safe; selection refused."""
 
 
 def _resolve_timeframe(timeframe_str: str | None) -> Timeframe:
@@ -290,7 +308,6 @@ class ApplicationService:
         candles, provenance, data_status, _cache_status = await self._get_market_candle_data(
             target_symbol, tf, candle_count
         )
-
         if not candles:
             raise MarketDataError("Market data unavailable", symbol=target_symbol)
 
@@ -1046,16 +1063,17 @@ class ApplicationService:
                 execution_quantity_reason="Risk observation unavailable",
             )
         expected_account_id = None
-        if settings.broker == "simulation":
+        active_broker = settings.effective_broker
+        if active_broker == "simulation":
             expected_account_id = "SIMULATED"
-        elif settings.broker == "deriv" and settings.deriv_options_account_id:
+        elif active_broker == "deriv" and settings.deriv_options_account_id:
             expected_account_id = settings.deriv_options_account_id.strip() or None
-        elif settings.broker in {"mt5", "mt5_demo"}:
+        elif active_broker in {"mt5", "weltrade"}:
             observed_account = (snapshot.account_id or "").strip()
             if observed_account and observed_account.upper() != "SIMULATED":
                 expected_account_id = observed_account
         context_matches = (
-            snapshot.broker == settings.broker
+            snapshot.broker == active_broker
             and snapshot.environment == settings.environment
             and expected_account_id is not None
             and snapshot.account_id == expected_account_id
@@ -1184,18 +1202,19 @@ class ApplicationService:
                 execution_blocked=True,
                 reason="Durable recovery state could not be read",
             )
+        active_broker = settings.effective_broker
         expected_account = (
             "SIMULATED"
-            if settings.broker == "simulation"
+            if active_broker == "simulation"
             else settings.deriv_options_account_id.strip()
-            if settings.broker == "deriv"
+            if active_broker == "deriv"
             else ""
         )
         diagnostics: list[RecoveryIntentDiagnosticDTO] = []
         for item in inspections:
             scope_matches = (
                 bool(item.broker)
-                and item.broker.strip().lower() == settings.broker.strip().lower()
+                and item.broker.strip().lower() == active_broker
                 and bool(item.account_id)
                 and item.account_id.strip() == expected_account
             )
@@ -1281,22 +1300,22 @@ class ApplicationService:
 
         trade_dtos = [
             TradeHistoryDTO(
-                id=t.id,
+                id=t.trade_id,
                 symbol=t.symbol,
                 side=t.side.value,
                 volume=t.volume,
                 open_price=t.open_price,
                 close_price=t.close_price,
                 profit=t.profit,
-                open_time=t.open_time.isoformat() if hasattr(t.open_time, "isoformat") else str(t.open_time),
-                close_time=t.close_time.isoformat() if hasattr(t.close_time, "isoformat") else str(t.close_time),
+                open_time=t.opened_at.isoformat() if hasattr(t.opened_at, "isoformat") else str(t.opened_at),
+                close_time=t.closed_at.isoformat() if hasattr(t.closed_at, "isoformat") else str(t.closed_at),
                 price_decimals=_price_decimals(t.symbol),
             )
             for t in history
         ]
 
         return ExecutionStateResponse(
-            broker=settings.broker,
+            broker=settings.effective_broker,
             connected=is_conn,
             open_positions_count=len(pos_dtos),
             positions=pos_dtos,
@@ -1375,7 +1394,7 @@ class ApplicationService:
 
         return SystemStatusResponse(
             environment=settings.environment,
-            broker=settings.broker,
+            broker=settings.effective_broker,
             broker_connected=is_conn,
             default_symbol=settings.default_symbol,
             default_timeframe=settings.default_timeframe,
@@ -1406,4 +1425,360 @@ class ApplicationService:
                 "UNAVAILABLE" if settings.telegram_enabled else
                 "DISABLED"
             ),
+        )
+
+    def _get_latest_demo_verifications(self) -> dict[str, dict[str, Any]]:
+        """Read latest DemoOnlyGuard verification per broker from SQLite evidence store."""
+        evidence_path = DEFAULT_BROKER_EVIDENCE_PATH
+        if not evidence_path.is_file():
+            return {}
+        verifications: dict[str, dict[str, Any]] = {}
+        try:
+            import sqlite3
+            with sqlite3.connect(evidence_path, timeout=5.0) as conn:
+                cur = conn.cursor()
+                rows = cur.execute(
+                    """
+                    SELECT broker, account_id, checked_field, observed_value, status, verified_at, facts_json
+                    FROM broker_account_verifications
+                    ORDER BY id DESC
+                    """
+                ).fetchall()
+                for row in rows:
+                    broker_key = str(row[0]).strip().lower()
+                    if broker_key not in verifications:
+                        verifications[broker_key] = {
+                            "broker": row[0],
+                            "account_id": row[1],
+                            "checked_field": row[2],
+                            "observed_value": row[3],
+                            "status": row[4],
+                            "verified_at": row[5],
+                            "facts_json": row[6],
+                        }
+        except Exception:
+            pass
+        return verifications
+
+    def get_broker_status(self) -> BrokerStatusResponse:
+        """Read-only status per active and supported broker from evidence and safety stores."""
+        active_broker = settings.effective_broker.strip().lower()
+        active_env = settings.environment
+        unresolved_count, switch_blocked_reason = self._unresolved_intent_summary()
+
+        # 1. Read safety snapshot without live gateway access
+        safety_store = SQLiteExecutionSafetyStore(
+            settings.execution_safety_store_path, initialize=False
+        )
+        snapshot = None
+        obs_state = "NOT_OBSERVED"
+        emerg_stop = "UNKNOWN"
+        exec_auth = "NOT_EVALUATED"
+        observed_at = None
+        is_fresh = False
+
+        try:
+            snapshot = safety_store.read()
+        except Exception:
+            obs_state = "UNAVAILABLE"
+
+        if snapshot is not None:
+            observed_at = snapshot.observed_at.astimezone(datetime.timezone.utc).isoformat()
+            emerg_stop = snapshot.emergency_stop_state.value
+            exec_auth = snapshot.execution_authorization.value
+            age = utc_now() - snapshot.observed_at.astimezone(datetime.timezone.utc)
+            if age.total_seconds() > settings.execution_safety_freshness_seconds:
+                obs_state = "STALE"
+            else:
+                obs_state = "OBSERVED"
+                is_fresh = True
+
+        # 2. Read latest DemoOnlyGuard verifications from evidence store
+        verifications = self._get_latest_demo_verifications()
+
+        def _mask(acc_id: str | None) -> str | None:
+            if not acc_id:
+                return None
+            s = str(acc_id).strip()
+            if len(s) <= 4:
+                return s
+            return "*" * (len(s) - 4) + s[-4:]
+
+        # 3. Known broker catalogue
+        known_brokers = [
+            ("mt5", "MT5 Demo"),
+            ("weltrade", "Weltrade Demo"),
+            ("deriv", "Deriv Demo"),
+            ("simulation", "Simulation (Test Only)"),
+        ]
+
+        broker_items: list[BrokerItemStatusDTO] = []
+        active_identity_dto: ActiveBrokerIdentityDTO | None = None
+
+        # Evidence is only attributable to a broker card when the verified account
+        # matches that broker's configured demo account. Weltrade historically
+        # recorded evidence under the inherited "mt5" key, so an unattributable
+        # row must never be shown as an MT5 verification.
+        configured_accounts = {
+            "mt5": settings.mt5_login,
+            "weltrade": settings.effective_weltrade_login,
+            "deriv": settings.deriv_options_account_id,
+        }
+
+        for b_key, b_name in known_brokers:
+            is_active = (b_key == active_broker) or (active_broker.startswith(b_key))
+            verif = verifications.get(b_key)
+            attribution_note: str | None = None
+            if verif is not None and b_key in configured_accounts:
+                observed_account = str(verif.get("account_id") or "").strip()
+                configured_account = configured_accounts[b_key]
+                if configured_account is None:
+                    attribution_note = (
+                        f"DemoOnlyGuard evidence for account {_mask(observed_account)} is not "
+                        f"attributable: no configured {b_name} account identity"
+                    )
+                    verif = None
+                elif observed_account and observed_account != str(configured_account).strip():
+                    attribution_note = (
+                        f"Latest DemoOnlyGuard evidence belongs to account "
+                        f"{_mask(observed_account)}, not the configured {b_name} account "
+                        f"{_mask(str(configured_account))}"
+                    )
+                    verif = None
+            demo_guard_status = verif["status"] if verif else "UNVERIFIED"
+            demo_guard_verified_at = verif["verified_at"] if verif else None
+            is_configured, is_available, error_message = self._broker_configuration_audit(b_key)
+            if is_active:
+                can_switch = False
+                item_blocked_reason: str | None = None
+            elif switch_blocked_reason is not None:
+                can_switch = False
+                item_blocked_reason = switch_blocked_reason
+            elif not is_available:
+                can_switch = False
+                item_blocked_reason = error_message
+            else:
+                can_switch = True
+                item_blocked_reason = None
+
+            # Server & account resolution from settings and evidence
+            acc_id: str | None = None
+            server: str | None = None
+            currency: str | None = None
+            trade_mode: str | None = None
+
+            if b_key == "mt5":
+                server = getattr(settings, "mt5_server", None)
+                acc_id = verif["account_id"] if verif else getattr(settings, "mt5_login", None)
+                trade_mode = "demo" if (verif and verif.get("observed_value") == 0) else "demo"
+            elif b_key == "weltrade":
+                server = settings.effective_weltrade_server
+                acc_id = (
+                    verif["account_id"]
+                    if verif
+                    else (
+                        None
+                        if settings.effective_weltrade_login is None
+                        else str(settings.effective_weltrade_login)
+                    )
+                )
+                trade_mode = "demo" if (verif and verif.get("observed_value") == 0) else "demo"
+            elif b_key == "deriv":
+                server = getattr(settings, "deriv_server", None)
+                acc_id = verif["account_id"] if verif else getattr(settings, "deriv_options_account_id", None)
+                trade_mode = "demo" if (verif and verif.get("observed_value") == 1) else "demo"
+            elif b_key == "simulation":
+                server = "in-memory"
+                acc_id = "SIMULATED"
+                trade_mode = "demo"
+                demo_guard_status = "PASSED"
+
+            connected = False
+            if is_active:
+                connected = is_fresh or (b_key == "simulation")
+
+            masked = _mask(acc_id)
+            item_dto = BrokerItemStatusDTO(
+                broker=b_key,
+                name=b_name,
+                is_active=is_active,
+                connected=connected,
+                is_configured=is_configured,
+                is_available=is_available,
+                error_message=error_message,
+                can_switch=can_switch,
+                switch_blocked_reason=item_blocked_reason,
+                demo_guard_status=demo_guard_status,
+                demo_guard_verified_at=demo_guard_verified_at,
+                account_id_masked=masked,
+                account_server=server,
+                account_currency=currency,
+                account_trade_mode=trade_mode,
+                environment=active_env if is_active else None,
+                notes=attribution_note,
+            )
+            broker_items.append(item_dto)
+
+            if is_active:
+                active_identity_dto = ActiveBrokerIdentityDTO(
+                    broker=b_key,
+                    account_id_masked=masked,
+                    server=server,
+                    trade_mode=(trade_mode or "DEMO").upper(),
+                    currency=currency,
+                    verified_at=demo_guard_verified_at,
+                    demo_guard_passed=(demo_guard_status == "PASSED"),
+                )
+
+        active_item = next((i for i in broker_items if i.is_active), None)
+
+        return BrokerStatusResponse(
+            brokers=broker_items,
+            active_broker=active_broker,
+            active_broker_identity=active_identity_dto,
+            emergency_stop_state=emerg_stop,
+            execution_authorization=exec_auth,
+            observed_at=observed_at,
+            observation_state=obs_state,
+            can_switch=switch_blocked_reason is None,
+            switch_blocked_reason=switch_blocked_reason,
+            unresolved_intent_count=unresolved_count if unresolved_count is not None else -1,
+            broker=active_broker,
+            environment=active_env,
+            connected=active_item.connected if active_item else False,
+            last_verified_at=active_item.demo_guard_verified_at if active_item else None,
+            identity_state=active_item.demo_guard_status if active_item else "NOT_APPLICABLE",
+            account_id_masked=active_item.account_id_masked if active_item else None,
+            account_server=active_item.account_server if active_item else None,
+            account_currency=active_item.account_currency if active_item else None,
+            account_trade_mode=active_item.account_trade_mode if active_item else None,
+        )
+
+    def _unresolved_intent_summary(self) -> tuple[int | None, str | None]:
+        """Return (unresolved_count, blocked_reason) from the durable intent store.
+
+        A missing store counts as zero unresolved intents; an unreadable store
+        fails closed and blocks broker switching.
+        """
+        path = Path(settings.intent_store_path)
+        if not path.is_file():
+            return 0, None
+        try:
+            store = SQLiteIntentRecordStore(path, initialize=False)
+            unresolved = store.list_unresolved()
+        except Exception:
+            return None, (
+                "Durable intent store is unreadable; broker switching is blocked "
+                "until execution recovery state can be verified"
+            )
+        if unresolved:
+            return len(unresolved), (
+                f"{len(unresolved)} unresolved durable execution intent(s) "
+                "(PENDING/UNKNOWN) must be resolved before switching brokers"
+            )
+        return 0, None
+
+    def _broker_configuration_audit(self, broker: str) -> tuple[bool, bool, str | None]:
+        """Return (is_configured, is_available, error_message) for a canonical broker.
+
+        Mirrors the configuration preconditions enforced by broker.factory.get_gateway
+        without constructing or connecting any gateway.
+        """
+        if broker == "simulation":
+            return True, True, None
+        if broker == "deriv":
+            missing = []
+            if not settings.deriv_api_token:
+                missing.append("JQE_DERIV_API_TOKEN")
+            if not settings.deriv_options_account_id:
+                missing.append("JQE_DERIV_OPTIONS_ACCOUNT_ID")
+            if settings.deriv_expected_environment != "demo":
+                return (
+                    not missing,
+                    False,
+                    "JQE_DERIV_EXPECTED_ENVIRONMENT=demo is required for Deriv demo access",
+                )
+            if missing:
+                return False, False, f"Missing required Deriv configuration: {', '.join(missing)}"
+            return True, True, None
+        if broker == "mt5":
+            if (
+                settings.mt5_expected_environment is not None
+                and settings.mt5_expected_environment != "demo"
+            ):
+                return True, False, (
+                    "Live/real MT5 execution is prohibited; JQE_MT5_EXPECTED_ENVIRONMENT must be 'demo'"
+                )
+            return True, True, None
+        if broker == "weltrade":
+            missing = []
+            if not settings.weltrade_terminal_path:
+                missing.append("JQE_WELTRADE_TERMINAL_PATH")
+            if not settings.effective_weltrade_login:
+                missing.append("JQE_WELTRADE_DEMO_LOGIN")
+            if not settings.effective_weltrade_server:
+                missing.append("JQE_WELTRADE_DEMO_SERVER")
+            if missing:
+                return False, False, (
+                    f"Missing required Weltrade configuration: {', '.join(missing)}"
+                )
+            return True, True, None
+        return False, False, f"Unsupported broker: {broker}"
+
+    def select_broker(self, broker: str, reason: str = "") -> SelectBrokerResponse:
+        """Validate and persist the operator broker selection.
+
+        Never falls back to simulation: an unavailable real broker is rejected
+        with BrokerUnavailableError and nothing is persisted.
+        """
+        canonical = normalize_broker_name(broker)
+        _count, blocked_reason = self._unresolved_intent_summary()
+        if blocked_reason is not None:
+            raise BrokerSwitchConflictError(blocked_reason)
+        _configured, available, error_message = self._broker_configuration_audit(canonical)
+        if not available:
+            raise BrokerUnavailableError(
+                error_message or f"Broker '{canonical}' is not available"
+            )
+        store = BrokerSelectionStore(settings.broker_selection_store_path)
+        store.set_selected_broker(canonical, reason=reason)
+        return SelectBrokerResponse(
+            selected_broker=canonical,
+            persisted=True,
+            status=self.get_broker_status(),
+        )
+
+    def get_watchlist_cap_usage(
+        self, account_scope: str = "default"
+    ) -> WatchlistCapUsageResponse:
+        """Query DailyInstrumentTradeGuard for each watchlisted instrument.
+
+        Uses the exact same guard and account_scope resolution logic as DigestAssembler
+        in monitoring/observation_daemon.py, ensuring dashboard and digest numbers agree.
+        """
+        store = WatchlistStore(settings.watchlist_store_path)
+        items = store.get_items()
+        guard = DailyInstrumentTradeGuard(
+            settings.daily_instrument_trade_store_path,
+            limit=settings.max_daily_trades_per_instrument,
+        )
+        dtos: list[WatchlistCapUsageDTO] = []
+        for item in items:
+            usage = guard.usage(account_scope, item.symbol)
+            dtos.append(
+                WatchlistCapUsageDTO(
+                    symbol=item.symbol,
+                    timeframe=item.timeframe,
+                    scope=item.scope,
+                    daily_count=usage.count,
+                    daily_limit=usage.limit,
+                    daily_remaining=max(0, usage.limit - usage.count),
+                    utc_date=usage.utc_date,
+                    reset_at=usage.reset_at.isoformat(),
+                    available=usage.count < usage.limit,
+                )
+            )
+        return WatchlistCapUsageResponse(
+            items=dtos,
+            observed_at=utc_now().isoformat(),
         )

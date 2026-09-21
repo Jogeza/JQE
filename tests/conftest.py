@@ -46,6 +46,21 @@ _install_mt5_stub_if_needed()
 
 
 @pytest.fixture(autouse=True)
+def _isolated_broker_selection_store(tmp_path, monkeypatch):
+    """Isolate the durable broker selection so tests never touch the real state/ store.
+
+    Fresh ``Settings`` instances pick up the env override; the imported global
+    singleton is patched directly because it was built before the fixture ran.
+    """
+    store_path = tmp_path / "broker_selection.sqlite3"
+    monkeypatch.setenv("JQE_BROKER_SELECTION_STORE_PATH", str(store_path))
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "broker_selection_store_path", store_path)
+    yield store_path
+
+
+@pytest.fixture(autouse=True)
 def _fresh_mt5_session_authority(monkeypatch, request):
     """Each test has a fresh process authority; within-test ownership is real."""
     from core.mt5_session import mt5_session

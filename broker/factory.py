@@ -41,11 +41,12 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             (e.g. a Deriv API token) is missing.
     """
     settings = settings or default_settings
+    effective_broker = getattr(settings, "effective_broker", settings.broker)
 
-    if settings.broker == "simulation":
+    if effective_broker == "simulation":
         return SimulationGateway(starting_balance=settings.account_balance)
 
-    if settings.broker in ("deriv", "deriv_demo"):
+    if effective_broker in ("deriv", "deriv_demo"):
         if not settings.deriv_api_token:
             raise ConfigurationError("JQE_DERIV_API_TOKEN is required when JQE_BROKER=deriv")
         if settings.deriv_expected_environment != "demo":
@@ -73,7 +74,7 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             auth_session=auth_session,
         )
 
-    if settings.broker in ("mt5", "mt5_demo"):
+    if effective_broker in ("mt5", "mt5_demo"):
         if settings.mt5_expected_environment is not None and settings.mt5_expected_environment != "demo":
             raise ConfigurationError(
                 "Live/real MT5 execution is prohibited; expected_environment must be 'demo'"
@@ -87,7 +88,7 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             strict_lifecycle=settings.environment == "production",
         )
 
-    if settings.broker in ("weltrade", "weltrade_demo"):
+    if effective_broker in ("weltrade", "weltrade_demo"):
         if not settings.weltrade_terminal_path:
             raise ConfigurationError("JQE_WELTRADE_TERMINAL_PATH is required for Weltrade")
         login = settings.effective_weltrade_login
@@ -104,4 +105,4 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
             strict_lifecycle=True,
         )
 
-    raise ConfigurationError(f"Unknown broker: {settings.broker!r}")
+    raise ConfigurationError(f"Unknown broker: {effective_broker!r}")

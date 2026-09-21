@@ -40,10 +40,14 @@ class Settings(BaseSettings):
         environment: Deployment environment. Affects logging verbosity
             and future environment-gated behavior (e.g. disabling live
             order routing outside of "production").
-        broker: Which :class:`~broker.base.BrokerGateway` implementation
-            :func:`broker.factory.get_gateway` constructs. Defaults to
-            ``"simulation"`` so the platform runs out of the box with
-            no credentials or live broker connection required.
+        broker: Configured :class:`~broker.base.BrokerGateway` selection
+            used by :func:`broker.factory.get_gateway` when no persisted
+            operator selection exists. Defaults to ``"mt5"``; the
+            persisted store at ``broker_selection_store_path`` is
+            authoritative at runtime (see ``effective_broker``).
+            ``"simulation"`` is only honored as an explicit
+            development/testing configuration — the platform never
+            silently falls back to it.
         market_data_source: Independent read-only source for dashboard candles.
             Defaults to offline simulation; ``"deriv_public"`` selects the
             unauthenticated public Deriv candle adapter without changing the
@@ -113,9 +117,15 @@ class Settings(BaseSettings):
 
     environment: Environment = "development"
 
-    broker: Literal["simulation", "mt5", "deriv", "weltrade", "mt5_demo", "deriv_demo", "weltrade_demo"] = "simulation"
+    broker: Literal["simulation", "mt5", "deriv", "weltrade", "mt5_demo", "deriv_demo", "weltrade_demo"] = "mt5"
     broker_execution_enabled: bool = False
     market_data_source: Literal["simulation", "deriv_public"] = "simulation"
+
+    @property
+    def effective_broker(self) -> str:
+        """Resolve the authoritative active broker from persistent store or settings."""
+        from data.broker_selection import get_effective_broker
+        return get_effective_broker(self)
 
     mt5_login: int | None = None
     mt5_password: str | None = None
@@ -218,6 +228,7 @@ class Settings(BaseSettings):
         "MAX GainX 1000:H1"
     )
     watchlist_store_path: Path = Path("state/watchlist.sqlite3")
+    broker_selection_store_path: Path = Path("state/broker_selection.sqlite3")
     observation_evidence_path: Path = Path(
         "state/live_paper_operational/observation_daemon.evidence.sqlite3"
     )

@@ -4,7 +4,8 @@ implementation per supported broker.
 The Quant Core should only ever import from here:
 
     >>> from broker import BrokerGateway, get_gateway
-    >>> gateway = get_gateway()  # implementation chosen by config.settings.broker
+    >>> gateway = get_gateway()  # chosen by config.settings.effective_broker
+    ...                          # (persisted operator selection wins, else JQE_BROKER)
 
 Never import a concrete gateway class (``DerivGateway``, ``MT5Gateway``,
 ``SimulationGateway``) or a broker SDK (``MetaTrader5``, ``websockets``)

@@ -376,3 +376,84 @@ class ActiveMarketAnalysisResponse(BaseModel):
     signal: SignalResponse
     setup: MarketSetup
     explanation: AnalystExplanation
+
+
+class BrokerItemStatusDTO(BaseModel):
+    broker: str
+    name: str
+    is_active: bool = False
+    connected: bool = False
+    is_configured: bool = False
+    is_available: bool = False
+    error_message: str | None = None
+    can_switch: bool = False
+    switch_blocked_reason: str | None = None
+    demo_guard_status: str = "UNVERIFIED"
+    demo_guard_verified_at: str | None = None
+    account_id_masked: str | None = None
+    account_server: str | None = None
+    account_currency: str | None = None
+    account_trade_mode: str | None = None
+    environment: str | None = None
+    notes: str | None = None
+
+
+class ActiveBrokerIdentityDTO(BaseModel):
+    broker: str
+    account_id_masked: str | None = None
+    server: str | None = None
+    trade_mode: str = "UNKNOWN"
+    currency: str | None = None
+    verified_at: str | None = None
+    demo_guard_passed: bool = False
+
+
+class BrokerStatusResponse(BaseModel):
+    brokers: list[BrokerItemStatusDTO] = Field(default_factory=list)
+    active_broker: str
+    active_broker_identity: ActiveBrokerIdentityDTO | None = None
+    emergency_stop_state: str = "UNKNOWN"
+    execution_authorization: str = "NOT_EVALUATED"
+    observed_at: str | None = None
+    observation_state: str = "NOT_OBSERVED"
+    can_switch: bool = False
+    switch_blocked_reason: str | None = None
+    unresolved_intent_count: int = 0
+    # Flat top-level convenience fields
+    broker: str
+    environment: str
+    connected: bool = False
+    last_verified_at: str | None = None
+    identity_state: str = "NOT_APPLICABLE"
+    account_id_masked: str | None = None
+    account_server: str | None = None
+    account_currency: str | None = None
+    account_trade_mode: str | None = None
+
+
+class SelectBrokerRequest(BaseModel):
+    broker: str = Field(min_length=1)
+    reason: str = ""
+
+
+class SelectBrokerResponse(BaseModel):
+    selected_broker: str
+    persisted: bool = True
+    status: BrokerStatusResponse
+
+
+class WatchlistCapUsageDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    scope: str
+    daily_count: int
+    daily_limit: int
+    daily_remaining: int
+    utc_date: str
+    reset_at: str
+    available: bool
+
+
+class WatchlistCapUsageResponse(BaseModel):
+    items: list[WatchlistCapUsageDTO] = Field(default_factory=list)
+    observed_at: str

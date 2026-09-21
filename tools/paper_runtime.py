@@ -168,7 +168,7 @@ async def _production_decision(observations: list[ClosedMarketObservation]) -> P
 
 
 async def run(*, once: bool) -> int:
-    if settings.broker != "simulation":
+    if settings.effective_broker != "simulation":
         raise RuntimeError("paper runtime forbids broker execution configuration")
     runtime = ContinuousPaperRuntime(
         observation_source=_source, decision_builder=_production_decision,

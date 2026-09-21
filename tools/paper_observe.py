@@ -37,7 +37,7 @@ def _git_commit() -> str:
 async def observe(max_cycles: int) -> dict:
     if max_cycles <= 0:
         raise ValueError("max cycles must be positive")
-    if settings.broker != "simulation":
+    if settings.effective_broker != "simulation":
         raise RuntimeError("paper observation forbids broker execution configuration")
     all_observations = _offline_observations(500 + max_cycles)
     warmup = min(500, len(all_observations))

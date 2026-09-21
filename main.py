@@ -8,9 +8,9 @@ Runs one full JQE cycle against the configured broker:
 
 The broker is fully interchangeable — this module depends only on
 :class:`broker.base.BrokerGateway`, selected at runtime by
-``config.settings.broker`` (``simulation`` by default, so this runs
-out of the box with no credentials). See docs/architecture.md, "Broker
-layer".
+``config.settings.effective_broker`` (the persisted operator selection
+wins; otherwise the configured ``JQE_BROKER``, defaulting to ``mt5``).
+See docs/architecture.md, "Broker layer".
 
 Run directly to execute a single cycle:
 
@@ -153,15 +153,16 @@ async def run() -> None:
         core.exceptions.MarketDataError: If market data cannot be
             retrieved or fails validation.
     """
+    active_broker = settings.effective_broker
     logger.info(
-        "JQE engine online (environment={}, broker={})", settings.environment, settings.broker
+        "JQE engine online (environment={}, broker={})", settings.environment, active_broker
     )
     notification_events = JQENotificationEvents(notification_service_from_settings(settings))
 
-    if settings.broker not in ("simulation", "deriv", "deriv_demo", "mt5", "mt5_demo"):
-        raise ConfigurationError(f"Unsupported broker: {settings.broker}")
+    if active_broker not in ("simulation", "deriv", "mt5", "weltrade"):
+        raise ConfigurationError(f"Unsupported broker: {active_broker}")
     if (
-        settings.broker in ("deriv", "deriv_demo")
+        active_broker == "deriv"
         and not settings.broker_execution_enabled
     ):
         raise ConfigurationError("Application execution is authorized for simulation only")
@@ -196,7 +197,7 @@ async def run() -> None:
         safety_store.publish_risk(
             RiskAuthorizationSnapshot(
                 observed_at=utc_now(),
-                broker=settings.broker,
+                broker=active_broker,
                 environment=settings.environment,
                 account_id=None if account is None else account.account_id,
                 evaluation_state=evaluation_state,
@@ -241,7 +242,7 @@ async def run() -> None:
                 observed_at=utc_now(),
                 emergency_stop_state=settings.emergency_stop,
                 execution_mode=ExecutionMode.DURABLE,
-                broker=settings.broker,
+                broker=active_broker,
                 environment=settings.environment,
                 durable_executor_enabled=True,
                 daily_state_authority=daily_authority,
@@ -264,7 +265,7 @@ async def run() -> None:
 
     async with gateway:
         composition = await build_execution_composition(
-            gateway, broker=settings.broker, active_settings=settings
+            gateway, broker=active_broker, active_settings=settings
         )
         account_identity = composition.identity
         records = composition.records
@@ -272,7 +273,7 @@ async def run() -> None:
         recovery = await StartupRecoveryService(
             records,
             reconciler,
-            broker=settings.broker,
+            broker=active_broker,
             account_id=account_identity.account_id,
         ).recover()
         unresolved_records = records.list_unresolved()
@@ -451,7 +452,7 @@ async def run() -> None:
         side = _SIDE_BY_SIGNAL[plan.signal]
         sizing = await authorize_broker_execution_quantity(
             gateway,
-            broker=settings.broker,
+            broker=active_broker,
             symbol=plan.symbol,
             side=side,
             balance=account.balance,
@@ -511,13 +512,13 @@ async def run() -> None:
                 frozenset({idempotency_key}) if existing_record is not None else frozenset()
             ),
             execution_enabled=(
-                settings.broker == "simulation" or settings.broker_execution_enabled
+                active_broker == "simulation" or settings.broker_execution_enabled
             ),
             dry_run=False,
-            broker=settings.broker,
+            broker=active_broker,
             environment=execution_environment,
             account_id=account.account_id,
-            approved_brokers=frozenset({settings.broker}),
+            approved_brokers=frozenset({active_broker}),
             approved_environments=frozenset({execution_environment}),
             approved_accounts=frozenset({approved_account}),
             approved_symbols=approved_symbols,
@@ -538,7 +539,7 @@ async def run() -> None:
         )
         execution_gateway = (
             ObservedSimulationExecutionGateway(gateway, market_observation)
-            if settings.broker == "simulation"
+            if active_broker == "simulation"
             else gateway
         )
         executor = AsyncTradeExecutor(
