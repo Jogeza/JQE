@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dto import (
     CandlesResponse,
     ExecutionStateResponse,
+    LiveExecutionResponse,
     ExecutionSafetyResponse,
     RecoveryDiagnosticsResponse,
     MarketSummaryResponse,
@@ -163,6 +164,20 @@ async def get_execution_state(
     """Returns open positions and recent trade history from the broker."""
     try:
         return await service.get_execution_state()
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/execution/cycle", response_model=LiveExecutionResponse)
+async def execute_live_cycle(
+    confirmed: bool = False,
+    service: ApplicationService = Depends(get_service),
+) -> LiveExecutionResponse:
+    """Run one confirmed cycle through the guarded DEMO execution path."""
+    try:
+        return await service.execute_live_cycle(confirmed=confirmed)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

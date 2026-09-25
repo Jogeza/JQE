@@ -8,6 +8,7 @@ Encapsulates all domain coordination so the API router remains a thin HTTP layer
 from __future__ import annotations
 
 import datetime
+import asyncio
 from decimal import Decimal
 from dataclasses import asdict
 from hashlib import sha256
@@ -22,6 +23,7 @@ from api.dto import (
     CandlesResponse,
     ConfidenceBreakdownDTO,
     ExecutionStateResponse,
+    LiveExecutionResponse,
     ExecutionSafetyResponse,
     RecoveryDiagnosticsResponse,
     RecoveryIntentDiagnosticDTO,
@@ -76,7 +78,7 @@ from execution.simulation_daily_guard import (
 )
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.policy import ExecutionContext, ExecutionIntent, ExecutionPolicy, PositionSnapshot
-from risk.risk_engine import RiskEngine
+from risk.risk_engine import MIN_CONFIDENCE, RiskEngine
 from strategy.strategy_engine import StrategyEngine
 from strategy.pipeline import generate_trading_signal
 from data.historical import CandleDataSource, HistoricalDataService
@@ -91,10 +93,17 @@ from data.active_market import (
 from intelligence.analyst import explain_setup
 from execution.market_setup import MarketLevelDTO, resolve_historical_win_rate
 from monitoring.offline_analysis import run_offline_analysis as build_offline_analysis
+from research.current_research_status import current_research_status
 
 _TIMEFRAME_MAP: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _DERIV_PUBLIC_SYMBOLS = {"XAUUSD": "frxXAUUSD"}
 _OFFLINE_SIMULATION_SCOPE = "simulation:JQE-DASHBOARD-PAPER"
+_MT5_GATEWAY_LOCK = asyncio.Lock()
+
+
+def _uses_mt5_session() -> bool:
+    """Whether API broker work must serialize the process-global MT5 terminal."""
+    return settings.effective_broker in {"mt5", "mt5_demo", "weltrade", "weltrade_demo"}
 
 
 class BrokerSwitchConflictError(RuntimeError):
@@ -170,11 +179,15 @@ class ApplicationService:
         if self._market_data_source is not None:
             if isinstance(self._market_data_source, DerivPublicMarketData):
                 return self._market_data_source, "DERIV_PUBLIC"
+            if isinstance(self._market_data_source, SimulationGateway):
+                return self._market_data_source, "SIMULATION"
             return self._market_data_source, "UNAVAILABLE"
         if settings.market_data_source == "deriv_public":
             return DerivPublicMarketData(
                 app_id=settings.deriv_app_id, endpoint=settings.deriv_public_endpoint
             ), "DERIV_PUBLIC"
+        if settings.market_data_source == "broker":
+            return self._get_gateway(), "BROKER"
         if isinstance(self._gateway, SimulationGateway):
             return self._gateway, "SIMULATION"
         return SimulationGateway(starting_balance=settings.account_balance), "SIMULATION"
@@ -184,6 +197,16 @@ class ApplicationService:
         source, provenance = self._get_market_data_source()
         connect = getattr(source, "connect", None)
         disconnect = getattr(source, "disconnect", None)
+        if _uses_mt5_session():
+            async with _MT5_GATEWAY_LOCK:
+                if connect is not None:
+                    await connect()
+                try:
+                    yield source, provenance
+                finally:
+                    if disconnect is not None:
+                        await disconnect()
+            return
         if connect is not None:
             await connect()
         try:
@@ -191,6 +214,35 @@ class ApplicationService:
         finally:
             if disconnect is not None:
                 await disconnect()
+
+    @asynccontextmanager
+    async def _connected_source(self, source: Any):
+        """Connect a broker source while serializing MT5's process-global SDK."""
+        connect = getattr(source, "connect", None)
+        disconnect = getattr(source, "disconnect", None)
+        if _uses_mt5_session():
+            async with _MT5_GATEWAY_LOCK:
+                if connect is not None:
+                    await connect()
+                try:
+                    yield source
+                finally:
+                    if disconnect is not None:
+                        await disconnect()
+            return
+        if connect is not None:
+            await connect()
+        try:
+            yield source
+        finally:
+            if disconnect is not None:
+                await disconnect()
+
+    @asynccontextmanager
+    async def _gateway_session(self):
+        """Yield a connected gateway with the correct broker session guard."""
+        async with self._connected_source(self._get_gateway()) as gateway:
+            yield gateway
 
     @staticmethod
     def _provider_symbol(symbol: str, provenance: str) -> str:
@@ -241,27 +293,19 @@ class ApplicationService:
         # old/future test fixtures look authoritative, so simulation telemetry
         # deliberately bypasses the real-provider cache fallback.
         if configured == "SIMULATION":
-            connect = getattr(source, "connect", None)
-            disconnect = getattr(source, "disconnect", None)
-            if connect is not None:
-                await connect()
-            try:
+            async with self._connected_source(source):
                 candles = await source.get_candles(symbol, timeframe, count)
-            finally:
-                if disconnect is not None:
-                    await disconnect()
             return candles, "SIMULATION", "CURRENT", "REFRESHED"
 
-        provider = "deriv" if configured == "DERIV_PUBLIC" else "simulation"
+        provider = {
+            "DERIV_PUBLIC": "deriv",
+            "BROKER": "broker",
+        }.get(configured, "simulation")
         provider_symbol = self._provider_symbol(symbol, configured)
         historical_service = HistoricalDataService(gateway=source, store=self._candle_store)
 
         try:
-            connect = getattr(source, "connect", None)
-            disconnect = getattr(source, "disconnect", None)
-            if connect is not None:
-                await connect()
-            try:
+            async with self._connected_source(source):
                 candles, downloaded = await historical_service.refresh_latest(
                     symbol=symbol,
                     provider_symbol=provider_symbol,
@@ -269,9 +313,6 @@ class ApplicationService:
                     timeframe=timeframe,
                     count=count,
                 )
-            finally:
-                if disconnect is not None:
-                    await disconnect()
 
             if candles:
                 provenance = self._provenance(configured, candles)
@@ -984,6 +1025,9 @@ class ApplicationService:
             ),
             broker_execution_enabled=settings.broker_execution_enabled,
             assessment=setup,
+            latest_paper_outcome=latest_outcome,
+            open_paper_positions=len(store.open_positions()),
+            research_status=current_research_status(),
         )
 
     async def run_offline_analysis(self, symbol: str, timeframe_str: str) -> MarketSetup:
@@ -1275,8 +1319,7 @@ class ApplicationService:
 
     async def get_execution_state(self) -> ExecutionStateResponse:
         """Retrieves open positions and recent executed trades from the broker."""
-        gateway = self._get_gateway()
-        async with gateway:
+        async with self._gateway_session() as gateway:
             is_conn = gateway.is_connected
             positions = await gateway.get_positions()
             history = await gateway.get_trade_history()
@@ -1324,10 +1367,44 @@ class ApplicationService:
             currency=account.currency,
         )
 
+    async def execute_live_cycle(self, *, confirmed: bool) -> LiveExecutionResponse:
+        """Run one explicitly confirmed cycle through the canonical live path.
+
+        This method deliberately delegates to ``main.run`` instead of creating
+        an API-specific gateway or submission path. The engine remains fail
+        closed: broker execution must be explicitly enabled, the configured
+        gateway must prove a DEMO account, and the normal risk/policy/recovery
+        checks must all pass.
+        """
+        if confirmed is not True:
+            raise ValueError("Explicit confirmation is required before a demo order cycle")
+        if settings.effective_broker == "simulation":
+            raise ValueError("Simulation is analysis-only; select a verified demo broker first")
+        if settings.broker_execution_enabled is not True:
+            raise ValueError(
+                "Broker execution is disabled; set JQE_BROKER_EXECUTION_ENABLED=true to arm demo execution"
+            )
+
+        from main import run
+
+        if _uses_mt5_session():
+            async with _MT5_GATEWAY_LOCK:
+                result = await run()
+        else:
+            result = await run()
+        return LiveExecutionResponse(
+            status=result.status,
+            broker=result.broker,
+            symbol=result.symbol,
+            side=result.side,
+            order_id=result.order_id,
+            decision_code=result.decision_code,
+            reason=result.reason,
+        )
+
     async def get_performance_summary(self) -> PerformanceSummaryResponse:
         """Computes statistical performance metrics over closed trade history."""
-        gateway = self._get_gateway()
-        async with gateway:
+        async with self._gateway_session() as gateway:
             history = await gateway.get_trade_history()
             account = await gateway.get_account_info()
 
@@ -1379,8 +1456,7 @@ class ApplicationService:
 
     async def get_system_status(self) -> SystemStatusResponse:
         """Retrieves system status, broker name, and active settings."""
-        gateway = self._get_gateway()
-        async with gateway:
+        async with self._gateway_session() as gateway:
             is_conn = gateway.is_connected
             account = await gateway.get_account_info()
             identity = getattr(gateway, "account_identity", None)
@@ -1398,7 +1474,7 @@ class ApplicationService:
             broker_connected=is_conn,
             default_symbol=settings.default_symbol,
             default_timeframe=settings.default_timeframe,
-            min_confidence_threshold=settings.min_confidence_threshold,
+            min_confidence_threshold=MIN_CONFIDENCE,
             server_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             status="ONLINE",
             broker_identity_state=(
@@ -1652,6 +1728,7 @@ class ApplicationService:
             account_server=active_item.account_server if active_item else None,
             account_currency=active_item.account_currency if active_item else None,
             account_trade_mode=active_item.account_trade_mode if active_item else None,
+            broker_execution_enabled=settings.broker_execution_enabled,
         )
 
     def _unresolved_intent_summary(self) -> tuple[int | None, str | None]:

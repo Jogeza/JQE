@@ -117,7 +117,7 @@ def _offline_main_market_source(monkeypatch, request):
             ]
 
     @asynccontextmanager
-    async def source_factory(settings):
+    async def source_factory(settings, broker_gateway=None):
         yield Source(), "fixture"
 
     monkeypatch.setattr(main, "resolved_market_source", source_factory)

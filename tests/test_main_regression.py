@@ -24,10 +24,14 @@ def _isolated_execution_state(tmp_path):
         settings.intent_store_path,
         settings.execution_safety_store_path,
         settings.emergency_stop,
+        settings.market_data_source,
+        settings.default_symbol,
     )
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
+    settings.market_data_source = "simulation"
+    settings.default_symbol = "R_75"
     yield
     (
         settings.broker,
@@ -35,6 +39,8 @@ def _isolated_execution_state(tmp_path):
         settings.intent_store_path,
         settings.execution_safety_store_path,
         settings.emergency_stop,
+        settings.market_data_source,
+        settings.default_symbol,
     ) = original
 
 
@@ -81,7 +87,7 @@ class TestMainRegression:
         deterministic_candles = _generate_uptrend_candles(settings.default_candle_count)
 
         @asynccontextmanager
-        async def market_source(_settings):
+        async def market_source(_settings, broker_gateway=None):
             class Source:
                 async def get_candles(self, **_kwargs):
                     return deterministic_candles

@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from research.markets import MarketCatalogueService, adapt_active_symbols
+from broker.types import Timeframe
+from data.watchlist import WatchlistItem
+from research.markets import MarketCatalogueService, adapt_active_symbols, catalogue_from_watchlist
 
 
 def entry(symbol="frxEURUSD", name="EUR/USD", market="forex", submarket="major_pairs", **changes):
@@ -64,3 +66,19 @@ async def test_catalogue_only_calls_loader_and_never_acquires_history():
     async def loader(): calls.append("active_symbols"); return {"active_symbols": [entry()]}
     await MarketCatalogueService(loader).get_catalogue()
     assert calls == ["active_symbols"]
+
+
+def test_research_catalogue_is_projected_from_durable_watchlist_only():
+    catalogue = catalogue_from_watchlist(
+        [
+            WatchlistItem("FX VOL 20", "M1", "now"),
+            WatchlistItem("FX VOL 20", "M5", "now"),
+            WatchlistItem("PAINX 400", "M5", "now"),
+        ],
+        provider="weltrade",
+    )
+    assert [item.display_name for item in catalogue.instruments] == ["FX VOL 20", "PAINX 400"]
+    fx = catalogue.instruments[0]
+    assert fx.provider == "weltrade"
+    assert fx.timeframes == (Timeframe.M1, Timeframe.M5)
+    assert catalogue.source_status == "WATCHLIST"

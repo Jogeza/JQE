@@ -24,6 +24,9 @@ def _market_data(atr: float = 2.0, spread: float = 5.0) -> pd.DataFrame:
 
 
 class TestRiskEngine:
+    def test_live_confidence_threshold_is_pinned_to_75(self) -> None:
+        assert MIN_CONFIDENCE == 75
+
     def test_initialization_defaults(self) -> None:
         engine = RiskEngine()
         assert engine.min_confidence == MIN_CONFIDENCE

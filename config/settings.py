@@ -48,7 +48,9 @@ class Settings(BaseSettings):
             ``"simulation"`` is only honored as an explicit
             development/testing configuration — the platform never
             silently falls back to it.
-        market_data_source: Independent read-only source for dashboard candles.
+        market_data_source: Read-only candle source for dashboard and live
+            execution cycles. ``broker`` uses the verified broker gateway for
+            broker-native instruments.
             Defaults to offline simulation; ``"deriv_public"`` selects the
             unauthenticated public Deriv candle adapter without changing the
             execution broker.
@@ -82,11 +84,6 @@ class Settings(BaseSettings):
             percentage of account balance, before trading halts.
         max_trades_daily: Maximum number of trades permitted in a single
             trading day.
-        min_confidence_threshold: Minimum
-            ``intelligence.confidence_model.ConfidenceBreakdown.total``
-            (0-100) required before a signal is considered trade-ready.
-            Not yet consumed by the live pipeline — see
-            docs/roadmap.md, Phase 5.
         log_level: Minimum severity emitted to all configured log sinks.
         log_dir: Directory where rotating log files are written.
         log_file: File name of the primary application log within
@@ -108,7 +105,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.ai"),
         env_file_encoding="utf-8",
         env_prefix="JQE_",
         case_sensitive=False,
@@ -119,7 +116,7 @@ class Settings(BaseSettings):
 
     broker: Literal["simulation", "mt5", "deriv", "weltrade", "mt5_demo", "deriv_demo", "weltrade_demo"] = "mt5"
     broker_execution_enabled: bool = False
-    market_data_source: Literal["simulation", "deriv_public"] = "simulation"
+    market_data_source: Literal["simulation", "deriv_public", "broker"] = "simulation"
 
     @property
     def effective_broker(self) -> str:
@@ -188,7 +185,6 @@ class Settings(BaseSettings):
     risk_percent: float = Field(default=1.0, gt=0, le=100)
     max_daily_loss: float = Field(default=3.0, gt=0, le=100)
     max_trades_daily: int = Field(default=5, gt=0)
-    min_confidence_threshold: int = Field(default=70, ge=0, le=100)
 
     log_level: LogLevel = "INFO"
     log_dir: Path = Path("logs")
@@ -215,6 +211,7 @@ class Settings(BaseSettings):
     paper_runtime_poll_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
     paper_runtime_max_backoff_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
     paper_runtime_state_path: Path = Path("state/paper_runtime.sqlite3")
+    paper_runtime_intent_store_path: Path = Path("state/paper_runtime_intents.sqlite3")
     paper_diagnostics_path: Path = Path("state/paper_diagnostics.sqlite3")
     dashboard_paper_store_path: Path = Path("state/dashboard_paper.sqlite3")
     dashboard_paper_intent_store_path: Path = Path("state/dashboard_paper_intents.sqlite3")

@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Awaitable, Callable, Iterable
 
 from broker.types import ClosedMarketObservation
+from core.exceptions import BrokerConnectionError, MarketDataError
 from execution.executor import AsyncTradeExecutor, ReconciliationState
 from execution.paper_contract import PaperContractEngine, PaperContractExecutionGateway
 from execution.persistence import SQLiteIntentRecordStore
@@ -50,6 +51,7 @@ class PaperRuntimeHeartbeat:
     shutdown_state: str = "STOPPED"
     paper_execution_enabled: bool = False
     broker_execution_enabled: bool = False
+    market_data_source: str = "UNSPECIFIED"
 
 
 class PaperRuntimeStateStore:
@@ -102,7 +104,11 @@ class PaperRuntimeStateStore:
             row = connection.execute("SELECT payload FROM heartbeat WHERE id=1").fetchone()
         if row is None:
             return PaperRuntimeHeartbeat()
-        return PaperRuntimeHeartbeat(**json.loads(row[0]))
+        # Persisted payloads may outlive the running code version; unknown
+        # fields must not make the projection unreadable.
+        payload = json.loads(row[0])
+        known = {field.name for field in fields(PaperRuntimeHeartbeat)}
+        return PaperRuntimeHeartbeat(**{key: value for key, value in payload.items() if key in known})
 
 
 ObservationSource = Callable[[], Awaitable[list[ClosedMarketObservation]]]
@@ -120,6 +126,7 @@ class ContinuousPaperRuntime:
         engine: PaperContractEngine | None = None,
         notifications: JQENotificationEvents | None = None,
         clock: Callable[[], datetime] | None = None,
+        market_data_source: str = "UNSPECIFIED",
     ) -> None:
         if not enabled or runtime_mode != "paper_continuous":
             raise ValueError("continuous paper runtime requires explicit opt-in")
@@ -140,6 +147,7 @@ class ContinuousPaperRuntime:
             symbols_monitored=tuple(symbols),
             paper_execution_enabled=True,
             broker_execution_enabled=False,
+            market_data_source=market_data_source,
         )
 
     def request_stop(self) -> None:
@@ -209,7 +217,8 @@ class ContinuousPaperRuntime:
                     notification_state=self.events.service.observation.status.value,
                 )
             except Exception as exc:
-                self.heartbeat = replace(self.heartbeat, last_cycle_at=now.isoformat(), last_action="ERROR", last_error=type(exc).__name__)
+                action = "BLOCKED:MARKET_DATA" if isinstance(exc, (MarketDataError, BrokerConnectionError)) else "ERROR"
+                self.heartbeat = replace(self.heartbeat, last_cycle_at=now.isoformat(), last_action=action, last_error=type(exc).__name__)
                 await self.events.paper_event(kind="RUNTIME_ERROR", facts={"Category": type(exc).__name__})
             self.state_store.publish(self.heartbeat)
             return self.heartbeat

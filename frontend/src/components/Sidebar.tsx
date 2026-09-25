@@ -73,7 +73,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'positions', label: 'Positions', icon: Briefcase, group: 'Analysis', badge: openPositionsCount !== undefined && openPositionsCount > 0 ? openPositionsCount : undefined },
     { id: 'trades', label: 'Trades', icon: History, group: 'Analysis' },
     { id: 'strategy', label: 'Strategy', icon: BrainCircuit, group: 'Analysis' },
-    { id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis', badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : 'LOCK' },
+    // Risk Control is always available for inspection. A blocked or stale
+    // risk observation must block execution, not hide the control surface.
+    { id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis', badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : undefined },
     { id: 'performance', label: 'Performance', icon: LineChart, group: 'Analysis' },
     { id: 'backtesting', label: 'Research', icon: PlayCircle, group: 'Analysis' },
     { id: 'system', label: 'System Logs', icon: Terminal, group: 'System' },

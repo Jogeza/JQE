@@ -35,6 +35,7 @@ from research.historical_safety import (
     ExecutionContextKind, HistoricalResearchSafetyContext,
     require_historical_research_context,
 )
+from risk.risk_engine import MIN_CONFIDENCE
 from research.historical_confirmation import HistoricalConfirmationState
 from research.campaign_provenance import (
     CampaignEvidence, CampaignEvidenceStore, build_fingerprint, sha256_file,
@@ -61,7 +62,7 @@ def _effective_config(*, symbol: str, timeframe: Timeframe, max_observations: in
         "history_window_candles": 500, "account_balance": settings.account_balance,
         "risk_percent": settings.risk_percent, "max_daily_loss": settings.max_daily_loss,
         "max_daily_trades": settings.max_trades_daily,
-        "min_confidence_threshold": settings.min_confidence_threshold,
+        "min_confidence_threshold": MIN_CONFIDENCE,
         "max_open_positions": safety.max_open_positions,
         "paper_minimum_stake": str(specification.minimum_stake),
         "paper_maximum_stake": str(specification.maximum_stake),

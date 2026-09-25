@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
   OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse,
-  WatchlistResponse,
+  WatchlistResponse, ExecutionStateResponse,
 } from '../types/api';
 import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
@@ -224,10 +224,10 @@ describe('WorkspacePage', () => {
     expect(facts.textContent).toContain('Demo verifiedYes');
     expect(facts.querySelectorAll(':scope > div')).toHaveLength(7);
   });
-  it('keeps execution status explicitly unavailable', async () => {
-    await render();
-    expect(host.querySelector('[aria-label="Broker and execution status"]')?.textContent).toContain('ExecutionExecution status unavailable');
-    expect(panel('Readiness').textContent).toContain('Execution statusExecution status unavailable');
+  it('renders the connected execution status when supplied', async () => {
+    await render({ execution: resource({ connected: true, open_positions_count: 2 } as ExecutionStateResponse) });
+    expect(host.querySelector('[aria-label="Broker and execution status"]')?.textContent).toContain('Executionconnected · 2 open');
+    expect(panel('Readiness').textContent).toContain('Execution statusConnected · 2 open positions');
   });
   it('does not offer broker switching in Workspace', async () => {
     await render();
@@ -239,10 +239,10 @@ describe('WorkspacePage', () => {
     expect(app).toContain('onSelectBroker={handleSelectBroker}');
     expect(app).toContain("jqeApi.selectBroker(broker, 'dashboard')");
   });
-  it('states that JQE AI is disconnected', async () => {
+  it('shows the backend-reported JQE AI status', async () => {
     await render();
     await act(async () => (host.querySelector('.workspace-ai-launcher') as HTMLButtonElement).click());
-    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Not connected yet');
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('JQE AI · UNAVAILABLE');
     expect(host.querySelector('[role="dialog"] input')).toBeNull();
   });
   it('closes AI dialog with Escape and restores focus', async () => {
@@ -292,6 +292,13 @@ describe('WorkspacePage', () => {
     expect(panel('Watchlist').textContent).toContain('FX Vol 20');
     expect(panel('Watchlist').textContent).toContain('Unexpected Name');
   });
+  it('routes a watchlist selection to the canonical market context', async () => {
+    const onMarketChange = vi.fn();
+    await render({ onMarketChange });
+    await act(async () => (host.querySelector('[aria-label="Analyze Unexpected Name M5"]') as HTMLButtonElement).click());
+    expect(onMarketChange).toHaveBeenCalledWith('Unexpected Name', 'M5');
+    expect(host.querySelector('[aria-label="Analyze FX Vol 20 M1"]')?.getAttribute('aria-current')).toBe('true');
+  });
   it('labels missing row freshness', async () => {
     await render();
     expect(panel('Watchlist').querySelectorAll('li small')).toHaveLength(2);
@@ -309,14 +316,14 @@ describe('WorkspacePage', () => {
     await render({ caps: resource<WatchlistCapUsageResponse>(null) });
     expect(panel('Instrument caps').textContent).toContain('Cap data unavailable');
   });
-  it('shows the unavailable chart and a NO_TRADE overlay without candles', async () => {
+  it('shows an unavailable chart when active analysis has no candles', async () => {
     await render();
     expect(panel('Market chart').dataset.state).toBe('UNAVAILABLE');
-    expect(panel('Market chart').textContent).toContain('A snapshot-only candle source is required.');
+    expect(panel('Market chart').textContent).toContain('Active market analysis is unavailable.');
     expect(host.querySelector('[data-testid="market-chart"]')).toBeNull();
-    expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('NO_TRADE');
+    expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('NO_MARKET_SNAPSHOT');
     expect(panel('Market chart').classList).toContain('workspace-chart-unavailable');
-    expect(panel('Market chart').textContent).toContain('not presented as a broker-qualified Weltrade instrument');
+    expect(panel('Market chart').textContent).toContain('strategy, setup, and candles share one observation.');
     expect(panel('Market chart').textContent).not.toContain('Selected FX Vol 20 / M1');
     const css = readFileSync('src/pages/WorkspacePage.css', 'utf8');
     expect(css).toContain('.workspace-chart-unavailable .workspace-chart-frame { min-height: 96px; }');

@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 
-MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "UNAVAILABLE"]
+MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "BROKER", "UNAVAILABLE"]
 
 
 class SetupEvidenceDTO(BaseModel):
@@ -179,7 +179,7 @@ class PaperExecutionOutcomeDTO(BaseModel):
     outcome_id: str
     setup_id: str
     recorded_at: datetime
-    status: Literal["OPENED", "BLOCKED", "ALREADY_RECORDED", "UNKNOWN"]
+    status: Literal["OPENED", "CLOSED", "BLOCKED", "ALREADY_RECORDED", "UNKNOWN"]
     setup_state: Literal["READY", "BLOCKED", "EXPIRED", "EXECUTED"]
     order_id: str | None = None
     execution_price: Decimal | None = None

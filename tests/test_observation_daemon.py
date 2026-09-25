@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import inspect
+import json
+import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -19,6 +21,7 @@ from monitoring.observation_daemon import (
     parse_watch_list,
 )
 from monitoring.observation_window import read_observation_cycles, read_observation_health
+from data.market_observation import closed_observations_from_candles, provider_symbol_for
 
 
 def _candles(close_at: datetime, count: int = 501) -> list[Candle]:
@@ -89,7 +92,43 @@ async def test_one_signal_per_close_dedupes_and_never_uses_fake_mutator(tmp_path
     assert len(cycles) == 1
     assert cycles[0].symbol == "R_75"
     assert cycles[0].data_freshness == "fresh"
+    with sqlite3.connect(config.evidence_path) as connection:
+        payload = json.loads(connection.execute("SELECT payload FROM evidence").fetchone()[0])
+    assert payload["facts"]["trade_plan"]["schema_version"] == "trade-plan-snapshot-v1"
     telemetry.submit_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_m1_catch_up_processes_every_closed_bar_since_cursor(tmp_path, monkeypatch) -> None:
+    start = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+    candles = [Candle(
+        time=start + timedelta(minutes=index), open=100 + index,
+        high=102 + index, low=99 + index, close=101 + index,
+        volume=10, source="mt5_demo",
+    ) for index in range(6)]
+    now = start + timedelta(minutes=7, seconds=5)
+    telemetry = FakeTelemetry(candles)
+    pair = WatchPair("R_75", Timeframe.M1)
+    config = DaemonConfig((pair,), tmp_path / "m1-catch-up.sqlite3", 5, 30, 2)
+    daemon = ObservationDaemon(config, lambda: telemetry)
+    observations = closed_observations_from_candles(
+        candles=candles, canonical_symbol=pair.symbol,
+        provider_symbol=provider_symbol_for(canonical_symbol=pair.symbol, source="mt5"),
+        source="mt5_demo", timeframe=pair.timeframe, observed_at=now,
+    )
+    daemon.store.append_signal(pair, observations[0], {"seed": True})
+    monkeypatch.setattr(
+        observation_daemon, "_evaluate",
+        lambda observations, symbol: ({"signal": "NO_TRADE", "confidence": 71}, "RANGE"),
+    )
+    assert await daemon.observe_pair(telemetry, pair, now)
+    with sqlite3.connect(config.evidence_path) as connection:
+        rows = connection.execute("SELECT payload FROM evidence ORDER BY rowid").fetchall()
+    payloads = [json.loads(row[0]) for row in rows]
+    signals = [item for item in payloads if item["event_type"] == "SIGNAL"]
+    assert len(signals) == len(observations)
+    assert all(item["facts"].get("catch_up") is True for item in signals[1:])
+    assert daemon.store.last_close(pair.scope) == observations[-1].closed_at
 
 
 def test_stale_heartbeat_is_reported_unhealthy(tmp_path) -> None:

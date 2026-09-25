@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 
+from broker.base import BrokerGateway
 from broker.deriv_public_data import DerivPublicMarketData
 from broker.simulation_gateway import SimulationGateway
 from broker.types import Candle, ClosedMarketObservation, Timeframe, TIMEFRAME_SECONDS
@@ -24,13 +25,28 @@ def provider_symbol_for(*, canonical_symbol: str, source: str) -> str:
 
 
 @asynccontextmanager
-async def resolved_market_source(settings: Settings) -> AsyncIterator[tuple[CandleDataSource, str]]:
+async def resolved_market_source(
+    settings: Settings,
+    *,
+    broker_gateway: BrokerGateway | None = None,
+) -> AsyncIterator[tuple[CandleDataSource, str]]:
     """Yield a source independent of the execution gateway.
 
     ``deriv_public`` is unauthenticated and exposes no execution methods.
     The simulation fallback is a separate source instance, never the gateway
     that can receive an order in the same cycle.
+
+    ``broker`` is the explicit exception for broker-native instruments such as
+    Weltrade SyntX.  The caller supplies the already-connected gateway and
+    this context only consumes its read-only ``get_candles`` capability; it
+    does not manage the gateway lifecycle or submit orders.
     """
+    if settings.market_data_source == "broker":
+        if broker_gateway is None:
+            raise MarketDataError("Broker market data requires the active broker gateway")
+        yield broker_gateway, "broker"
+        return
+
     if settings.market_data_source == "deriv_public":
         source: CandleDataSource = DerivPublicMarketData(
             app_id=settings.deriv_app_id, endpoint=settings.deriv_public_endpoint

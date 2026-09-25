@@ -195,21 +195,21 @@ def test_get_watchlist_cap_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     # Consume some trades using DailyInstrumentTradeGuard
     guard = DailyInstrumentTradeGuard(fake_guard_path, limit=10)
-    guard.consume("default", "R_75")
-    guard.consume("default", "R_75")
-    guard.consume("default", "R_75")
+    guard.consume("default", "FX VOL 20")
+    guard.consume("default", "FX VOL 20")
+    guard.consume("default", "FX VOL 20")
 
     service = ApplicationService()
     resp = service.get_watchlist_cap_usage(account_scope="default")
 
     assert len(resp.items) >= 2
-    r75 = next(i for i in resp.items if i.symbol == "R_75")
-    assert r75.daily_count == 3
-    assert r75.daily_limit == 10
-    assert r75.daily_remaining == 7
-    assert r75.available is True
+    fx_vol_20 = next(i for i in resp.items if i.symbol == "FX VOL 20")
+    assert fx_vol_20.daily_count == 3
+    assert fx_vol_20.daily_limit == 10
+    assert fx_vol_20.daily_remaining == 7
+    assert fx_vol_20.available is True
 
-    fx = next(i for i in resp.items if i.symbol == "FX VOL 20")
+    fx = next(i for i in resp.items if i.symbol == "SFX VOL 20")
     assert fx.daily_count == 0
     assert fx.daily_limit == 10
     assert fx.daily_remaining == 10
@@ -231,4 +231,3 @@ def test_api_endpoints_routes() -> None:
     # Test route_get_watchlist_cap_usage handler
     resp_w = route_get_watchlist_cap_usage(account_scope="default", service=service)
     assert isinstance(resp_w.items, list)
-

@@ -28,6 +28,8 @@ from notifications.events import JQENotificationEvents
 from notifications.factory import notification_service_from_settings
 from notifications.telegram import InstrumentDigestSnapshot
 from research.campaign_provenance import CampaignEvidence, canonical_json
+from research.trade_plan_snapshot import build_trade_plan_snapshot
+from monitoring.forward_shadow_sampler import ForwardShadowSamplerStore
 from strategy.pipeline import generate_trading_signal
 
 if TYPE_CHECKING:
@@ -217,7 +219,9 @@ def _evaluate(observations: list[ClosedMarketObservation], symbol: str) -> tuple
         raise MarketDataError("Observation market data failed validation", symbol=symbol)
     frame = calculate_indicators(frame)
     regime = detect_regime(frame)
-    return generate_trading_signal(frame, symbol, regime=regime), str(regime)
+    return generate_trading_signal(
+        frame, symbol, regime=regime, include_details=True
+    ), str(regime)
 
 
 # Quality labels from SignalScorer that indicate a tradeable signal
@@ -302,6 +306,7 @@ class ObservationDaemon:
         watchlist_store: WatchlistStore | None = None,
         notification_events: JQENotificationEvents | None = None,
         digest_assembler: DigestAssembler | None = None,
+        forward_sampler: ForwardShadowSamplerStore | None = None,
     ) -> None:
         self.config = config
         self.telemetry_factory = telemetry_factory
@@ -313,6 +318,9 @@ class ObservationDaemon:
         self._notification_events = notification_events
         self._digest_assembler = digest_assembler or (
             DigestAssembler(self.store) if notification_events is not None else None
+        )
+        self.forward_sampler = forward_sampler or ForwardShadowSamplerStore(
+            config.evidence_path.parent / "forward_shadow.sqlite3"
         )
 
     def get_active_watches(self) -> tuple[WatchPair, ...]:
@@ -334,37 +342,69 @@ class ObservationDaemon:
         if prior and latest.closed_at <= prior:
             return False
         interval = TIMEFRAME_SECONDS[pair.timeframe]
-        missed = max(0, int((latest.closed_at - prior).total_seconds() // interval) - 1) if prior else 0
-        if missed:
-            logger.warning("OBSERVATION_GAP scope={} missed_candles={} action=SKIP_TO_LATEST", pair.scope, missed)
-        signal, regime = _evaluate(observations[-500:], pair.symbol)
-        age = max(0.0, (now - latest.closed_at).total_seconds())
-        freshness = "fresh" if age <= interval else "stale"
-        conclusion = str(signal.get("signal", "NO_TRADE"))
-        appended = self.store.append_signal(pair, latest, {
-            "symbol": pair.symbol, "timeframe": pair.timeframe.value,
-            "conclusion": conclusion, "direction": conclusion,
-            "quality_score": signal.get("confidence"), "confidence": signal.get("confidence"),
-            "quality": signal.get("quality", "POOR"),
-            "data_freshness": freshness, "regime": regime,
-            "observed_at": now.isoformat(), "candle_closed_at": latest.closed_at.isoformat(),
-            "expires_at": (latest.closed_at + timedelta(seconds=interval)).isoformat(),
-            "missed_candles": missed,
-        })
-        if appended:
-            self.cycles_completed += 1
-            self.last_success_at = now.isoformat()
-            if freshness == "stale" and self._notification_events is not None:
-                await self._notification_events.runtime_health(
-                    state="STALE",
-                    facts={
-                        "Reason": "STALE_MARKET_DATA",
-                        "Symbol": pair.symbol,
-                        "Timeframe": pair.timeframe.value,
-                        "Age seconds": str(age),
-                    },
+        # A brand-new scope starts at the latest closed candle.  Once a
+        # cursor exists, every later closed candle in the telemetry window is
+        # processed in order for deterministic catch-up.
+        pending = [latest] if prior is None else [item for item in observations if item.closed_at > prior]
+        if not pending:
+            return False
+        if prior is not None:
+            expected = int((latest.closed_at - prior).total_seconds() // interval)
+            if expected > len(pending):
+                # The telemetry window cannot prove that every closed candle
+                # since the cursor is present.  Do not skip to latest.
+                raise MarketDataError(
+                    "Observation catch-up history is incomplete; refusing to advance cursor",
+                    symbol=pair.symbol,
                 )
-        return appended
+        appended_count = 0
+        stale_latest: tuple[float, ClosedMarketObservation] | None = None
+        for index, observation in enumerate(observations):
+            if observation not in pending:
+                continue
+            signal, regime = _evaluate(observations[max(0, index - 499):index + 1], pair.symbol)
+            age = max(0.0, (now - observation.closed_at).total_seconds())
+            freshness = "fresh" if age <= interval else "stale"
+            conclusion = str(signal.get("signal", "NO_TRADE"))
+            appended = self.store.append_signal(pair, observation, {
+                "symbol": pair.symbol, "timeframe": pair.timeframe.value,
+                "conclusion": conclusion, "direction": conclusion,
+                "quality_score": signal.get("confidence"), "confidence": signal.get("confidence"),
+                "quality": signal.get("quality", "POOR"),
+                "data_freshness": freshness, "regime": regime,
+                "observed_at": now.isoformat(), "candle_closed_at": observation.closed_at.isoformat(),
+                "expires_at": (observation.closed_at + timedelta(seconds=interval)).isoformat(),
+                "catch_up": prior is not None,
+                "catch_up_count": len(pending),
+                "trade_plan": build_trade_plan_snapshot(
+                    signal=signal,
+                    symbol=pair.symbol,
+                    timeframe=pair.timeframe.value,
+                    signal_candle_open=observation.candle_opened_at,
+                    signal_candle_close=observation.closed_at,
+                ),
+            })
+            if appended:
+                sampler_result = self.forward_sampler.append_for_closed_bar(
+                    observation=observation, signal=signal,
+                )
+                appended_count += 1
+                self.cycles_completed += 1
+                self.last_success_at = now.isoformat()
+                if freshness == "stale":
+                    stale_latest = (age, observation)
+        if stale_latest is not None and self._notification_events is not None:
+            age, observation = stale_latest
+            await self._notification_events.runtime_health(
+                state="STALE",
+                facts={
+                    "Reason": "STALE_MARKET_DATA",
+                    "Symbol": pair.symbol,
+                    "Timeframe": pair.timeframe.value,
+                    "Age seconds": str(age),
+                },
+            )
+        return appended_count > 0
 
     def _heartbeat(self, now: datetime, *, healthy: bool, error: str | None) -> None:
         heartbeat = DaemonHeartbeat(

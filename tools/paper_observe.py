@@ -16,6 +16,7 @@ from execution.paper_runtime import ContinuousPaperRuntime, PaperRuntimeStateSto
 from execution.persistence import SQLiteIntentRecordStore
 from notifications.events import JQENotificationEvents
 from notifications.service import NotificationService
+from risk.risk_engine import MIN_CONFIDENCE
 from research.paper_diagnostics import (
     STRATEGY_ID,
     PaperDiagnosticsStore,
@@ -60,7 +61,7 @@ async def observe(max_cycles: int) -> dict:
     context = {
         "symbol": settings.default_symbol, "timeframe": "M5",
         "runtime_mode": "paper_continuous", "risk_percent": settings.risk_percent,
-        "minimum_confidence": settings.min_confidence_threshold,
+        "minimum_confidence": MIN_CONFIDENCE,
         "source_mode": "SYNTHETIC_OBSERVATION",
     }
     started = datetime.now(timezone.utc)

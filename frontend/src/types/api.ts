@@ -253,7 +253,7 @@ export interface PaperExecutionOutcomeDTO {
   outcome_id: string;
   setup_id: string;
   recorded_at: string;
-  status: 'OPENED' | 'BLOCKED' | 'ALREADY_RECORDED' | 'UNKNOWN';
+  status: 'OPENED' | 'CLOSED' | 'BLOCKED' | 'ALREADY_RECORDED' | 'UNKNOWN';
   setup_state: 'READY' | 'BLOCKED' | 'EXPIRED' | 'EXECUTED';
   order_id: string | null;
   execution_price: PreciseDecimal | null;
@@ -332,6 +332,16 @@ export interface ExecutionStateResponse {
   currency: string;
 }
 
+export interface LiveExecutionResponse {
+  status: 'ORDER_ACCEPTED' | 'ALREADY_EXECUTED' | 'BROKER_REJECTED' | 'BLOCKED' | 'NO_TRADE' | 'UNKNOWN';
+  broker: string;
+  symbol: string;
+  side: 'BUY' | 'SELL' | null;
+  order_id: string | null;
+  decision_code: string | null;
+  reason: string;
+}
+
 export interface ExecutionSafetyResponse {
   schema_version: number | null;
   observed_at: string | null;
@@ -379,6 +389,17 @@ export interface OfflineMonitoringResponse {
   };
   broker_execution_enabled: false;
   assessment: MarketSetup | null;
+  latest_paper_outcome: PaperExecutionOutcomeDTO | null;
+  open_paper_positions: number;
+  research_status: {
+    status: string;
+    presentation_rule?: string;
+    execution_authority?: string;
+    painx1200_m1_buy?: {
+      demonstrated_positive_edge?: boolean;
+      forward_status?: string;
+    };
+  } | null;
 }
 
 export interface ObservationHealthResponse {
@@ -391,14 +412,49 @@ export interface ObservationHealthResponse {
   session_id: string;
 }
 
-export interface ObservationHealthResponse {
-  running: boolean;
+export interface AssistantStatusResponse {
+  state: 'READY' | 'DISABLED' | 'KILLED' | 'UNCONFIGURED' | 'UNAVAILABLE';
+  configured: boolean;
+  enabled: boolean;
   healthy: boolean;
-  updated_at: string;
-  last_success_at: string | null;
-  last_error: string | null;
-  cycles_completed: number;
-  session_id: string;
+  model: string;
+  reason_codes: string[];
+}
+
+export interface AssistantChatResponse {
+  state: 'ANSWERED' | 'UNAVAILABLE';
+  answer: string | null;
+  generated_at: string;
+  model: string;
+  context: {
+    overall_freshness: string;
+    stale_sources: string[];
+    unavailable_sources: string[];
+  } | null;
+  usage: { input_tokens: number; output_tokens: number } | null;
+  warning: string | null;
+  reason_code: string | null;
+  message: string | null;
+}
+
+export interface NotificationChannelStatus {
+  channel: string;
+  state: 'READY' | 'DISABLED' | 'UNAVAILABLE';
+  configured: boolean;
+  reason_codes: string[];
+}
+
+export interface DailyDigestStatus {
+  state: 'SENT' | 'NOT_OBSERVED' | 'UNAVAILABLE';
+  utc_date: string;
+  last_sent_at: string | null;
+  reason_codes: string[];
+}
+
+export interface NotificationStatusResponse {
+  observed_at: string;
+  channels: NotificationChannelStatus[];
+  daily_digest: DailyDigestStatus;
 }
 
 export interface RecoveryQuantity {
@@ -454,6 +510,7 @@ export interface PaperRuntimeStatusResponse {
   shutdown_state: string;
   paper_execution_enabled: boolean;
   broker_execution_enabled: boolean;
+  market_data_source?: string;
 }
 
 export interface PaperDiagnosticsResponse {
@@ -670,6 +727,7 @@ export interface BrokerStatusResponse {
   account_server: string | null;
   account_currency: string | null;
   account_trade_mode: string | null;
+  broker_execution_enabled?: boolean;
 }
 
 export interface SelectBrokerRequest {

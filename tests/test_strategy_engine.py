@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from risk.risk_engine import MIN_CONFIDENCE
 from strategy.strategy_engine import (
     RegimeTranslator,
     StrategyDecision,
@@ -84,6 +85,9 @@ class TestStrategyDecision:
 
 
 class TestStrategyEngine:
+    def test_default_confidence_floor_uses_live_risk_threshold(self) -> None:
+        assert StrategyEngine().min_confidence == MIN_CONFIDENCE == 75
+
     def test_raises_key_error_without_atr(self) -> None:
         engine = StrategyEngine()
         df = pd.DataFrame({"close": [100.0, 101.0]})
@@ -91,7 +95,7 @@ class TestStrategyEngine:
             engine.evaluate(df)
 
     def test_bullish_trend_strong_momentum_produces_buy(self) -> None:
-        engine = StrategyEngine()
+        engine = StrategyEngine(min_confidence=70)
         df = _make_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0, atr=2.0)
         decision = engine.evaluate(df, symbol="EURUSD")
 
@@ -107,7 +111,7 @@ class TestStrategyEngine:
         assert decision.trade_plan.stop_loss < decision.trade_plan.entry < decision.trade_plan.take_profit
 
     def test_bearish_trend_strong_momentum_produces_sell(self) -> None:
-        engine = StrategyEngine()
+        engine = StrategyEngine(min_confidence=70)
         # EMA50 < EMA200 -> BEARISH, RSI > 60 -> STRONG momentum, regime=TRENDING -> SELL
         df = _make_df(close=75.0, ema50=80.0, ema200=90.0, rsi=65.0, atr=2.0)
         decision = engine.evaluate(df, symbol="GBPUSD", regime="TRENDING")
@@ -119,6 +123,18 @@ class TestStrategyEngine:
         assert decision.trade_plan.is_valid()
         assert decision.trade_plan.signal == "SELL"
         assert decision.trade_plan.take_profit < decision.trade_plan.entry < decision.trade_plan.stop_loss
+
+    def test_configured_confidence_floor_converts_weak_actionable_signal_to_no_trade(self) -> None:
+        engine = StrategyEngine(min_confidence=90)
+        df = _make_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0, atr=2.0)
+        df.loc[df.index[-1], "ATR"] = 4.0
+
+        decision = engine.evaluate(df, symbol="EURUSD")
+
+        assert decision.signal == "NO_TRADE"
+        assert decision.trade_plan is not None
+        assert decision.trade_plan.signal == "NO_TRADE"
+        assert "Confidence below configured threshold (90)" in decision.reasons
 
     def test_neutral_momentum_produces_no_trade(self) -> None:
         engine = StrategyEngine()
@@ -161,7 +177,7 @@ class TestStrategyEngine:
         assert cb.momentum_score == 15  # STRONG (RSI=65)
 
     def test_price_and_spread_override(self) -> None:
-        engine = StrategyEngine()
+        engine = StrategyEngine(min_confidence=70)
         df = _make_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0, atr=2.0)
         decision = engine.evaluate(df, symbol="EURUSD", price=110.0, spread=5.0)
 

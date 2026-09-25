@@ -58,6 +58,8 @@ export interface ResearchMarketsDTO {
   cached_datasets: { provider: string; canonical_symbol: string; provider_symbol: string;
     timeframe: string; start: string; end: string; candle_count: number; dataset_identity: string;
     volume_type: string; volume_source: string; gap_count: number }[];
+  watchlist?: { symbol: string; timeframe: string; scope: string; added_at: string }[];
+  watchlist_count?: number;
 }
 
 export type AcquisitionState = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';

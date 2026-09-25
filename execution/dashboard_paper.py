@@ -105,6 +105,37 @@ class DashboardPaperStore:
                 ),
             )
 
+    def record_close(
+        self, setup_id: str, *, realized_pnl: Decimal, close_reason: str,
+        recorded_at: datetime, message: str,
+    ) -> PaperExecutionOutcomeDTO:
+        """Close one durable paper outcome in place; repeated closes are idempotent."""
+        existing = self.get_outcome(setup_id)
+        if existing is None or existing.status not in {"OPENED", "CLOSED"}:
+            raise ValueError("Paper position is not open")
+        if existing.status == "CLOSED":
+            return existing
+        closed = existing.model_copy(update={
+            "status": "CLOSED",
+            "realized_pnl": realized_pnl,
+            "close_reason": close_reason,
+            "recorded_at": recorded_at,
+            "message": message,
+        })
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            changed = connection.execute(
+                "UPDATE paper_outcomes SET status='CLOSED',payload=?,recorded_at=? "
+                "WHERE setup_id=? AND status='OPENED'",
+                (closed.model_dump_json(), recorded_at.isoformat(), setup_id),
+            ).rowcount
+        if changed != 1:
+            winner = self.get_outcome(setup_id)
+            if winner is not None and winner.status == "CLOSED":
+                return winner
+            raise RuntimeError("Paper close persistence conflict")
+        return closed
+
     def open_positions(self) -> list[Position]:
         with self._connect() as connection:
             rows = connection.execute(

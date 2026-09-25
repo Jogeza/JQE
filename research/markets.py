@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Sequence
 
 from broker.types import TIMEFRAME_SECONDS, Timeframe
 from core.exceptions import MarketDataError
+from data.watchlist import WatchlistItem
 
 DERIV_PROVIDER = "deriv"
 DERIV_TIMEFRAMES = tuple(tf for tf in Timeframe if TIMEFRAME_SECONDS[tf] in {
@@ -112,3 +113,60 @@ class MarketCatalogueService:
         match = next((item for item in catalogue.instruments if item.provider_symbol == provider_symbol), None)
         if match is None: raise MarketDataError("Instrument is not present in the validated Deriv catalogue", symbol=provider_symbol)
         return match
+
+
+def catalogue_from_watchlist(
+    items: Sequence[WatchlistItem],
+    *,
+    provider: str,
+    fetched_at: datetime | None = None,
+) -> MarketCatalogue:
+    """Build the research-visible catalogue from the durable watchlist only.
+
+    This is a projection, not a cache mutation: removing an item hides it from
+    the workbench while leaving every historical dataset untouched.
+    """
+    grouped: dict[str, set[Timeframe]] = {}
+    for item in items:
+        try:
+            grouped.setdefault(item.symbol, set()).add(Timeframe(item.timeframe))
+        except ValueError:
+            continue
+    instruments: list[MarketInstrument] = []
+    for symbol, timeframes in grouped.items():
+        upper = symbol.upper()
+        if upper.startswith("FX VOL"):
+            family = "FX Vol"
+        elif upper.startswith("SFX VOL"):
+            family = "SFX Vol"
+        elif upper.startswith("MAX PAINX"):
+            family = "MAX PainX"
+        elif upper.startswith("PAINX"):
+            family = "PainX"
+        else:
+            family = "Watched"
+        instruments.append(MarketInstrument(
+            provider=provider,
+            provider_symbol=symbol,
+            canonical_symbol=symbol,
+            display_name=symbol,
+            market="watched",
+            market_display_name="Durable watchlist",
+            subgroup=family,
+            submarket=family.lower().replace(" ", "_"),
+            submarket_display_name=family,
+            instrument_type="synthetic_index",
+            pip_size=0.00001,
+            exchange_is_open=True,
+            is_trading_suspended=False,
+            historical_data_supported=HistoricalCapability.UNKNOWN,
+            timeframes=tuple(sorted(timeframes, key=lambda item: TIMEFRAME_SECONDS[item])),
+        ))
+    instruments.sort(key=lambda item: item.display_name.casefold())
+    return MarketCatalogue(
+        provider=provider,
+        fetched_at=fetched_at or datetime.now(timezone.utc),
+        instruments=tuple(instruments),
+        source_status="WATCHLIST",
+        cache_status="DURABLE",
+    )

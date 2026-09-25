@@ -61,11 +61,14 @@ export function validateOfflineTelemetry(value: unknown): OfflineMonitoringRespo
     if (!object(assessment) || assessment.schema_version !== 1) throw new Error('UNSUPPORTED_ASSESSMENT_SCHEMA');
     if (!validDate(assessment.observed_at) || !validDate(assessment.candle_close_time)) throw new Error('MALFORMED_ASSESSMENT');
     if (assessment.expires_at !== null && assessment.expires_at !== undefined && !validDate(assessment.expires_at)) throw new Error('MALFORMED_ASSESSMENT');
-    if (!object(assessment.execution_authorization) || assessment.execution_authorization.status !== 'BLOCKED') {
-      throw new Error('ANALYSIS_AUTHORIZATION_NOT_BLOCKED');
+    if (!object(assessment.execution_authorization)) throw new Error('MALFORMED_ASSESSMENT');
+    const authorization = assessment.execution_authorization.status;
+    if (authorization !== 'BLOCKED' && authorization !== 'AUTHORIZED') {
+      throw new Error('INVALID_SIMULATION_AUTHORIZATION');
     }
-    const codes = assessment.execution_authorization.reason_codes;
-    if (!Array.isArray(codes) || !codes.includes('ANALYSIS_ONLY')) throw new Error('ANALYSIS_ONLY_REASON_MISSING');
+    if (authorization === 'AUTHORIZED' && value.broker_execution_enabled !== false) {
+      throw new Error('EXECUTION_NOT_BLOCKED');
+    }
   }
   return value as unknown as OfflineMonitoringResponse;
 }

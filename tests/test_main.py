@@ -38,6 +38,7 @@ def _durable_simulation_settings(tmp_path):
         settings.market_data_source,
         settings.daily_instrument_trade_store_path,
         settings.max_daily_trades_per_instrument,
+        settings.default_symbol,
     )
     settings.broker = "simulation"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
@@ -46,6 +47,7 @@ def _durable_simulation_settings(tmp_path):
     settings.market_data_source = "simulation"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     settings.max_daily_trades_per_instrument = 20
+    settings.default_symbol = "R_75"
     yield
     (
         settings.broker,
@@ -55,6 +57,7 @@ def _durable_simulation_settings(tmp_path):
         settings.market_data_source,
         settings.daily_instrument_trade_store_path,
         settings.max_daily_trades_per_instrument,
+        settings.default_symbol,
     ) = original
 
 

@@ -8,10 +8,11 @@ import { App } from './App';
 
 const allowed = [
   '/brokers/status', '/execution/safety', '/risk', '/monitoring/offline',
-  '/observation/health', '/watchlist', '/watchlist/cap-usage',
+  '/observation/health', '/watchlist', '/watchlist/cap-usage', '/execution',
+  '/market/active-analysis', '/assistant/status', '/notifications/status',
 ];
 const legacyOnly = [
-  '/system', '/market/summary', '/market/candles', '/signal', '/execution',
+  '/system', '/market/summary', '/market/candles', '/signal',
   '/performance', '/execution/recovery', '/execution/paper-runtime',
   '/research/paper-diagnostics',
 ];
@@ -81,10 +82,10 @@ describe('App polling profiles', () => {
     vi.useRealTimers();
   });
 
-  it('starts synchronously with the seven endpoint Workspace profile', async () => {
+  it('starts synchronously with the connected Workspace profile', async () => {
     await mount();
     expect(paths()).toEqual(allowed);
-    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('A snapshot-only candle source is required.');
+    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Active market analysis is unavailable.');
   });
 
   it('renders four sidebar groups with every existing destination', async () => {
@@ -101,7 +102,7 @@ describe('App polling profiles', () => {
     expect(paths()).not.toContain(path);
   });
 
-  it('keeps two four-second ticks inside the exact seven endpoint allowlist with GET only', async () => {
+  it('keeps two four-second ticks inside the connected endpoint allowlist with GET only', async () => {
     await mount();
     await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
     expect(paths()).toEqual([...allowed, ...allowed, ...allowed]);
@@ -113,7 +114,7 @@ describe('App polling profiles', () => {
     const first = calls[0];
     await nav('Overview');
     expect(first.signal?.aborted).toBe(true);
-    expect(paths().slice(7)).toEqual([
+    expect(paths().slice(allowed.length)).toEqual([
       '/system', '/market/summary', '/market/candles', '/signal', '/risk', '/execution',
       '/execution/safety', '/performance', '/execution/recovery', '/execution/paper-runtime',
       '/research/paper-diagnostics', '/monitoring/offline', '/observation/health',
@@ -152,7 +153,7 @@ describe('App polling profiles', () => {
     expect(banner()).toContain('system');
     expect(banner()).toContain('execution');
     await nav('Workspace');
-    expect(banner()).toBeNull();
+    expect(banner()).toContain('execution');
     expect(host.querySelector('.telemetry-ribbon')).toBeNull();
     await nav('Overview');
     expect(banner()).toContain('system');
@@ -174,7 +175,7 @@ describe('App polling profiles', () => {
     expect(host.querySelector('.desktop-sidebar button[aria-label="Positions, 3"] .nav-badge')?.textContent).toBe('3');
     await nav('Workspace');
     expect(host.querySelector('.desktop-sidebar button[aria-label="Positions"] .nav-badge')).toBeNull();
-    expect(paths().slice(-7)).toEqual(allowed);
+    expect(paths().slice(-allowed.length)).toEqual(allowed);
   });
 
   it('retains the legacy candle request and passes its response to the legacy Markets page', async () => {
@@ -194,10 +195,10 @@ describe('App polling profiles', () => {
     expect(banner()).not.toContain('system');
   });
 
-  it('accounts for StrictMode by aborting its first seven requests and making one replacement batch', async () => {
+  it('accounts for StrictMode by aborting its first request batch and making one replacement batch', async () => {
     await mount(true);
     expect(paths()).toEqual([...allowed, ...allowed]);
-    expect(calls.slice(0, 7).every(call => call.signal?.aborted)).toBe(true);
-    expect(calls.slice(7).every(call => !call.signal?.aborted)).toBe(true);
+    expect(calls.slice(0, allowed.length).every(call => call.signal?.aborted)).toBe(true);
+    expect(calls.slice(allowed.length).every(call => !call.signal?.aborted)).toBe(true);
   });
 });

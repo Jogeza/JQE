@@ -618,9 +618,8 @@ just the classification step later without touching `ConfidenceModel`
 itself — the weighting/combination logic doesn't care how `structure`/
 `risk` were classified, only what value they hold.
 
-`config.settings.min_confidence_threshold` (default 70) is the
-"execute only above this score" cutoff from the platform's vision —
-added to configuration, but **not yet consumed anywhere**. Wiring
+`risk.risk_engine.MIN_CONFIDENCE` (75) is the single
+"execute only above this score" cutoff. Wiring
 `ConfidenceModel` into the live signal-generation path (replacing
 `strategy.pipeline.generate_trading_signal`'s current
 `FeatureEngine`-based ad hoc confidence, which is a much cruder

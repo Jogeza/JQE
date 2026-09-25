@@ -92,3 +92,19 @@ def verified_demo_mt5_telemetry(settings: Settings) -> MT5Telemetry:
         expected_environment="demo",
         strict_lifecycle=settings.environment == "production",
     ))
+
+
+def verified_weltrade_demo_telemetry(settings: Settings) -> MT5Telemetry:
+    """Capability-restricted telemetry for the configured Weltrade demo terminal."""
+    if settings.weltrade_terminal_path is None:
+        raise ValueError("Weltrade observation requires a configured terminal path")
+    if settings.effective_weltrade_login is None or not settings.effective_weltrade_server:
+        raise ValueError("Weltrade observation requires configured demo identity")
+    return VerifiedDemoMT5Telemetry(MT5DemoGateway(
+        terminal_path=settings.weltrade_terminal_path,
+        login=settings.effective_weltrade_login,
+        password=settings.effective_weltrade_password,
+        server=settings.effective_weltrade_server,
+        expected_environment="demo",
+        strict_lifecycle=settings.environment == "production",
+    ))

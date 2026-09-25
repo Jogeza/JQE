@@ -20,7 +20,7 @@ from execution.market_setup import (
 from data.active_market import ActiveMarketContext
 from intelligence.analyst import AnalystExplanation
 
-MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "UNAVAILABLE"]
+MarketDataProvenance = Literal["SIMULATION", "DERIV_PUBLIC", "BROKER", "UNAVAILABLE"]
 MarketDataStatus = Literal["CURRENT", "CACHED", "UNAVAILABLE"]
 
 
@@ -215,6 +215,25 @@ class ExecutionStateResponse(BaseModel):
     currency: str
 
 
+class LiveExecutionResponse(BaseModel):
+    """Auditable result of one explicitly confirmed demo execution cycle."""
+
+    status: Literal[
+        "ORDER_ACCEPTED",
+        "ALREADY_EXECUTED",
+        "BROKER_REJECTED",
+        "BLOCKED",
+        "NO_TRADE",
+        "UNKNOWN",
+    ]
+    broker: str
+    symbol: str
+    side: Literal["BUY", "SELL"] | None = None
+    order_id: str | None = None
+    decision_code: str | None = None
+    reason: str = ""
+
+
 class ExecutionSafetyResponse(BaseModel):
     """Read-only canonical execution-safety observation."""
 
@@ -264,6 +283,9 @@ class OfflineMonitoringResponse(BaseModel):
     simulation_submissions: SimulationSubmissionTelemetryDTO
     broker_execution_enabled: bool
     assessment: MarketSetup | None = None
+    latest_paper_outcome: PaperExecutionOutcomeDTO | None = None
+    open_paper_positions: int = 0
+    research_status: dict[str, Any] | None = None
 
 
 class RecoveryQuantityDTO(BaseModel):
@@ -367,6 +389,7 @@ class PaperRuntimeStatusResponse(BaseModel):
     shutdown_state: str
     paper_execution_enabled: bool
     broker_execution_enabled: bool = False
+    market_data_source: str = "UNSPECIFIED"
 
 
 class ActiveMarketAnalysisResponse(BaseModel):
@@ -429,6 +452,7 @@ class BrokerStatusResponse(BaseModel):
     account_server: str | None = None
     account_currency: str | None = None
     account_trade_mode: str | None = None
+    broker_execution_enabled: bool = False
 
 
 class SelectBrokerRequest(BaseModel):

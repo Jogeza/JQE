@@ -96,10 +96,35 @@ python main.py                  # one market-analysis cycle
 python -m backtesting.backtest  # historical data load + indicators
 ```
 
-Both use the `simulation` broker by default — no credentials or live
-connection required. Both currently stop after market analysis / data
-preparation — see "A significant discovery" in `docs/architecture.md`
-for why the signal → risk → execution stage isn't wired in yet.
+The default CLI run uses the `simulation` broker — no credentials or live
+connection required. Broker execution is available only through an explicitly
+armed DEMO configuration described below.
+
+### Explicit DEMO broker execution
+
+The dashboard can run one confirmed cycle through the canonical durable
+execution path. Broker execution remains disabled by default. To arm a demo
+terminal locally, set:
+
+```text
+JQE_BROKER=weltrade_demo
+JQE_BROKER_EXECUTION_ENABLED=true
+JQE_MARKET_DATA_SOURCE=broker
+JQE_DEFAULT_SYMBOL=FX Vol 20
+JQE_WELTRADE_TERMINAL_PATH=C:\Program Files\Weltrade MT5 Terminal\terminal64.exe
+JQE_WELTRADE_DEMO_LOGIN=<your-demo-login>
+JQE_WELTRADE_DEMO_SERVER=Weltrade-Demo
+```
+
+Log the Weltrade MT5 terminal into the DEMO account, restart the API, and wait
+for broker status and DemoOnlyGuard evidence to become fresh. The Workspace
+then shows **Execute demo cycle**. One click with confirmation evaluates fresh
+market data, risk, recovery, idempotency, and execution policy before any order
+can be submitted; a `NO_TRADE` result remains a valid no-order outcome. With
+`JQE_MARKET_DATA_SOURCE=broker`, candles are read from the verified Weltrade
+terminal, which is required for broker-native SyntX symbols. Select a symbol
+that exists in that terminal; `R_75` is a Deriv symbol and is not available in
+the Weltrade SyntX catalogue.
 
 ### Read-only live-paper dashboard
 

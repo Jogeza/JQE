@@ -29,7 +29,6 @@ from typing import Any, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from config.settings import settings
 from core.regime import detect_regime as detect_default_regime
 from intelligence.confidence_model import (
     ConfidenceBreakdown,
@@ -42,6 +41,7 @@ from intelligence.trade_plan import TradePlan, TradePlanBuilder
 from strategy.features.feature_engine import FeatureEngine
 from strategy.scoring.signal_scorer import SignalScorer
 from strategy.signal_engine import SignalEngine
+from risk.risk_engine import MIN_CONFIDENCE
 
 
 class RegimeTranslator:
@@ -129,7 +129,7 @@ class StrategyEngine:
     ) -> None:
         """Initializes the StrategyEngine with its dependent analyzers and models."""
         self.min_confidence = (
-            min_confidence if min_confidence is not None else settings.min_confidence_threshold
+            min_confidence if min_confidence is not None else MIN_CONFIDENCE
         )
         self.confidence_model = confidence_model or ConfidenceModel()
         self.feature_engine = feature_engine or FeatureEngine()
@@ -241,7 +241,16 @@ class StrategyEngine:
         confidence_val = raw_signal.get("confidence", 0)
         quality = decision_score.get("quality", "POOR")
         score = decision_score.get("score", 0)
-        reasons = decision_score.get("reasons", [])
+        reasons = list(decision_score.get("reasons", []))
+
+        # The shared live threshold is the first confidence gate.  The
+        # downstream risk engine applies the same institutional threshold,
+        # so a signal below it must never be presented as executable.
+        if canonical_signal != "NO_TRADE" and confidence_val < self.min_confidence:
+            canonical_signal = "NO_TRADE"
+            reasons.append(
+                f"Confidence below configured threshold ({self.min_confidence})"
+            )
 
         # 6. Trade Plan Construction
         signal_dict_for_plan = {

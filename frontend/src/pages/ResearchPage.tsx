@@ -120,6 +120,36 @@ export function ResearchPage() {
   }, []);
 
   useEffect(() => {
+    const refreshFromDurableWatchlist = () => {
+      loadMarkets()
+        .then((result) => {
+          const instruments = result.catalogue.instruments;
+          setMarkets(result);
+          if (!instruments.length) {
+            setCatalogueError('The durable watchlist is empty. Add an instrument to use Research.');
+            return;
+          }
+          setCatalogueError(null);
+          const currentPrimary = workspaces.primary?.instrument.provider_symbol;
+          const currentComparison = workspaces.comparison?.instrument.provider_symbol;
+          const primary = instruments.find((item) => item.provider_symbol === currentPrimary) ?? instruments[0];
+          const comparison = instruments.find(
+            (item) => item.provider_symbol === currentComparison && item.provider_symbol !== primary.provider_symbol
+          ) ?? instruments.find((item) => item.provider_symbol !== primary.provider_symbol) ?? primary;
+          if (workspaces.primary && currentPrimary !== primary.provider_symbol) {
+            dispatchPair({ workspaceId: 'primary', action: { type: 'select-instrument', instrument: primary } });
+          }
+          if (workspaces.comparison && currentComparison !== comparison.provider_symbol) {
+            dispatchPair({ workspaceId: 'comparison', action: { type: 'select-instrument', instrument: comparison } });
+          }
+        })
+        .catch((reason) => setCatalogueError(String(reason)));
+    };
+    window.addEventListener('jqe-watchlist-changed', refreshFromDurableWatchlist);
+    return () => window.removeEventListener('jqe-watchlist-changed', refreshFromDurableWatchlist);
+  }, [workspaces.primary?.instrument.provider_symbol, workspaces.comparison?.instrument.provider_symbol]);
+
+  useEffect(() => {
     if (!markets || !workspaces.primary || !workspaces.comparison) return;
     saveResearchPreferences({
       favourites,
@@ -213,6 +243,11 @@ export function ResearchPage() {
         <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>
         <button aria-current={researchView === 'experiments' ? 'page' : undefined} onClick={() => setResearchView('experiments')}>Experiment catalog</button>
       </nav>
+
+      <aside role="status" style={{ border: '1px solid var(--quant-red)', padding: '10px 12px', marginBottom: '12px' }}>
+        <strong>No demonstrated positive edge.</strong>{' '}
+        PainX family BUY failed in corrected exploratory research. PainX 1200 M1 BUY remains an unconfirmed forward candidate with insufficient prospective evidence.
+      </aside>
 
       {/* Main Research Layout */}
       <div className="research-layout" hidden={researchView !== 'charts'}>

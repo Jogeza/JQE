@@ -95,6 +95,7 @@ from research.campaign_provenance import (
 )
 from research.historical_confirmation import HistoricalConfirmationState
 from research.live_safety import LivePaperSafetyContext
+from research.trade_plan_snapshot import build_trade_plan_snapshot
 from risk.position_sizing import authorize_execution_quantity
 from tools.paper_runtime import (
     evaluate_production_decision,
@@ -730,6 +731,13 @@ async def run_live_paper_campaign(
             "momentum": facts.get("momentum"),
             "volatility": facts.get("volatility"),
             "rsi": facts.get("rsi"),
+            "trade_plan": build_trade_plan_snapshot(
+                signal=signal,
+                symbol=symbol,
+                timeframe=timeframe.value,
+                signal_candle_open=latest.candle_opened_at,
+                signal_candle_close=latest.closed_at,
+            ),
         })
         await notification_events.live_campaign_signal(
             actionable=current_direction in {"BUY", "SELL"},

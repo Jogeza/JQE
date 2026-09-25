@@ -20,10 +20,11 @@ from backtesting.models import BacktestResult, CandleDatasetSnapshot
 from broker.types import Candle, Timeframe
 from data.dataset import candle_content_hash
 from data.storage import CandleStore
+from data.watchlist import WatchlistStore
 from data.provenance import DatasetProvenance, VolumeType
 from data.historical import HistoricalDataService
 from broker.deriv_public_data import DerivPublicMarketData
-from research.markets import MarketCatalogueService
+from research.markets import MarketCatalogueService, catalogue_from_watchlist
 from config.settings import settings
 from core.exceptions import MarketDataError
 from broker.types import TIMEFRAME_SECONDS
@@ -49,7 +50,7 @@ from data.storage import find_gaps
 class ResearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
-    symbol: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
+    symbol: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_. -]+$")
     timeframe: Timeframe
     count: int = Field(default=300, ge=201, le=2000)
     initial_capital: float = Field(default=1000, gt=0, le=1e9, allow_inf_nan=False)
@@ -550,12 +551,26 @@ async def _run_acquisition(spec: AcquisitionSpec) -> AcquisitionOutcome:
 
 @router.get("/markets", response_model=None)
 async def get_research_markets(refresh: bool = False):
-    catalogue = await _market_catalogue.get_catalogue(refresh=refresh)
+    watchlist_store = WatchlistStore(settings.watchlist_store_path)
+    watchlist_items = watchlist_store.get_items()
+    catalogue = catalogue_from_watchlist(
+        watchlist_items,
+        provider=settings.effective_broker,
+    )
+    watched_symbols = {item.symbol.casefold() for item in watchlist_items}
     try:
-        cached = CandleStore(settings.historical_data_path, read_only=True).list_cached_datasets(provider="deriv")
+        cached = tuple(
+            item for item in CandleStore(settings.historical_data_path, read_only=True).list_cached_datasets()
+            if item.symbol.casefold() in watched_symbols
+        )
     except Exception:
         cached = ()
-    return {"catalogue": asdict(catalogue), "cached_datasets": [asdict(item) for item in cached]}
+    return {
+        "catalogue": asdict(catalogue),
+        "cached_datasets": [asdict(item) for item in cached],
+        "watchlist": [asdict(item) | {"scope": item.scope} for item in watchlist_items],
+        "watchlist_count": len(watchlist_items),
+    }
 
 
 @router.post("/history/acquisitions", response_model=None, status_code=202)

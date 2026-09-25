@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { jqeApi } from '../services/api';
+import { MarketChart } from '../components/MarketChart';
 import type { TabType } from '../components/Sidebar';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
   OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse,
-  WatchlistResponse,
+  WatchlistResponse, ExecutionStateResponse, ActiveMarketAnalysisResponse,
+  AssistantStatusResponse, NotificationStatusResponse, LiveExecutionResponse,
 } from '../types/api';
 import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { formatAge, formatTime, observationState, panelState, reasonText, validAssessment, validBroker, validCaps, validHealth, validRisk, validSafety, validWatchlist, withinAge, WORKSPACE_FRESHNESS_THRESHOLDS_MS, type PanelState } from './workspaceEvidence';
@@ -17,8 +20,15 @@ interface Props {
   observationHealth: ResourceState<ObservationHealthResponse>;
   watchlist: ResourceState<WatchlistResponse>;
   caps: ResourceState<WatchlistCapUsageResponse>;
+  execution?: ResourceState<ExecutionStateResponse>;
+  activeAnalysis?: ResourceState<ActiveMarketAnalysisResponse>;
+  assistantStatus?: ResourceState<AssistantStatusResponse>;
+  notificationStatus?: ResourceState<NotificationStatusResponse>;
+  liveExecution?: { loading: boolean; result: LiveExecutionResponse | null; error: string | null };
+  onExecuteLiveCycle?: () => void;
   selectedSymbol: string;
   selectedTimeframe: string;
+  onMarketChange?: (symbol: string, timeframe: string) => void;
   lifecycle: TelemetryLifecycle;
   onNavigate: (tab: TabType) => void;
 }
@@ -49,9 +59,15 @@ const ReadinessItem: React.FC<{ label: string; source: string; result: string; o
 
 export const WorkspacePage: React.FC<Props> = ({
   broker, safety, risk, monitoring, observationHealth, watchlist, caps,
-  selectedSymbol, selectedTimeframe, lifecycle, onNavigate,
+  execution, activeAnalysis, assistantStatus, notificationStatus,
+  liveExecution, onExecuteLiveCycle,
+  selectedSymbol, selectedTimeframe, onMarketChange, lifecycle, onNavigate,
 }) => {
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSending, setAiSending] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [query, setQuery] = useState('');
   const aiLauncher = useRef<HTMLButtonElement>(null);
@@ -88,17 +104,31 @@ export const WorkspacePage: React.FC<Props> = ({
     ? identity.account_id_masked : 'unavailable';
   const snapshotConnected = brokerData?.observation_state === 'OBSERVED'
     ? (brokerData.connected ? 'Yes · snapshot reported' : 'No · snapshot reported') : 'unavailable';
+  const brokerConnectionLabel = brokerData?.active_broker === 'weltrade'
+    ? 'Weltrade'
+    : brokerData?.active_broker === 'mt5'
+      ? 'MT5'
+      : 'Broker';
+  const brokerConnectionAvailable = brokerData?.active_broker === 'weltrade' || brokerData?.active_broker === 'mt5';
 
+  const activeSetup = activeAnalysis?.data && validAssessment(activeAnalysis.data.setup)
+    ? activeAnalysis.data.setup : null;
+  const activeCandles = activeAnalysis?.data && Array.isArray(activeAnalysis.data.candles?.candles)
+    ? activeAnalysis.data.candles : null;
+  const activeSignal = activeAnalysis?.data?.signal ?? null;
+  const activeAnalysisState = activeAnalysis ? panelState(activeAnalysis) : 'UNAVAILABLE';
   const assessmentValid = validAssessment(monitoring.data?.assessment);
   const lifecycleMonitoringState: PanelState = monitoring.data?.assessment && !assessmentValid ? 'UNAVAILABLE'
     : monitoring.data && monitoring.data.assessment === null && !monitoring.error ? 'STALE'
     : lifecycle.state === 'UNAVAILABLE' ? 'UNAVAILABLE'
     : monitoring.error ? panelState(monitoring)
     : lifecycle.state;
-  const monitoringState = lifecycleMonitoringState === 'LIVE'
+  const monitoringState = activeSetup
+    ? activeAnalysisState
+    : lifecycleMonitoringState === 'LIVE'
     ? observationState(monitoring, monitoring.data?.observed_at ?? monitoring.data?.assessment?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.monitoring)
     : lifecycleMonitoringState;
-  const assessment = assessmentValid && monitoringState === 'LIVE' ? monitoring.data?.assessment : null;
+  const assessment = activeSetup ?? (assessmentValid && monitoringState === 'LIVE' ? monitoring.data?.assessment : null);
   const safetyState = safety.data && !validSafety(safety.data) ? 'UNAVAILABLE'
     : observationState(safety, safety.data?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.executionSafety);
   const riskObservedAt = risk.data?.observation_age_seconds === null || risk.data?.observation_age_seconds === undefined
@@ -112,11 +142,49 @@ export const WorkspacePage: React.FC<Props> = ({
   const watchlistState = watchlist.data && !validWatchlist(watchlist.data) ? 'UNAVAILABLE' : panelState(watchlist);
   const capState = caps.data && !validCaps(caps.data) ? 'UNAVAILABLE'
     : observationState(caps, caps.data?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.watchlistCapUsage);
+  const executionData = execution?.data ?? null;
+  const executionState = execution ? panelState(execution) : 'UNAVAILABLE';
+  const assistantState = assistantStatus?.data?.state ?? 'UNAVAILABLE';
+  const notificationCandidate = notificationStatus?.data ?? null;
+  const notificationData = notificationCandidate &&
+    Array.isArray(notificationCandidate.channels) &&
+    notificationCandidate.channels.every(channel => Array.isArray(channel.reason_codes)) &&
+    notificationCandidate.daily_digest &&
+    Array.isArray(notificationCandidate.daily_digest.reason_codes)
+    ? notificationCandidate : null;
+  const notificationState = notificationData && notificationStatus
+    ? panelState(notificationStatus) : 'UNAVAILABLE';
+  const notificationSummary = notificationData?.channels.map(channel => `${channel.channel} ${channel.state}`).join(' · ');
+  const liveSetup = activeSetup ?? (assessment?.setup_state === 'READY' ? assessment : null);
+  const canExecuteLiveCycle = Boolean(
+    brokerData?.broker_execution_enabled === true &&
+    brokerData.active_broker !== 'simulation' &&
+    brokerData.connected === true &&
+    demoVerified &&
+    liveSetup?.setup_state === 'READY' &&
+    liveSetup.direction !== 'NO_TRADE'
+  );
   const filteredDestinations = destinations.filter(item => item.label.toLowerCase().includes(query.trim().toLowerCase()));
 
   const closeAi = () => { setAiOpen(false); aiLauncher.current?.focus(); };
   const closePalette = () => { setPaletteOpen(false); setQuery(''); returnFocus.current?.focus(); };
   const navigate = (tab: TabType) => { closePalette(); onNavigate(tab); };
+  const sendAssistantMessage = async () => {
+    const message = aiMessage.trim();
+    if (!message || aiSending || assistantState !== 'READY') return;
+    setAiSending(true);
+    setAiAnswer(null);
+    setAiError(null);
+    try {
+      const response = await jqeApi.chatWithAssistant(message);
+      setAiAnswer(response.answer ?? response.message ?? 'No answer was returned.');
+      if (response.warning) setAiError(response.warning);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'JQE AI is unavailable.');
+    } finally {
+      setAiSending(false);
+    }
+  };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
@@ -152,7 +220,7 @@ export const WorkspacePage: React.FC<Props> = ({
         <div><span>Masked account</span><strong>{maskedAccount}</strong></div>
         <div><span>Verified at</span><strong>{formatTime(verifiedAt)}</strong></div>
         <div><span>Broker-status observation age</span><strong>{brokerAge}</strong></div>
-        <div><span>Execution</span><strong>Execution status unavailable</strong></div>
+        <div><span>Execution</span><strong>{executionData ? `${executionData.connected ? 'connected' : 'disconnected'} · ${executionData.open_positions_count} open` : 'unavailable'}</strong></div>
       </div>
       <button ref={paletteTrigger} type="button" className="workspace-command" onClick={() => {
         returnFocus.current = paletteTrigger.current; setPaletteOpen(true);
@@ -162,12 +230,31 @@ export const WorkspacePage: React.FC<Props> = ({
 
     <Panel title="Readiness" source="Evidence checklist" state={brokerState} className="workspace-readiness">
       <ul className="workspace-readiness-list">
-        <ReadinessItem label="MT5 connection" source="GET /brokers/status · snapshot-reported" result={brokerData?.active_broker === 'mt5' ? snapshotConnected : 'unavailable'} observed={brokerData?.active_broker === 'mt5' ? brokerObservedAt : null} age={brokerData?.active_broker === 'mt5' ? brokerAge : 'unavailable'} />
+        <ReadinessItem label={`${brokerConnectionLabel} connection`} source="GET /brokers/status · snapshot-reported" result={brokerConnectionAvailable ? snapshotConnected : 'unavailable'} observed={brokerConnectionAvailable ? brokerObservedAt : null} age={brokerConnectionAvailable ? brokerAge : 'unavailable'} />
         <ReadinessItem label="Demo verification" source="GET /brokers/status · DemoOnlyGuard" result={demoVerified ? 'Verified' : 'unverified'} observed={verifiedAt} />
-        <ReadinessItem label="Execution status" source="No authoritative GET projection" result="Execution status unavailable" observed={null} />
+        <ReadinessItem label="Execution status" source="GET /execution · broker state" state={executionState} result={executionData ? `${executionData.connected ? 'Connected' : 'Disconnected'} · ${executionData.open_positions_count} open positions` : executionState.toLowerCase()} observed={null} />
         <ReadinessItem label="Observation-daemon heartbeat" source="GET /observation/health" state={healthState} result={health ? health.running && health.healthy ? 'Healthy' : 'Not healthy' : healthState.toLowerCase()} observed={health?.updated_at} />
-        <ReadinessItem label="Notification channel" source="No safe channel-status GET projection" result="unavailable" observed={null} />
+        <ReadinessItem label="Notification channel" source="GET /notifications/status · configuration" state={notificationState} result={notificationSummary ?? notificationState.toLowerCase()} observed={notificationData?.observed_at ?? null} />
       </ul>
+      {brokerData?.broker_execution_enabled === true && <div className="workspace-live-action">
+        <div>
+          <strong>Demo execution</strong>
+          <small>{canExecuteLiveCycle ? 'Ready to run one guarded cycle.' : 'Waiting for a fresh verified demo setup.'}</small>
+        </div>
+        <button
+          type="button"
+          disabled={!canExecuteLiveCycle || liveExecution?.loading === true}
+          onClick={() => {
+            if (window.confirm('Run one JQE cycle and allow a demo broker order if every guard passes?')) {
+              onExecuteLiveCycle?.();
+            }
+          }}
+        >
+          {liveExecution?.loading ? 'Executing…' : 'Execute demo cycle'}
+        </button>
+        {liveExecution?.result && <p role="status">{liveExecution.result.status} · {liveExecution.result.reason || liveExecution.result.order_id || 'No additional detail'}</p>}
+        {liveExecution?.error && <p role="alert">{liveExecution.error}</p>}
+      </div>}
     </Panel>
 
     <div className="workspace-grid workspace-primary">
@@ -190,19 +277,35 @@ export const WorkspacePage: React.FC<Props> = ({
         </ol></>}
         <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div>
       </Panel>
-      <Panel title="Market chart" source="Snapshot-only candle projection unavailable" state="UNAVAILABLE" className="workspace-chart workspace-chart-unavailable">
-        <div className="workspace-chart-frame">
-          <p className="workspace-empty">A snapshot-only candle source is required.</p>
-          <div className="workspace-chart-overlay" role="status">NO_TRADE · canonical assessment does not authorize a trade</div>
-        </div>
-        <p className="workspace-source-time">Workspace market context is unavailable. The legacy selection ({selectedSymbol} / {selectedTimeframe}) is not presented as a broker-qualified Weltrade instrument.</p>
+      <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
+        {activeCandles ? <MarketChart
+          symbol={activeCandles.symbol}
+          timeframe={activeCandles.timeframe}
+          candles={activeCandles.candles}
+          signal={activeSignal}
+          setup={activeSetup}
+          priceDecimals={activeCandles.price_decimals}
+          loading={activeAnalysis?.loading}
+          error={activeAnalysis?.error}
+          dataStatus={activeCandles.market_data_status}
+        /> : <div className="workspace-chart-frame">
+          <p className="workspace-empty">Active market analysis is unavailable.</p>
+          <div className="workspace-chart-overlay" role="status">{activeAnalysis?.error ?? 'NO_MARKET_SNAPSHOT'}</div>
+        </div>}
+        <p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · strategy, setup, and candles share one observation.</p>
       </Panel>
     </div>
 
     <div className="workspace-grid workspace-secondary">
       <Panel title="Watchlist" source="GET /watchlist" state={watchlistState}>
         {watchlistState === 'LIVE' && watchlist.data?.items.length === 0 ? <p className="workspace-empty">Watchlist is empty.</p>
-          : watchlistState === 'LIVE' ? <ul className="workspace-list">{watchlist.data?.items.map((item, index) => <li key={`${item.scope}-${item.symbol}-${item.timeframe}-${index}`}><strong>{item.symbol} · {item.timeframe}</strong><span>{item.scope}</span><small>Row freshness unavailable</small></li>)}</ul>
+          : watchlistState === 'LIVE' ? <ul className="workspace-list">{watchlist.data?.items.map((item, index) => <li key={`${item.scope}-${item.symbol}-${item.timeframe}-${index}`}>
+            <button type="button" className="workspace-market-select" aria-label={`Analyze ${item.symbol} ${item.timeframe}`}
+              aria-current={selectedSymbol === item.symbol && selectedTimeframe === item.timeframe ? 'true' : undefined}
+              onClick={() => onMarketChange?.(item.symbol, item.timeframe)}>
+              <strong>{item.symbol} · {item.timeframe}</strong><span>{item.scope}</span><small>Row freshness unavailable</small>
+            </button>
+          </li>)}</ul>
             : <p className="workspace-empty">{watchlistState === 'ERROR' ? `Watchlist error: ${value(watchlist.error)}` : `Watchlist ${watchlistState.toLowerCase()}`}</p>}
       </Panel>
       <Panel title="Instrument caps" source="GET /watchlist/cap-usage · DailyInstrumentTradeGuard" state={capState} observed={capState === 'LIVE' ? caps.data?.observed_at : null}>
@@ -216,16 +319,42 @@ export const WorkspacePage: React.FC<Props> = ({
     </div>
 
     <div className="workspace-grid workspace-unavailable">
-      <Panel title="Latest signal" source="Missing persisted latest-signal GET projection" state="UNAVAILABLE"><p>Not available. The on-demand signal calculation is not a latest-signal feed.</p></Panel>
-      <Panel title="Daily digest" source="Missing digest GET projection" state="UNAVAILABLE"><p>Not available.</p></Panel>
-      <Panel title="Notification channels" source="Missing per-channel status GET projection" state="UNAVAILABLE"><p>Not available.</p></Panel>
+      <Panel title="Latest signal" source="GET /market/active-analysis · canonical snapshot" state={activeSignal ? activeAnalysisState : 'UNAVAILABLE'}>
+        {activeSignal ? <><p><strong>{activeSignal.signal}</strong> · confidence {activeSignal.confidence} · {activeSignal.quality}</p><p>{Array.isArray(activeSignal.reasons) && activeSignal.reasons.length ? activeSignal.reasons.join(' · ') : 'No reason code supplied'}</p></> : <p>Active market analysis is unavailable.</p>}
+      </Panel>
+      <Panel title="Paper simulation" source="GET /monitoring/offline · durable simulated outcome" state={monitoringState} observed={monitoring.data?.latest_paper_outcome?.recorded_at}>
+        <p><strong>SIMULATED ONLY</strong> · broker execution {monitoring.data?.broker_execution_enabled ? 'ENABLED' : 'DISABLED'}</p>
+        <p>{monitoring.data?.open_paper_positions ?? 0} open paper positions</p>
+        {monitoring.data?.latest_paper_outcome
+          ? <><p>{monitoring.data.latest_paper_outcome.status} · {monitoring.data.latest_paper_outcome.message}</p>
+            <small>Order {monitoring.data.latest_paper_outcome.order_id ?? 'none'} · close {monitoring.data.latest_paper_outcome.close_reason ?? 'open'} · realized {monitoring.data.latest_paper_outcome.realized_pnl ?? 'pending'}</small></>
+          : <p>No persisted paper outcome.</p>}
+      </Panel>
+      <Panel title="PainX research" source="GET /monitoring/offline · separate research status" state={monitoring.data?.research_status ? 'LIVE' : 'UNAVAILABLE'}>
+        {monitoring.data?.research_status
+          ? <><p><strong>{monitoring.data.research_status.status.replace(/_/g, ' ')}</strong></p><p>{monitoring.data.research_status.presentation_rule}</p><small>Execution authority: {monitoring.data.research_status.execution_authority ?? 'NONE_RESEARCH_ONLY'}</small></>
+          : <p>Research status unavailable.</p>}
+      </Panel>
+      <Panel title="Daily digest" source="GET /notifications/status · digest telemetry" state={notificationData ? notificationState : 'UNAVAILABLE'} observed={notificationData?.observed_at}>
+        {notificationData ? <p><strong>{notificationData.daily_digest.state}</strong> · {notificationData.daily_digest.reason_codes.join(' · ')}{notificationData.daily_digest.last_sent_at ? ` · sent ${formatTime(notificationData.daily_digest.last_sent_at)}` : ''}</p> : <p>Notification status is unavailable.</p>}
+      </Panel>
+      <Panel title="Notification channels" source="GET /notifications/status · configuration" state={notificationData ? notificationState : 'UNAVAILABLE'}>
+        {notificationData ? <ul className="workspace-list">{notificationData.channels.map(channel => <li key={channel.channel}><strong>{channel.channel}</strong><span>{channel.state}</span><small>{channel.reason_codes.join(' · ')}</small></li>)}</ul> : <p>Notification status is unavailable.</p>}
+      </Panel>
     </div>
 
-    <button ref={aiLauncher} type="button" className="workspace-ai-launcher" onClick={() => setAiOpen(true)}>JQE AI <small>Not connected</small></button>
+    <button ref={aiLauncher} type="button" className="workspace-ai-launcher" onClick={() => setAiOpen(true)}>JQE AI <small>{assistantState}</small></button>
     {aiOpen && <div className="workspace-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeAi(); }}>
       <aside className="workspace-ai-panel" role="dialog" aria-modal="true" aria-labelledby="workspace-ai-title">
-        <button ref={aiClose} type="button" onClick={closeAi}>Close</button><p className="workspace-eyebrow">JQE AI</p><h2 id="workspace-ai-title">Not connected yet</h2>
-        <p>Planned for explainability, research assistance, strategy interpretation, anomaly review and navigation. It cannot approve risk, broker status or execution.</p>
+        <button ref={aiClose} type="button" onClick={closeAi}>Close</button><p className="workspace-eyebrow">JQE AI · {assistantState}</p><h2 id="workspace-ai-title">Read-only evidence assistant</h2>
+        <p>Explains the supplied Workspace evidence. It cannot approve risk, broker status or execution.</p>
+        {assistantState !== 'READY' && <p role="status">{assistantStatus?.data?.reason_codes?.join(' · ') || assistantStatus?.error || 'Assistant unavailable.'}</p>}
+        {aiAnswer && <p role="status">{aiAnswer}</p>}
+        {aiError && <p role="alert">{aiError}</p>}
+        {assistantState === 'READY' && <form onSubmit={event => { event.preventDefault(); void sendAssistantMessage(); }}>
+          <input aria-label="Ask JQE AI" value={aiMessage} onChange={event => setAiMessage(event.target.value)} disabled={aiSending} placeholder="Ask about the current evidence" />
+          <button type="submit" disabled={aiSending || !aiMessage.trim()}>{aiSending ? 'Asking…' : 'Ask'}</button>
+        </form>}
       </aside></div>}
     {paletteOpen && <div className="workspace-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closePalette(); }}>
       <div className="workspace-palette" role="dialog" aria-modal="true" aria-labelledby="workspace-palette-title">

@@ -74,4 +74,21 @@ describe('offline telemetry lifecycle', () => {
     expect(valid.assessment?.execution_authorization.reason_codes).toContain('ANALYSIS_ONLY');
     expect(valid.simulation_submissions.utc_count).toBe(0);
   });
+
+  it('accepts an ordinary no-trade reason inside the explicit offline-simulation envelope', () => {
+    const base = snapshot().assessment as Record<string, unknown>;
+    const valid = validateOfflineTelemetry(snapshot({
+      assessment: {
+        ...base,
+        direction: 'NO_TRADE',
+        reason_codes: ['NO_TRADE'],
+        execution_authorization: {
+          status: 'BLOCKED', reason: 'normal no-trade', reason_codes: ['NO_TRADE'],
+          authorized_risk_amount: null, authorized_risk_percent: null,
+          quantity: null, quantity_unit: null, expected_loss_at_stop: null,
+        },
+      },
+    }));
+    expect(valid.assessment?.direction).toBe('NO_TRADE');
+  });
 });

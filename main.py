@@ -20,6 +20,7 @@ Run directly to execute a single cycle:
 from __future__ import annotations
 
 import asyncio
+import sys
 from dataclasses import dataclass, replace
 from datetime import datetime, time, timezone
 
@@ -49,7 +50,6 @@ from execution.reconciliation import get_reconciliation_adapter
 from execution.recovery import StartupRecoveryService
 from execution.safety import (
     DailyStateAuthority,
-    EmergencyStopState,
     ExecutionAuthorization,
     ExecutionMode,
     ExecutionSafetySnapshot,
@@ -84,6 +84,19 @@ class ExecutionComposition:
     position_ledger: SQLitePositionLedger
     reconciler: object
     daily_instrument_guard: DailyInstrumentTradeGuard
+
+
+@dataclass(frozen=True, slots=True)
+class CycleExecutionResult:
+    """Operator-safe summary of one canonical analysis/execution cycle."""
+
+    status: str
+    broker: str
+    symbol: str
+    side: str | None = None
+    order_id: str | None = None
+    decision_code: str | None = None
+    reason: str = ""
 
 
 async def build_execution_composition(gateway, *, broker: str, active_settings=settings) -> ExecutionComposition:
@@ -137,7 +150,7 @@ async def authorize_broker_execution_quantity(
     )
 
 
-async def run() -> None:
+async def run() -> CycleExecutionResult:
     """Runs a single JQE analysis-and-trade cycle end to end.
 
     Connects to the configured broker, retrieves and validates recent
@@ -292,20 +305,30 @@ async def run() -> None:
                 ),
             )
 
-        # Market acquisition is deliberately independent of the execution
-        # gateway.  This prevents a simulation fill price from silently
-        # becoming the input to strategy/risk evaluation.
+        # Market acquisition is independent by default. For broker-native
+        # instruments (for example Weltrade SyntX), the explicit ``broker``
+        # source reads candles from the already verified gateway while the
+        # execution policy still controls all order mutation.
         provider_symbol = provider_symbol_for(
             canonical_symbol=settings.default_symbol,
             source=settings.market_data_source,
         )
-        async with resolved_market_source(settings) as (market_source, source_name):
+        if settings.market_data_source == "broker":
+            market_context = resolved_market_source(settings, broker_gateway=gateway)
+        else:
+            market_context = resolved_market_source(settings)
+        async with market_context as (market_source, source_name):
+            requested_candle_count = settings.default_candle_count + (
+                100 if settings.market_data_source == "broker" else 1
+            )
             candles = await market_source.get_candles(
                 symbol=provider_symbol,
                 timeframe=timeframe,
-                # Ask for one extra candle because the provider's latest
-                # interval can still be forming and must be excluded.
-                count=settings.default_candle_count + 1,
+                # Ask for one extra candle because public providers report
+                # only the currently forming interval. Broker terminals can
+                # also expose future-dated server bars, so the broker-native
+                # source gets a larger buffer before closed-bar filtering.
+                count=requested_candle_count,
             )
         observations = closed_observations_from_candles(
             candles=candles,
@@ -406,7 +429,17 @@ async def run() -> None:
                 facts={"Details": str(risk_decision["reason"])},
             )
             logger.info("Cycle complete — no order submitted ({})", risk_decision["reason"])
-            return
+            return CycleExecutionResult(
+                status=(
+                    "NO_TRADE"
+                    if str(reason_code) == RiskDecisionCode.NO_TRADE_SIGNAL.value
+                    else "BLOCKED"
+                ),
+                broker=active_broker,
+                symbol=settings.default_symbol,
+                decision_code=str(reason_code),
+                reason=str(risk_decision["reason"]),
+            )
 
         latest = df.iloc[-1]
         if (
@@ -447,7 +480,18 @@ async def run() -> None:
                 "Cycle complete — Trade plan invalid: {}",
                 ", ".join(plan.warnings) if plan.warnings else plan.invalidation,
             )
-            return
+            return CycleExecutionResult(
+                status="BLOCKED",
+                broker=active_broker,
+                symbol=settings.default_symbol,
+                side=plan.signal,
+                decision_code="INVALID_TRADE_PLAN",
+                reason=(
+                    ", ".join(plan.warnings)
+                    if plan.warnings
+                    else plan.invalidation or "Trade plan is invalid"
+                ),
+            )
 
         side = _SIDE_BY_SIGNAL[plan.signal]
         sizing = await authorize_broker_execution_quantity(
@@ -551,7 +595,19 @@ async def run() -> None:
         if existing_record is not None:
             result = await executor.reconcile(intent)
             logger.info("Recovered order result: {}", result)
-            return
+            return CycleExecutionResult(
+                status=(
+                    "ALREADY_EXECUTED"
+                    if result.state is ReconciliationState.ALREADY_EXECUTED
+                    else "UNKNOWN"
+                ),
+                broker=active_broker,
+                symbol=intent.symbol,
+                side=intent.side.value,
+                order_id=None,
+                decision_code=None,
+                reason=result.reason,
+            )
         submission_started = False
 
         def publish_submission_started(_decision) -> None:
@@ -668,7 +724,14 @@ async def run() -> None:
                 "{} instrument={} usage={}/{} reset_at={}",
                 exc.reason_code, usage.instrument, usage.count, usage.limit, usage.reset_at,
             )
-            return
+            return CycleExecutionResult(
+                status="BLOCKED",
+                broker=active_broker,
+                symbol=intent.symbol,
+                side=intent.side.value,
+                decision_code=exc.reason_code,
+                reason=str(exc),
+            )
         if not terminal_safety_published:
             publish_submission_result(result)
         if not result.decision.allowed:
@@ -680,6 +743,26 @@ async def run() -> None:
                 reason="BROKER_REJECTED", facts={"Symbol": intent.symbol}
             )
         logger.info("Order result: {}", result)
+        result_decision = result.decision
+        return CycleExecutionResult(
+            status=(
+                "ORDER_ACCEPTED"
+                if result.decision.allowed
+                and result.state is ReconciliationState.ALREADY_EXECUTED
+                else "BROKER_REJECTED"
+                if result.decision.allowed
+                and result.state is ReconciliationState.REJECTED
+                else "BLOCKED"
+                if not result.decision.allowed
+                else "UNKNOWN"
+            ),
+            broker=active_broker,
+            symbol=intent.symbol,
+            side=intent.side.value,
+            order_id=getattr(result, "order_id", None),
+            decision_code=result_decision.code.value,
+            reason=getattr(result, "reason", "") or getattr(result_decision, "reason", ""),
+        )
 
 
 def main() -> None:
@@ -691,6 +774,10 @@ def main() -> None:
     Unexpected (non-platform) exceptions are intentionally left to
     propagate.
     """
+    if "--observation-only" in sys.argv[1:]:
+        from monitoring.observation_supervisor import run_observation_supervisor
+        asyncio.run(run_observation_supervisor())
+        return
     try:
         asyncio.run(run())
     except JQEError as exc:

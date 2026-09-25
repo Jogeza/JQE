@@ -23,7 +23,7 @@ class ActiveMarketContext(BaseModel):
     strategy_evaluation_time: datetime
     setup_creation_time: datetime
     setup_expiry_time: datetime
-    data_source: Literal["SIMULATION", "DERIV_PUBLIC", "UNAVAILABLE"]
+    data_source: Literal["SIMULATION", "DERIV_PUBLIC", "BROKER", "UNAVAILABLE"]
     cache_status: Literal["REFRESHED", "FRESH_CACHE", "CACHE_ONLY", "EMPTY"]
     synchronization_state: Literal["SYNCHRONIZED", "STALE", "FORMING", "UNKNOWN"]
     reason_codes: list[str] = Field(default_factory=list)

@@ -44,10 +44,11 @@ def test_watchlist_store_seeds_synthetics_and_persists(tmp_path: Path) -> None:
     items = store.get_items()
     assert len(items) == len(DEFAULT_SYNTHETIC_SEEDS)
     symbols = [item.symbol for item in items]
-    assert "R_75" in symbols
+    assert len(items) == 34
     assert "FX VOL 20" in symbols
     assert "PAINX 400" in symbols
-    assert all(item.timeframe == "H1" for item in items)
+    assert {item.timeframe for item in items} == {"M1", "M5"}
+    assert all("VOL" in item.symbol or "PAINX" in item.symbol for item in items)
 
     # Add a new instrument
     added = store.add_item("TrendX 1000", "H1")
@@ -78,7 +79,7 @@ def test_watchlist_api_endpoints(tmp_path: Path) -> None:
     initial_resp = get_watchlist(store=store)
     assert isinstance(initial_resp, WatchlistResponse)
     assert initial_resp.count == len(DEFAULT_SYNTHETIC_SEEDS)
-    assert any(i.symbol == "R_75" for i in initial_resp.items)
+    assert any(i.symbol == "FX VOL 20" and i.timeframe == "M1" for i in initial_resp.items)
 
     # 2. POST add instrument
     req = WatchlistAddRequest(symbol="QuadX 2000", timeframe="M15")

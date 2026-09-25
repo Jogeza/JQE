@@ -40,6 +40,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
     try {
       await jqeApi.addToWatchlist(cleanSymbol, newTimeframe);
       setNewSymbol('');
+      window.dispatchEvent(new Event('jqe-watchlist-changed'));
       onRefresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to add instrument');
@@ -55,6 +56,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
     setActionError(null);
     try {
       await jqeApi.deleteFromWatchlist(symbol, timeframe);
+      window.dispatchEvent(new Event('jqe-watchlist-changed'));
       onRefresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to delete instrument');

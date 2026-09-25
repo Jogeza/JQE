@@ -32,27 +32,17 @@ class WatchlistItem:
         return f"{self.symbol}:{self.timeframe}"
 
 
-# Seed list derived directly from the Weltrade demo smoke-test run
-# (tools/weltrade_demo_smoke.py, 2026-09-17, synthetic_symbol_count=29).
-# Only a representative subset is seeded; operators may add further
-# instruments via /add or the watchlist API.
+# Weltrade synthetic scope: volatility-type instruments plus the PainX family.
+# These exact names are confirmed by the Weltrade terminal catalogue. M1 and
+# M5 are the entry-observation timeframes; higher-timeframe context is handled
+# separately and is not part of this durable entry watchlist.
 DEFAULT_SYNTHETIC_SEEDS: tuple[tuple[str, str], ...] = (
-    # Deriv Volatility 75 (MT5 native)
-    ("R_75", "H1"),
-    # Weltrade FX Vol series
-    ("FX Vol 20", "H1"),
-    ("SFX Vol 20", "H1"),
-    # PainX / GainX
-    ("PainX 400", "H1"),
-    ("GainX 400", "H1"),
-    # TrendX
-    ("TrendX 600", "H1"),
-    # FiboX and QuadX — exact names from terminal, no trailing number
-    ("FiboX", "H1"),
-    ("QuadX", "H1"),
-    # MAX series — real names as returned by mt5.symbols_get()
-    ("MAX PainX 1000", "H1"),
-    ("MAX GainX 1000", "H1"),
+    *((symbol, timeframe) for symbol in (
+        "FX Vol 20", "FX Vol 40", "FX Vol 60", "FX Vol 80", "FX Vol 99",
+        "SFX Vol 20", "SFX Vol 40", "SFX Vol 60", "SFX Vol 80", "SFX Vol 99",
+        "PainX 400", "PainX 600", "PainX 800", "PainX 999", "PainX 1200",
+        "MAX PainX 1000", "MAX PainX 2000",
+    ) for timeframe in ("M1", "M5")),
 )
 
 

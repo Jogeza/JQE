@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from strategy.pipeline import generate_trading_signal
+from risk.risk_engine import MIN_CONFIDENCE
 
 
 def _make_indicator_df(
@@ -49,14 +50,22 @@ class TestGenerateTradingSignal:
         with pytest.raises(KeyError):
             generate_trading_signal(df)
 
-    def test_bullish_trend_strong_momentum_produces_buy(self) -> None:
+    def test_bullish_trend_strong_momentum_below_confidence_threshold_is_gated(self) -> None:
         # close > EMA50 > EMA200 and RSI > 50 -> TREND_UP -> TRENDING;
-        # EMA50 > EMA200 -> BULLISH; RSI > 60 -> STRONG momentum.
+        # EMA50 > EMA200 -> BULLISH; RSI > 60 -> STRONG momentum.  The
+        # direction is detected, but the shared institutional confidence
+        # gate demotes a sub-threshold signal to NO_TRADE with an explicit
+        # reason rather than presenting it as executable.
         df = _make_indicator_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0)
         signal = generate_trading_signal(df, "TEST")
-        assert signal["signal"] == "BUY"
         assert signal["intelligence"]["regime"] == "TRENDING"
         assert signal["intelligence"]["trend"] == "BULLISH"
+        assert signal["confidence"] < MIN_CONFIDENCE
+        assert signal["signal"] == "NO_TRADE"
+        assert any(
+            "Confidence below configured threshold" in reason
+            for reason in signal["reasons"]
+        )
 
     def test_bearish_trend_strong_momentum_produces_sell(self) -> None:
         # close < EMA50 < EMA200 and RSI < 50 -> TREND_DOWN -> TRENDING;

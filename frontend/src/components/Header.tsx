@@ -10,6 +10,12 @@ import {
 
 const SYMBOL_OPTIONS = [
   { value: 'R_75', label: 'R_75 (Volatility 75 Index)', search: 'r_75 r75 volatility 75 index synthetic' },
+  { value: 'FX Vol 10', label: 'FX Vol 10 (Weltrade)', search: 'fx vol 10 volatility 10 weltrade synthetic' },
+  { value: 'FX Vol 20', label: 'FX Vol 20 (Weltrade)', search: 'fx vol 20 volatility 20 weltrade synthetic' },
+  { value: 'FX Vol 25', label: 'FX Vol 25 (Weltrade)', search: 'fx vol 25 volatility 25 weltrade synthetic' },
+  { value: 'FX Vol 50', label: 'FX Vol 50 (Weltrade)', search: 'fx vol 50 volatility 50 weltrade synthetic' },
+  { value: 'FX Vol 75', label: 'FX Vol 75 (Weltrade)', search: 'fx vol 75 volatility 75 weltrade synthetic' },
+  { value: 'FX Vol 100', label: 'FX Vol 100 (Weltrade)', search: 'fx vol 100 volatility 100 weltrade synthetic' },
   { value: 'XAUUSD', label: 'XAUUSD (Gold)', search: 'xauusd gold' },
   { value: 'EURUSD', label: 'EURUSD', search: 'eurusd euro dollar' },
   { value: 'GBPUSD', label: 'GBPUSD', search: 'gbpusd pound dollar' },

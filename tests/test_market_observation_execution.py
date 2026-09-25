@@ -11,10 +11,11 @@ import pytest
 
 import main
 from broker.simulation_gateway import SimulationGateway
-from broker.types import Candle, OrderSide, Timeframe
+from broker.types import Candle, Timeframe
 from config import EmergencyStopState, settings
 from core.exceptions import ConfigurationError, ExecutionError, MarketDataError
 from data.market_observation import closed_observations_from_candles
+from data.market_observation import resolved_market_source
 
 
 def _candles(*, close: float = 2_345.67, count: int = 3) -> list[Candle]:
@@ -31,6 +32,26 @@ def _candles(*, close: float = 2_345.67, count: int = 3) -> list[Candle]:
         )
         for index in range(count)
     ]
+
+
+@pytest.mark.asyncio
+async def test_broker_market_source_uses_the_supplied_gateway_read_only() -> None:
+    class Gateway:
+        async def get_candles(self, **_kwargs):
+            return []
+
+        async def connect(self):
+            raise AssertionError("the active gateway is already connected")
+
+        async def disconnect(self):
+            raise AssertionError("the active gateway lifecycle belongs to main.run")
+
+    source_settings = SimpleNamespace(market_data_source="broker")
+    gateway = Gateway()
+
+    async with resolved_market_source(source_settings, broker_gateway=gateway) as (source, name):
+        assert source is gateway
+        assert name == "broker"
 
 
 @pytest.fixture(autouse=True)

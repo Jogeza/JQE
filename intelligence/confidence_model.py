@@ -13,8 +13,8 @@ design:
     -----------------
     Total       100
 
-A trade should only be considered when the total meets a configured
-threshold (see ``config.settings.min_confidence_threshold``).
+A trade should only be considered when the total meets the live risk
+engine threshold (``risk.risk_engine.MIN_CONFIDENCE``).
 
 This supersedes :class:`intelligence.market_score.MarketScore`'s
 older 4-factor design (trend/volatility/liquidity/momentum, no

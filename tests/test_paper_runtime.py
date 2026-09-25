@@ -9,6 +9,7 @@ import pytest
 from api.service import ApplicationService
 from broker.types import ClosedMarketObservation, ExecutionQuantity, ExecutionQuantityUnit, OrderSide, Timeframe
 from config import Settings, settings
+from core.exceptions import BrokerConnectionError, MarketDataError
 from execution.paper_contract import PaperContractEngine
 from execution.paper_runtime import ContinuousPaperRuntime, PaperEntry, PaperRuntimeStateStore
 from execution.persistence import SQLiteIntentRecordStore
@@ -189,9 +190,52 @@ def test_restart_with_open_position_fails_closed(tmp_path):
 def test_api_runtime_telemetry_is_read_only(tmp_path, monkeypatch):
     path = tmp_path / "runtime.sqlite3"
     store = PaperRuntimeStateStore(path)
-    heartbeat = store.read().__class__(cycles_completed=7, last_action="NO_SIGNAL")
+    heartbeat = store.read().__class__(
+        cycles_completed=7, last_action="NO_SIGNAL", market_data_source="weltrade_demo"
+    )
     store.publish(heartbeat)
     monkeypatch.setattr(settings, "paper_runtime_state_path", path)
     response = ApplicationService().get_paper_runtime_status()
     assert response.cycles_completed == 7 and response.broker_execution_enabled is False
+    assert response.market_data_source == "weltrade_demo"
     assert store.read().cycles_completed == 7
+
+
+def test_heartbeat_read_tolerates_unknown_payload_fields(tmp_path):
+    import json
+    import sqlite3
+
+    store = PaperRuntimeStateStore(tmp_path / "runtime.sqlite3")
+    store.publish(store.read())
+    connection = sqlite3.connect(str(tmp_path / "runtime.sqlite3"))
+    payload = json.loads(connection.execute("SELECT payload FROM heartbeat WHERE id=1").fetchone()[0])
+    payload["field_from_a_newer_version"] = "ignored"
+    connection.execute("UPDATE heartbeat SET payload=? WHERE id=1", (json.dumps(payload),))
+    connection.commit()
+    connection.close()
+    assert store.read().cycles_completed == 0
+
+
+@pytest.mark.asyncio
+async def test_market_data_source_label_is_persisted(tmp_path):
+    subject = runtime(
+        tmp_path, AsyncMock(return_value=[obs(0)]), AsyncMock(return_value=None),
+        market_data_source="weltrade_demo",
+    )
+    heartbeat = await subject.run_once()
+    assert heartbeat.market_data_source == "weltrade_demo"
+    stored = PaperRuntimeStateStore(tmp_path / "runtime.sqlite3", initialize=False).read()
+    assert stored.market_data_source == "weltrade_demo"
+
+
+@pytest.mark.asyncio
+async def test_market_data_unavailability_persists_blocked_outcome(tmp_path):
+    stale = runtime(tmp_path, AsyncMock(side_effect=MarketDataError("stale")), AsyncMock())
+    heartbeat = await stale.run_once()
+    assert heartbeat.last_action == "BLOCKED:MARKET_DATA"
+    assert heartbeat.last_error == "MarketDataError"
+    assert PaperRuntimeStateStore(tmp_path / "runtime.sqlite3", initialize=False).read().last_action == "BLOCKED:MARKET_DATA"
+    offline = runtime(
+        tmp_path / "other", AsyncMock(side_effect=BrokerConnectionError("offline")), AsyncMock()
+    )
+    assert (await offline.run_once()).last_action == "BLOCKED:MARKET_DATA"

@@ -31,9 +31,14 @@ def test_trend_down_sell_gate_and_rsi_accounting() -> None:
 
 def test_buy_origin_and_confirmation_are_observationally_explicit() -> None:
     report = analyze(ARTIFACT)
-    assert report["buy_origin"]["count"] == 1198
-    assert report["buy_origin"]["record_regime"] == {"TREND_UP": 1198}
-    assert report["buy_origin"]["momentum"] == {"STRONG": 1198}
+    # The replay runs the canonical pipeline, so the shared MIN_CONFIDENCE
+    # gate applies to the baseline too: only confidence-80 origins survive.
+    assert report["buy_origin"]["count"] == 620
+    assert report["buy_origin"]["record_regime"] == {"TREND_UP": 620}
+    assert report["buy_origin"]["replayed_regime"] == {"TREND_UP": 620}
+    assert report["buy_origin"]["confidence"] == {80: 620}
+    assert report["buy_origin"]["momentum"] == {"STRONG": 620}
+    assert report["buy_origin"]["volatility"] == {"HIGH": 620}
     assert report["confirmation"] == {
         "pipeline_key_present": False,
         "record_confirmation_states": {"NOT_EVALUATED": 5000},

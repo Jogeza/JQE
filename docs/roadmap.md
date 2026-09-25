@@ -167,9 +167,9 @@ implement it; the Quant Core never imports a broker SDK directly. See
   (`classify_structure`/`classify_risk_conditions`) that a real
   pattern engine can later replace without touching the scoring logic
   itself.
-* `config.settings.min_confidence_threshold` (default 70) added —
-  not yet consumed; wiring `ConfidenceModel` into the live pipeline is
-  Phase 5.
+* The live confidence threshold is owned by
+  `risk.risk_engine.MIN_CONFIDENCE` (75); the former unused configuration
+  field was removed.
 * 92 new/updated tests (liquidity engine, market state — including a
   regression test for the now-reachable MEDIUM branch, regime
   detection, and thorough confidence-model coverage including every
@@ -284,10 +284,9 @@ behaviour until Phase 5 integration work is completed.
   canonical `detect_regime()` (vocabulary: `TRENDING`/`RANGING`/
   `HIGH_VOLATILITY`/`UNKNOWN`) is not called from `main.py`.
 
-* ❌ **`settings.min_confidence_threshold` is not enforced.**
-  The setting exists (default 70) and is validated by Pydantic, but
-  `main.py` does not read it. Signals below the threshold are not
-  blocked.
+* ✅ **The live confidence threshold is enforced at 75.**
+  `risk.risk_engine.MIN_CONFIDENCE` is the single source used by the
+  strategy and risk layers. Signals below it are blocked.
 
 * ⚠️ **`settings.max_daily_loss` and `settings.max_trades_daily` are
   partially enforced.**
@@ -389,21 +388,19 @@ by the live pipeline (action, symbol, volume, stop_loss, take_profit).
 * Extend `tests/test_main.py` (which already exists) or add a new
   `tests/test_main_regression.py`.
 
-### Task 3 — Enforce minimum confidence (Completed: ❌)
+### Task 3 — Enforce minimum confidence (Completed: ✅)
 
-**Goal:** Wire `settings.min_confidence_threshold` into the live trading
-path so signals below the configured threshold are rejected before risk
-evaluation.
+**Goal:** Use the single live threshold from
+`risk.risk_engine.MIN_CONFIDENCE` so signals below 75 are rejected before
+risk evaluation.
 
-* Read `settings.min_confidence_threshold` in `main.py` after
+* Read the shared threshold in the strategy layer after
   `generate_trading_signal()` returns.
-* If `signal["confidence"] < settings.min_confidence_threshold`, log
+* If `signal["confidence"] < MIN_CONFIDENCE`, log
   and return without proceeding to `approve_trade` or order submission.
 * Add boundary tests: at threshold, just below, just above, and at
   the extremes (0, 100).
-* Do not modify the threshold default or the risk engine's own
-  confidence check (75 hardcoded in `RiskEngine`) at this time —
-  reconcile the two thresholds as a separate documented decision.
+* The strategy and risk layers use the same pinned value, 75.
 
 ### Task 4 — Integrate TradePlanBuilder (Completed: ⚠️ Partial)
 
@@ -494,11 +491,9 @@ The following items are deliberately **not** included in the Phase 5
 scope. They are documented here so they are not forgotten, but they
 require additional design work before becoming implementation tasks.
 
-* **Reconciling confidence thresholds.** `ConfidenceModel` is now wired
-  through `StrategyEngine` and produces the 6-factor breakdown. However,
-  `settings.min_confidence_threshold` is stored but not enforced by the
-  strategy engine, while `RiskEngine.min_confidence` remains a separate
-  threshold. Minimum-confidence enforcement is therefore still incomplete.
+* **Confidence threshold reconciliation.** `ConfidenceModel` is wired
+  through `StrategyEngine`; `risk.risk_engine.MIN_CONFIDENCE` is the
+  shared 75-point threshold used by both strategy and risk evaluation.
 
 * **Replacing `main.py`'s direct `gateway.submit_order()` call with
   `TradeLifecycle`.** `TradeLifecycle.process()` requires `order_manager`

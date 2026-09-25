@@ -10,6 +10,7 @@ import {
   SignalResponse,
   RiskStatusResponse,
   ExecutionStateResponse,
+  LiveExecutionResponse,
   ExecutionSafetyResponse,
   RecoveryDiagnosticsResponse,
   PaperRuntimeStatusResponse,
@@ -30,6 +31,9 @@ import {
   WatchlistResponse,
   WatchlistItemDTO,
   WatchlistCapUsageResponse,
+  AssistantStatusResponse,
+  AssistantChatResponse,
+  NotificationStatusResponse,
 } from '../types/api';
 
 const API_BASE = '/api/v1';
@@ -53,14 +57,19 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+    let errorData: unknown;
     try {
       const errJson = await response.json();
-      if (errJson?.detail) errorDetail = errJson.detail;
-      else if (errJson?.message) errorDetail = errJson.message;
+      errorData = errJson;
+      const detail = errJson?.detail;
+      if (typeof detail === 'string') errorDetail = detail;
+      else if (detail && typeof detail === 'object') {
+        errorDetail = detail.message ?? detail.reason_code ?? JSON.stringify(detail);
+      } else if (typeof errJson?.message === 'string') errorDetail = errJson.message;
     } catch {
-      // ignore parse error
+      // Keep the transport-level message when the response is not JSON.
     }
-    throw new ApiError(response.status, errorDetail);
+    throw new ApiError(response.status, errorDetail, errorData);
   }
 
   return response.json();
@@ -72,6 +81,19 @@ export const jqeApi = {
   },
   async getObservationHealth(signal?: AbortSignal): Promise<ObservationHealthResponse> {
     return fetchJson(`${API_BASE}/observation/health`, { signal });
+  },
+  async getAssistantStatus(signal?: AbortSignal): Promise<AssistantStatusResponse> {
+    return fetchJson(`${API_BASE}/assistant/status`, { signal });
+  },
+  async chatWithAssistant(message: string, signal?: AbortSignal): Promise<AssistantChatResponse> {
+    return fetchJson(`${API_BASE}/assistant/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+      signal,
+    });
+  },
+  async getNotificationStatus(signal?: AbortSignal): Promise<NotificationStatusResponse> {
+    return fetchJson(`${API_BASE}/notifications/status`, { signal });
   },
   async runOfflineAnalysis(symbol: string, timeframe: string, signal?: AbortSignal): Promise<MarketSetup> {
     const params = new URLSearchParams({ symbol, timeframe });
@@ -153,6 +175,12 @@ export const jqeApi = {
   /** Execution layer open positions and recent trade history */
   async getExecutionState(signal?: AbortSignal): Promise<ExecutionStateResponse> {
     return fetchJson(`${API_BASE}/execution`, { signal });
+  },
+
+  async executeLiveCycle(signal?: AbortSignal): Promise<LiveExecutionResponse> {
+    return fetchJson(`${API_BASE}/execution/cycle?confirmed=true`, {
+      method: 'POST', signal,
+    });
   },
 
   /** Read-only canonical execution-safety publication; never evaluates policy */

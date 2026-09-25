@@ -47,4 +47,10 @@ def test_offline_monitoring_never_selects_a_broker(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr(settings, "simulation_daily_submission_store_path", tmp_path / "daily.sqlite3")
     service = ApplicationService()
     monkeypatch.setattr(service, "_get_gateway", lambda: (_ for _ in ()).throw(AssertionError("broker reached")))
-    assert service.get_offline_monitoring().mode == "OFFLINE_SIMULATION"
+    telemetry = service.get_offline_monitoring()
+    assert telemetry.mode == "OFFLINE_SIMULATION"
+    assert telemetry.broker_execution_enabled is False
+    assert telemetry.open_paper_positions == 0
+    assert telemetry.latest_paper_outcome is None
+    assert telemetry.research_status is not None
+    assert telemetry.research_status["status"] == "NO_DEMONSTRATED_POSITIVE_EDGE"

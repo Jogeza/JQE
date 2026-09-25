@@ -24,6 +24,7 @@ export const PaperRuntimePanel: React.FC<PaperRuntimePanelProps> = ({ runtime, t
       <div className="quant-panel-body">
         <div className="paper-runtime-grid">
           <div><span>Mode</span><strong>{value(runtime?.runtime_mode)}</strong></div>
+          <div><span>Market data source</span><strong>{value(runtime?.market_data_source ?? 'UNSPECIFIED')}</strong></div>
           <div><span>Last cycle</span><strong>{time(runtime?.last_cycle_at)}</strong></div>
           <div><span>Cycles</span><strong>{value(runtime?.cycles_completed)}</strong></div>
           <div><span>Last candle</span><strong>{time(runtime?.last_processed_observation)}</strong></div>

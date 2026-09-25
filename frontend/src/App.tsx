@@ -27,12 +27,16 @@ import {
   PaperRuntimeStatusResponse,
   PaperDiagnosticsResponse,
   MarketSetup,
+  ActiveMarketAnalysisResponse,
   ResourceState,
   OfflineMonitoringResponse,
   ObservationHealthResponse,
   BrokerStatusResponse,
   WatchlistResponse,
   WatchlistCapUsageResponse,
+  AssistantStatusResponse,
+  NotificationStatusResponse,
+  LiveExecutionResponse,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
 import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry } from './services/telemetryLifecycle';
@@ -40,7 +44,7 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 const workspaceProfile = [
   'brokerStatus', 'safety', 'risk', 'monitoring', 'observationHealth',
-  'watchlist', 'watchlistCapUsage',
+  'watchlist', 'watchlistCapUsage', 'execution', 'activeAnalysis', 'assistantStatus', 'notificationStatus',
 ] as const;
 const legacyProfile = [
   'system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety',
@@ -50,8 +54,8 @@ const legacyProfile = [
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('R_75');
-  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('H1');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<string>('');
 
   type Resources = {
     system: ResourceState<SystemStatusResponse>;
@@ -66,11 +70,14 @@ export const App: React.FC = () => {
     paperRuntime: ResourceState<PaperRuntimeStatusResponse>;
     paperDiagnostics: ResourceState<PaperDiagnosticsResponse>;
     setup: ResourceState<MarketSetup>;
+    activeAnalysis: ResourceState<ActiveMarketAnalysisResponse>;
     monitoring: ResourceState<OfflineMonitoringResponse>;
     observationHealth: ResourceState<ObservationHealthResponse>;
     brokerStatus: ResourceState<BrokerStatusResponse>;
     watchlist: ResourceState<WatchlistResponse>;
     watchlistCapUsage: ResourceState<WatchlistCapUsageResponse>;
+    assistantStatus: ResourceState<AssistantStatusResponse>;
+    notificationStatus: ResourceState<NotificationStatusResponse>;
   };
   const emptyResource = <T,>(): ResourceState<T> => ({
     data: null, loading: true, error: null, lastUpdated: null, stale: false,
@@ -81,16 +88,22 @@ export const App: React.FC = () => {
     safety: emptyResource(), performance: emptyResource(), recovery: emptyResource(),
     paperRuntime: emptyResource(), paperDiagnostics: emptyResource(),
     setup: emptyResource(),
+    activeAnalysis: emptyResource(),
     monitoring: emptyResource(),
     observationHealth: emptyResource(),
     brokerStatus: emptyResource(),
     watchlist: emptyResource(),
     watchlistCapUsage: emptyResource(),
+    assistantStatus: emptyResource(),
+    notificationStatus: emptyResource(),
   });
   const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const [lastSuccessfulContact, setLastSuccessfulContact] = useState<Date | null>(null);
   const [lifecycleNow, setLifecycleNow] = useState(() => new Date());
   const [monitoringValidationError, setMonitoringValidationError] = useState<string | null>(null);
+  const [liveExecution, setLiveExecution] = useState<{
+    loading: boolean; result: LiveExecutionResponse | null; error: string | null;
+  }>({ loading: false, result: null, error: null });
   const requestIdRef = useRef(0);
   const inFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -123,6 +136,9 @@ export const App: React.FC = () => {
         case 'brokerStatus': return jqeApi.getBrokerStatus(controller.signal);
         case 'watchlist': return jqeApi.getWatchlist(controller.signal);
         case 'watchlistCapUsage': return jqeApi.getWatchlistCapUsage(undefined, controller.signal);
+        case 'activeAnalysis': return jqeApi.getActiveMarketAnalysis(requestedSymbol, requestedTimeframe, undefined, controller.signal);
+        case 'assistantStatus': return jqeApi.getAssistantStatus(controller.signal);
+        case 'notificationStatus': return jqeApi.getNotificationStatus(controller.signal);
         default: throw new Error(`No polling request for ${name}`);
       }
     };
@@ -211,6 +227,22 @@ export const App: React.FC = () => {
     await fetchAllData(true, false);
   }, [fetchAllData]);
 
+  const handleExecuteLiveCycle = useCallback(async () => {
+    if (liveExecution.loading) return;
+    setLiveExecution({ loading: true, result: null, error: null });
+    try {
+      const result = await jqeApi.executeLiveCycle();
+      setLiveExecution({ loading: false, result, error: null });
+      await fetchAllData(true, false);
+    } catch (error) {
+      setLiveExecution({
+        loading: false,
+        result: null,
+        error: error instanceof Error ? error.message : 'Demo execution failed',
+      });
+    }
+  }, [fetchAllData, liveExecution.loading]);
+
   // Initial fetch and symbol/timeframe reaction
   useEffect(() => {
     fetchAllData(true, true);
@@ -224,6 +256,8 @@ export const App: React.FC = () => {
   useInterval(() => setLifecycleNow(new Date()), 1000);
 
   const systemStatus = resources.system.data;
+  const displaySymbol = selectedSymbol || systemStatus?.default_symbol || 'R_75';
+  const displayTimeframe = selectedTimeframe || systemStatus?.default_timeframe || 'M5';
   const marketSummary = resources.market.data;
   const candlesData = resources.candles.data;
   const signalData = resources.strategy.data;
@@ -247,8 +281,8 @@ export const App: React.FC = () => {
   const telemetryLifecycle = resources.monitoring.loading && monitoringData && derivedTelemetryLifecycle.state === 'LIVE'
     ? { ...derivedTelemetryLifecycle, state: 'STALE' as const, reason: 'Refreshing retained telemetry' }
     : derivedTelemetryLifecycle;
-  const loading = Object.values(resources).some(resource => resource.loading);
   const activeProfile = activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+  const loading = activeProfile.some(name => resources[name].loading);
   const failedResources = activeProfile.filter(name => resources[name].error);
   const apiError = failedResources.length
     ? `Telemetry errors: ${failedResources.join(', ')}. Prior values, when available, are marked stale.`
@@ -265,8 +299,18 @@ export const App: React.FC = () => {
           observationHealth={resources.observationHealth}
           watchlist={resources.watchlist}
           caps={resources.watchlistCapUsage}
-          selectedSymbol={selectedSymbol}
-          selectedTimeframe={selectedTimeframe}
+          execution={resources.execution}
+          activeAnalysis={resources.activeAnalysis}
+          assistantStatus={resources.assistantStatus}
+          notificationStatus={resources.notificationStatus}
+          liveExecution={liveExecution}
+          onExecuteLiveCycle={handleExecuteLiveCycle}
+          selectedSymbol={displaySymbol}
+          selectedTimeframe={displayTimeframe}
+          onMarketChange={(symbol, timeframe) => {
+            setSelectedSymbol(symbol);
+            setSelectedTimeframe(timeframe);
+          }}
           lifecycle={telemetryLifecycle}
           onNavigate={setActiveTab}
         />;
@@ -299,8 +343,8 @@ export const App: React.FC = () => {
             telemetryLifecycle={telemetryLifecycle}
             onPaperRecorded={() => fetchAllData(true, false)}
             loading={loading}
-            selectedSymbol={selectedSymbol}
-            selectedTimeframe={selectedTimeframe}
+            selectedSymbol={displaySymbol}
+            selectedTimeframe={displayTimeframe}
             candleError={resources.candles.error}
             telemetryStale={{ system: resources.system.stale, strategy: resources.strategy.stale, risk: resources.risk.stale }}
             brokerStatus={resources.brokerStatus.data}
@@ -311,8 +355,8 @@ export const App: React.FC = () => {
           <MarketsPage
             summary={marketSummary}
             candles={candlesData}
-            symbol={selectedSymbol}
-            timeframe={selectedTimeframe}
+            symbol={displaySymbol}
+            timeframe={displayTimeframe}
             loading={loading}
             signal={signalData}
             candleError={resources.candles.error}
@@ -385,17 +429,21 @@ export const App: React.FC = () => {
           loading={loading}
           telemetryStale={resources.system.stale}
           onRefresh={() => fetchAllData(true, false)}
-          selectedSymbol={selectedSymbol}
+          selectedSymbol={displaySymbol}
           onSymbolChange={setSelectedSymbol}
-          selectedTimeframe={selectedTimeframe}
+          selectedTimeframe={displayTimeframe}
           onTimeframeChange={setSelectedTimeframe}
           brokerStatus={resources.brokerStatus.data}
           onSelectBroker={handleSelectBroker}
         />}
 
         <div className="offline-simulation-banner" role="status">
-          OFFLINE SIMULATION — NO BROKER ORDERS
-          <span>{telemetryLifecycle.snapshot ? ` ${telemetryLifecycle.snapshot.environment} · ${telemetryLifecycle.snapshot.simulation_submissions.account_scope}` : ` ${telemetryLifecycle.state}`}</span>
+          {resources.brokerStatus.data?.broker_execution_enabled === true && resources.brokerStatus.data.active_broker !== 'simulation'
+            ? 'DEMO EXECUTION — BROKER ORDERS ENABLED'
+            : 'OFFLINE SIMULATION — NO BROKER ORDERS'}
+          <span>{resources.brokerStatus.data?.active_broker && resources.brokerStatus.data.active_broker !== 'simulation'
+            ? ` ${resources.brokerStatus.data.active_broker} · ${resources.brokerStatus.data.observation_state}`
+            : telemetryLifecycle.snapshot ? ` ${telemetryLifecycle.snapshot.environment} · ${telemetryLifecycle.snapshot.simulation_submissions.account_scope}` : ` ${telemetryLifecycle.state}`}</span>
         </div>
 
         {/* API Error Notification Banner */}
