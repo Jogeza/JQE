@@ -115,6 +115,19 @@ ObservationSource = Callable[[], Awaitable[list[ClosedMarketObservation]]]
 DecisionBuilder = Callable[[list[ClosedMarketObservation]], Awaitable[PaperEntry | None]]
 
 
+def _venue_block_code(reason: str) -> str:
+    """Return a stable heartbeat label without changing execution semantics."""
+    normalized = reason.casefold().replace("-", "_").replace(" ", "_")
+    if (
+        ("minimum" in normalized and any(token in normalized for token in ("stake", "quantity", "lot", "volume")))
+        or "min_stake" in normalized
+        or "min_quantity" in normalized
+        or "min_lot" in normalized
+    ):
+        return "MIN_STAKE"
+    return "VENUE_REJECTED"
+
+
 class ContinuousPaperRuntime:
     """One serialized loop; all opens enter through ``AsyncTradeExecutor``."""
 
@@ -192,7 +205,11 @@ class ContinuousPaperRuntime:
                             await self.events.paper_event(kind=closed.reason.value, facts={"Contract": closed.contract_id, "P/L": str(closed.realized_profit)})
                             await self.events.paper_event(kind="CLOSED", facts={"Contract": closed.contract_id, "P/L": str(closed.realized_profit)})
                 entry = await self.decide(observations)
-                action, last_signal = ("POSITION_CLOSED", None) if closed_count else ("NO_SIGNAL", "NO_TRADE")
+                action, last_signal, cycle_error = (
+                    ("POSITION_CLOSED", None, None)
+                    if closed_count
+                    else ("NO_SIGNAL", "NO_TRADE", None)
+                )
                 if entry is not None:
                     last_signal = entry.intent.side.value if hasattr(entry.intent.side, "value") else str(entry.intent.side)
                     await self.events.paper_event(kind="SIGNAL", facts={"Symbol": entry.intent.symbol, "Signal": last_signal})
@@ -205,6 +222,14 @@ class ContinuousPaperRuntime:
                     if result.state is ReconciliationState.ALREADY_EXECUTED and result.order_id:
                         action = "POSITION_OPENED"
                         await self.events.paper_event(kind="OPENED", facts={"Contract": result.order_id, "Symbol": entry.intent.symbol})
+                    elif result.decision.allowed and result.state is ReconciliationState.UNKNOWN:
+                        cycle_error = result.reason or "Submission outcome unknown"
+                        action = f"BLOCKED:{_venue_block_code(cycle_error)}"
+                        await self.events.paper_event(kind="BLOCKED", facts={"Decision": action.split(":", 1)[1], "Details": cycle_error})
+                    elif result.decision.allowed and result.state is ReconciliationState.REJECTED:
+                        cycle_error = result.reason or "Broker rejected order"
+                        action = "BLOCKED:VENUE_REJECTED"
+                        await self.events.paper_event(kind="BLOCKED", facts={"Decision": "VENUE_REJECTED", "Details": cycle_error})
                     else:
                         action = f"BLOCKED:{result.decision.code.value}"
                         await self.events.paper_event(kind="BLOCKED", facts={"Decision": result.decision.code.value})
@@ -213,7 +238,7 @@ class ContinuousPaperRuntime:
                 self.heartbeat = replace(
                     self.heartbeat, last_cycle_at=now.isoformat(), last_processed_observation=observation.closed_at.isoformat(),
                     open_paper_positions=open_count, cycles_completed=self.heartbeat.cycles_completed + 1,
-                    last_signal=last_signal, last_action=action, last_error=None,
+                    last_signal=last_signal, last_action=action, last_error=cycle_error,
                     notification_state=self.events.service.observation.status.value,
                 )
             except Exception as exc:

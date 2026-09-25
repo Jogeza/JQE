@@ -258,10 +258,11 @@ class AsyncTradeExecutor:
                 raise ValueError("Gateway returned an indeterminate order status")
             if status_value in {"FILLED", "SUBMITTED"} and not result.order_id.strip():
                 raise ValueError("Gateway accepted an order without broker identity")
-        except Exception:
+        except Exception as exc:
             self._transition(intent, IntentRecordStatus.UNKNOWN)
             log_unresolved_execution(idempotency_key=intent.idempotency_key, state="UNKNOWN", error_category="SUBMISSION_OUTCOME_UNKNOWN")
-            return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason="Submission outcome unknown")
+            reason = str(exc).strip() or "Submission outcome unknown"
+            return ExecutionResult(ReconciliationState.UNKNOWN, decision, reason=reason)
         status = IntentRecordStatus.ACCEPTED if status_value in {"FILLED", "SUBMITTED"} else IntentRecordStatus.REJECTED
         if not self._transition(intent, status, result.order_id if status is IntentRecordStatus.ACCEPTED else None, result.transaction_id):
             return ExecutionResult(ReconciliationState.UNKNOWN, decision, result.order_id, "Outcome could not be persisted")

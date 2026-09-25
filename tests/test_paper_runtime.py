@@ -10,7 +10,7 @@ from api.service import ApplicationService
 from broker.types import ClosedMarketObservation, ExecutionQuantity, ExecutionQuantityUnit, OrderSide, Timeframe
 from config import Settings, settings
 from core.exceptions import BrokerConnectionError, MarketDataError
-from execution.paper_contract import PaperContractEngine
+from execution.paper_contract import PaperContractEngine, PaperContractSpecification
 from execution.paper_runtime import ContinuousPaperRuntime, PaperEntry, PaperRuntimeStateStore
 from execution.persistence import SQLiteIntentRecordStore
 from execution.policy import ExecutionContext, ExecutionIntent
@@ -117,6 +117,20 @@ async def test_policy_emergency_and_symbol_rejections_do_not_open(tmp_path):
         heartbeat = await subject.run_once()
         assert heartbeat.last_action.startswith("BLOCKED:")
         assert heartbeat.open_paper_positions == 0
+
+
+@pytest.mark.asyncio
+async def test_venue_minimum_stake_rejection_is_labeled_with_reason(tmp_path):
+    subject = runtime(tmp_path, AsyncMock(return_value=[obs(0)]), AsyncMock(return_value=entry()))
+    subject.engine = PaperContractEngine(
+        PaperContractSpecification(minimum_stake=Decimal("2"))
+    )
+
+    heartbeat = await subject.run_once()
+
+    assert heartbeat.last_action == "BLOCKED:MIN_STAKE"
+    assert heartbeat.last_error == "quantity below minimum_stake"
+    assert heartbeat.open_paper_positions == 0
 
 
 @pytest.mark.asyncio

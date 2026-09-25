@@ -55,10 +55,12 @@ class PaperContractSpecification:
 
     def validate_stake(self, stake: Decimal) -> None:
         _money(stake, "stake")
-        if stake < self.minimum_stake or stake > self.maximum_stake:
-            raise ValueError("stake is outside configured limits")
+        if stake < self.minimum_stake:
+            raise ValueError("quantity below minimum_stake")
+        if stake > self.maximum_stake:
+            raise ValueError("quantity above maximum_stake")
         if (stake - self.minimum_stake) % self.stake_increment != 0:
-            raise ValueError("stake does not align to configured increment")
+            raise ValueError("quantity does not align to stake_increment")
 
     def fee(self, price: Decimal, stake: Decimal) -> Decimal:
         return abs(price * stake) * self.fee_rate
