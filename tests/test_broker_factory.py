@@ -52,6 +52,18 @@ class TestGetGateway:
         gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_options_account_id="CR1", deriv_expected_environment="demo"))
         assert isinstance(gateway, DerivGateway)
 
+    def test_live_execution_scope_rejects_deriv_before_gateway_construction(self, tmp_path) -> None:
+        with pytest.raises(ConfigurationError, match="Weltrade-only"):
+            get_gateway(_settings(
+                broker="deriv",
+                broker_execution_enabled=True,
+                market_data_source="broker",
+                broker_selection_store_path=tmp_path / "selection.sqlite3",
+                deriv_api_token="test-token",
+                deriv_options_account_id="CR1",
+                deriv_expected_environment="demo",
+            ))
+
     def test_deriv_broker_without_token_raises(self) -> None:
         with pytest.raises(ConfigurationError):
             get_gateway(_settings(broker="deriv", deriv_api_token=None))

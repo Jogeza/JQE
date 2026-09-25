@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 
 from broker.base import BrokerGateway
+from broker.scope import enforce_weltrade_only
 from broker.deriv_public_data import DerivPublicMarketData
 from broker.simulation_gateway import SimulationGateway
 from broker.types import Candle, ClosedMarketObservation, Timeframe, TIMEFRAME_SECONDS
@@ -41,6 +42,11 @@ async def resolved_market_source(
     this context only consumes its read-only ``get_candles`` capability; it
     does not manage the gateway lifecycle or submit orders.
     """
+    if getattr(settings, "broker_execution_enabled", False):
+        enforce_weltrade_only(
+            broker=settings.effective_broker,
+            market_data_source=settings.market_data_source,
+        )
     if settings.market_data_source == "broker":
         if broker_gateway is None:
             raise MarketDataError("Broker market data requires the active broker gateway")

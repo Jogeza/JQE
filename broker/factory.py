@@ -17,6 +17,7 @@ from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import MT5Gateway
 from broker.simulation_gateway import SimulationGateway
 from broker.weltrade_gateway import WeltradeGateway
+from broker.scope import enforce_weltrade_only
 from config import Settings
 from config import settings as default_settings
 from core.exceptions import ConfigurationError
@@ -42,6 +43,11 @@ def get_gateway(settings: Settings | None = None) -> BrokerGateway:
     """
     settings = settings or default_settings
     effective_broker = getattr(settings, "effective_broker", settings.broker)
+    if getattr(settings, "broker_execution_enabled", False):
+        enforce_weltrade_only(
+            broker=effective_broker,
+            market_data_source=getattr(settings, "market_data_source", None),
+        )
 
     if effective_broker == "simulation":
         return SimulationGateway(starting_balance=settings.account_balance)
