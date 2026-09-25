@@ -118,6 +118,16 @@ def render_slack(notification: Notification) -> dict[str, object]:
         ]
         for i in range(0, len(fields), 10):
             detail_blocks.append({"type": "section", "fields": fields[i : i + 10]})
+    if notification.chart_snapshot is not None:
+        snapshot = notification.chart_snapshot
+        detail_blocks.append({
+            "type": "image",
+            # Slack webhooks accept Block Kit image blocks. Deployments that
+            # provide an externally reachable URL use it; the data URL keeps
+            # the rendered snapshot available to formatters and test clients.
+            "image_url": snapshot.image_url or snapshot.data_url,
+            "alt_text": f"{notification.title} chart snapshot",
+        })
     return {
         "blocks": [{"type": "context", "elements": [{"type": "mrkdwn", "text": "*JQE ALERTS*"}]}],
         "attachments": [{"color": color, "blocks": detail_blocks}],

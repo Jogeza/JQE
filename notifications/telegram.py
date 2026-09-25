@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from dataclasses import dataclass, field
 from html import escape
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from urllib.request import Request, urlopen
 from notifications.types import DigestSnapshot, Notification, NotificationType
 
 MAX_TELEGRAM_MESSAGE = 4096
+MAX_TELEGRAM_CAPTION = 1024
 
 
 InstrumentDigestSnapshot = DigestSnapshot
@@ -21,6 +23,7 @@ InstrumentDigestSnapshot = DigestSnapshot
 
 _TELEGRAM_EMOJI = {
     NotificationType.ORDER_REJECTED: "❌",
+    NotificationType.PENDING_ORDER_PLACED: "⏳",
     NotificationType.TRADE_BLOCKED: "❌",
     NotificationType.PAPER_TRADE_BLOCKED: "❌",
     NotificationType.DERIV_IDENTITY_REJECTED: "❌",
@@ -164,15 +167,25 @@ class TelegramConfig:
 
 
 TelegramPost = Callable[[str, bytes, float], Awaitable[None]]
+TelegramPhotoPost = Callable[[str, bytes, float], Awaitable[None]]
 
 
 class TelegramGateway:
-    def __init__(self, config: TelegramConfig, post: TelegramPost | None = None) -> None:
+    def __init__(
+        self,
+        config: TelegramConfig,
+        post: TelegramPost | None = None,
+        photo_post: TelegramPhotoPost | None = None,
+    ) -> None:
         self._config = config
         self._post = post or self._default_post
+        self._photo_post = photo_post or self._default_photo_post
 
     async def send(self, notification: Notification) -> None:
-        await self.send_text(render_telegram(notification))
+        if notification.chart_snapshot is not None:
+            await self.send_photo(notification)
+        else:
+            await self.send_text(render_telegram(notification))
 
     async def send_text(self, text: str) -> None:
         message = text[:MAX_TELEGRAM_MESSAGE]
@@ -188,10 +201,80 @@ class TelegramGateway:
             except Exception as exc:
                 raise TelegramDeliveryError("Telegram delivery failed") from exc
 
+    async def send_photo(self, notification: Notification) -> None:
+        """Send a chart as a Telegram photo with the factual alert as caption."""
+        snapshot = notification.chart_snapshot
+        if snapshot is None:
+            await self.send_text(render_telegram(notification))
+            return
+        url = f"https://api.telegram.org/bot{self._config.token}/sendPhoto"
+        caption = render_telegram(notification)[:MAX_TELEGRAM_CAPTION]
+        for chat_id in self._config.chat_ids:
+            boundary = f"----JQE{uuid.uuid4().hex}"
+            payload = self._multipart_payload(
+                boundary=boundary,
+                fields={"chat_id": str(chat_id), "caption": caption, "parse_mode": "HTML"},
+                filename=snapshot.filename,
+                content_type=snapshot.media_type,
+                content=snapshot.content,
+            )
+            try:
+                await self._photo_post(url, payload, self._config.timeout_seconds)
+            except Exception as exc:
+                raise TelegramDeliveryError("Telegram delivery failed") from exc
+
+    @staticmethod
+    def _multipart_payload(
+        *,
+        boundary: str,
+        fields: dict[str, str],
+        filename: str,
+        content_type: str,
+        content: bytes,
+    ) -> bytes:
+        chunks: list[bytes] = []
+        marker = boundary.encode("ascii")
+        for name, value in fields.items():
+            chunks.extend([
+                b"--" + marker + b"\r\n",
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"),
+                value.encode("utf-8"),
+                b"\r\n",
+            ])
+        chunks.extend([
+            b"--" + marker + b"\r\n",
+            f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode("utf-8"),
+            f"Content-Type: {content_type}\r\n\r\n".encode("ascii"),
+            content,
+            b"\r\n--" + marker + b"--\r\n",
+        ])
+        return b"".join(chunks)
+
     @staticmethod
     async def _default_post(url: str, payload: bytes, timeout: float) -> None:
         def send() -> None:
             request = Request(url, data=payload, method="POST", headers={"Content-Type": "application/json"})
+            try:
+                with urlopen(request, timeout=timeout) as response:
+                    if not 200 <= int(response.status) < 300:
+                        raise TelegramDeliveryError("Telegram delivery failed")
+            except (HTTPError, URLError, TimeoutError) as exc:
+                raise TelegramDeliveryError("Telegram delivery failed") from exc
+        await asyncio.to_thread(send)
+
+    @staticmethod
+    async def _default_photo_post(url: str, payload: bytes, timeout: float) -> None:
+        def send() -> None:
+            # The boundary is included in the payload and is recoverable from
+            # its first line; Telegram only needs a valid multipart body.
+            first_line = payload.split(b"\r\n", 1)[0]
+            boundary = first_line.removeprefix(b"--").decode("ascii")
+            request = Request(
+                url,
+                data=payload,
+                method="POST",
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            )
             try:
                 with urlopen(request, timeout=timeout) as response:
                     if not 200 <= int(response.status) < 300:
@@ -343,16 +426,36 @@ class TelegramCommandProcessor:
 
 
 def telegram_gateway_from_settings(settings: object) -> TelegramGateway | None:
+    gateways = telegram_gateways_from_settings(settings)
+    return gateways[0] if gateways else None
+
+
+def telegram_gateways_from_settings(settings: object) -> tuple[TelegramGateway, ...]:
     if not getattr(settings, "telegram_enabled", False):
-        return None
+        return ()
     token = getattr(settings, "telegram_bot_token", None)
     chat_id = getattr(settings, "telegram_allowed_chat_id", None)
     if not isinstance(token, str) or not token.strip():
         raise TelegramConfigurationError("Telegram is enabled but its token is missing")
     if isinstance(chat_id, bool) or not isinstance(chat_id, int):
         raise TelegramConfigurationError("Telegram is enabled but its allowed chat is missing")
-    return TelegramGateway(TelegramConfig(
-        token=token,
-        chat_ids=(chat_id,),
-        timeout_seconds=getattr(settings, "telegram_request_timeout_seconds", 10.0),
-    ))
+    signal_chat_id = getattr(settings, "telegram_signal_chat_id", None)
+    if signal_chat_id is not None and (
+        isinstance(signal_chat_id, bool) or not isinstance(signal_chat_id, int)
+    ):
+        raise TelegramConfigurationError("Telegram signal chat is invalid")
+    chat_ids = [chat_id]
+    if signal_chat_id is not None and signal_chat_id != chat_id:
+        chat_ids.append(signal_chat_id)
+    timeout = getattr(settings, "telegram_request_timeout_seconds", 10.0)
+    # Separate gateway instances preserve NotificationService's per-channel
+    # failure isolation: a failed signal destination cannot block the private
+    # destination (or vice versa).
+    return tuple(
+        TelegramGateway(TelegramConfig(
+            token=token,
+            chat_ids=(destination,),
+            timeout_seconds=timeout,
+        ))
+        for destination in chat_ids
+    )

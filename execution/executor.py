@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Protocol
 from uuid import uuid4
 
-from broker.types import OrderRequest, OrderResult, Position
+from broker.types import OrderRequest, OrderResult, OrderStatus, Position
 from execution.policy import ExecutionContext, ExecutionDecision, ExecutionIntent, ExecutionPolicy
 from execution.trade_manager import PositionSnapshotAdapter
 from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
@@ -60,6 +60,7 @@ class ExecutionResult:
     decision: ExecutionDecision
     order_id: str | None = None
     reason: str = ""
+    order_status: OrderStatus | None = None
 
 
 class AsyncTradeExecutor:
@@ -267,7 +268,13 @@ class AsyncTradeExecutor:
         if not self._transition(intent, status, result.order_id if status is IntentRecordStatus.ACCEPTED else None, result.transaction_id):
             return ExecutionResult(ReconciliationState.UNKNOWN, decision, result.order_id, "Outcome could not be persisted")
         state = ReconciliationState.ALREADY_EXECUTED if status is IntentRecordStatus.ACCEPTED else ReconciliationState.REJECTED
-        return ExecutionResult(state, decision, result.order_id if status is IntentRecordStatus.ACCEPTED else None, "Order accepted" if status is IntentRecordStatus.ACCEPTED else "Broker rejected order")
+        return ExecutionResult(
+            state,
+            decision,
+            result.order_id if status is IntentRecordStatus.ACCEPTED else None,
+            "Order accepted" if status is IntentRecordStatus.ACCEPTED else "Broker rejected order",
+            result.status,
+        )
 
     def _transition(self, intent: ExecutionIntent, status: IntentRecordStatus, order_id: str | None = None, transaction_id: str | None = None) -> bool:
         try:

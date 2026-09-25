@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from notifications.service import NotificationService
+from notifications.chart import ChartSnapshot
 from datetime import datetime
 from collections.abc import Sequence
 
@@ -70,7 +71,13 @@ class JQENotificationEvents:
             payload,
         ))
 
-    async def demo_trade(self, *, kind: str, facts: dict[str, str]) -> bool:
+    async def demo_trade(
+        self,
+        *,
+        kind: str,
+        facts: dict[str, str],
+        chart_snapshot: ChartSnapshot | None = None,
+    ) -> bool:
         mapping = {
             "OPENED": (NotificationType.POSITION_OPENED, "JQE DEMO TRADE OPENED"),
             "MODIFIED": (NotificationType.POSITION_MODIFIED, "JQE DEMO TRADE MODIFIED"),
@@ -79,7 +86,22 @@ class JQENotificationEvents:
         if kind not in mapping:
             raise ValueError("unknown demo trade notification event")
         notification_type, title = mapping[kind]
-        return await self._service.publish(Notification(notification_type, title, facts))
+        return await self._service.publish(
+            Notification(notification_type, title, facts, chart_snapshot=chart_snapshot)
+        )
+
+    async def pending_order_placed(
+        self,
+        *,
+        facts: dict[str, str],
+        chart_snapshot: ChartSnapshot | None = None,
+    ) -> bool:
+        return await self._service.publish(Notification(
+            NotificationType.PENDING_ORDER_PLACED,
+            "JQE PENDING ORDER PLACED",
+            facts,
+            chart_snapshot=chart_snapshot,
+        ))
 
     async def trade_rejected(self, *, reason: str, facts: dict[str, str] | None = None) -> bool:
         payload = dict(facts or {})
@@ -137,6 +159,7 @@ class JQENotificationEvents:
         facts: dict[str, str],
         actionable: bool,
         execution_enabled: bool,
+        chart_snapshot: ChartSnapshot | None = None,
     ) -> bool:
         """Publish a factual signal observation without granting execution authority."""
         if actionable:
@@ -153,7 +176,7 @@ class JQENotificationEvents:
             else "DISABLED — ANALYSIS ONLY"
         )
         return await self._service.publish(
-            Notification(NotificationType.PAPER_SIGNAL, title, payload)
+            Notification(NotificationType.PAPER_SIGNAL, title, payload, chart_snapshot=chart_snapshot)
         )
 
     async def paper_summary(self, *, facts: dict[str, str], public: bool = False) -> bool:

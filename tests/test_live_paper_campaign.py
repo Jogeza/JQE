@@ -91,6 +91,8 @@ async def test_campaign_sends_factual_no_trade_signal_to_telegram(
     assert "Candle closed at" in notification.facts
     assert "Expires at" in notification.facts
     assert gateway.submitted_orders == []
+    assert notification.chart_snapshot is not None
+    assert notification.chart_snapshot.content.startswith(b"\x89PNG")
     signal_event = next(
         event
         for event in CampaignEvidenceStore(

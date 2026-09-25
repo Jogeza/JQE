@@ -63,6 +63,7 @@ from broker.types import (
     ExecutionQuantity,
     ExecutionQuantityUnit,
     OrderSide,
+    OrderStatus,
     Position,
     TIMEFRAME_SECONDS,
     Timeframe,
@@ -85,6 +86,7 @@ from execution.policy import (
     PositionSnapshot,
 )
 from notifications.events import JQENotificationEvents
+from notifications.chart import ChartSnapshot, render_candlestick_snapshot
 from notifications.factory import notification_service_from_settings
 from research.campaign_provenance import (
     CampaignEvidence,
@@ -145,6 +147,82 @@ class _MT5CloseReconciliation:
     pnl: float | None = None
     exit_price: float | None = None
     closed_at: datetime | None = None
+
+
+def _notification_value(value: object) -> str:
+    """Render an optional broker fact without turning missing data into ``None``."""
+    return "UNAVAILABLE" if value is None else str(value)
+
+
+def _open_trade_notification_facts(
+    *,
+    symbol: str,
+    side: str,
+    position_id: str,
+    entry_price: float,
+    stop_loss: float | None,
+    take_profit: float | None,
+    unrealized_pnl: float | None,
+    risk_amount: float,
+    volume: float,
+) -> dict[str, str]:
+    """Build the factual fields used by both the Telegram and Slack renderers."""
+    return {
+        "Symbol": symbol,
+        "Side": side,
+        "Position": position_id,
+        "Entry": _notification_value(entry_price),
+        "Stop loss": _notification_value(stop_loss),
+        "Take profit": _notification_value(take_profit),
+        "Unrealized P/L": _notification_value(unrealized_pnl),
+        "Risk amount": _notification_value(risk_amount),
+        "Volume": _notification_value(volume),
+    }
+
+
+def _closed_trade_notification_facts(
+    *,
+    trade: Mapping[str, Any],
+    position_id: str,
+    reconciliation: _MT5CloseReconciliation,
+    realized_pnl: float | None,
+    currency: str,
+) -> dict[str, str]:
+    """Build close facts from persisted MT5 close-history reconciliation."""
+    return {
+        "Symbol": _notification_value(trade.get("symbol")),
+        "Side": _notification_value(trade.get("side")),
+        "Position": position_id,
+        "Entry": _notification_value(trade.get("entry_price")),
+        "Stop loss": _notification_value(trade.get("stop_loss")),
+        "Take profit": _notification_value(trade.get("take_profit")),
+        "Exit": _notification_value(reconciliation.exit_price),
+        "Realized P/L": _notification_value(realized_pnl),
+        "Unrealized P/L": (
+            "0.0" if reconciliation.state == "RECONCILED" else "UNAVAILABLE"
+        ),
+        "Currency": currency,
+        "Exit reason": reconciliation.reason,
+    }
+
+
+def _persisted_realized_pnl(
+    position_ledger: SQLitePositionLedger,
+    *,
+    broker: str,
+    position_id: str,
+    fallback: float | None,
+) -> float | None:
+    """Read the P&L persisted by the MT5 close-history reconciliation."""
+    entry = next(
+        (
+            item
+            for item in position_ledger.entries()
+            if item.broker == broker and item.position_id == position_id
+        ),
+        None,
+    )
+    return fallback if entry is None else entry.realized_pnl
 
 
 def _round_lots_to_broker_constraints(symbol_info: Any, raw_volume: float) -> float | None:
@@ -539,6 +617,12 @@ async def run_live_paper_campaign(
                     currency=account.currency,
                     reconciliation_state=close_reconciliation.state,
                 )
+                realized_pnl = _persisted_realized_pnl(
+                    position_ledger,
+                    broker=broker_name,
+                    position_id=entry.position_id,
+                    fallback=close_reconciliation.pnl,
+                )
                 emit("POSITION_CLOSED", closed_at, {
                     "candidate_id": None,
                     "symbol": entry.symbol,
@@ -551,7 +635,7 @@ async def run_live_paper_campaign(
                         if close_reconciliation.closed_at else None
                     ),
                     "exit_price": close_reconciliation.exit_price,
-                    "pnl": close_reconciliation.pnl,
+                    "pnl": realized_pnl,
                     "currency": account.currency,
                     "reconciliation_state": close_reconciliation.state,
                     "exit_reason": close_reconciliation.reason,
@@ -559,14 +643,15 @@ async def run_live_paper_campaign(
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 })
-                await notification_events.demo_trade(kind="CLOSED", facts={
-                    "Symbol": entry.symbol,
-                    "Position": entry.position_id,
-                    "Exit": str(close_reconciliation.exit_price),
-                    "P/L": str(close_reconciliation.pnl),
-                    "Exit reason": str(close_reconciliation.reason),
-                    "Recovery": "CLOSED_WHILE_OFFLINE",
-                })
+                offline_facts = _closed_trade_notification_facts(
+                    trade={"symbol": entry.symbol, "side": "UNKNOWN"},
+                    position_id=entry.position_id,
+                    reconciliation=close_reconciliation,
+                    realized_pnl=realized_pnl,
+                    currency=account.currency,
+                )
+                offline_facts["Recovery"] = "CLOSED_WHILE_OFFLINE"
+                await notification_events.demo_trade(kind="CLOSED", facts=offline_facts)
                 continue
 
             _own_order_ids.add(sp.position_id)
@@ -576,6 +661,7 @@ async def run_live_paper_campaign(
                 "side": sp.side.value,
                 "entry_price": float(sp.open_price),
                 "current_price": sp.current_price,
+                "unrealized_pnl": sp.profit,
                 "stop_loss": sp.stop_loss,
                 "take_profit": sp.take_profit,
                 "volume": float(sp.volume),
@@ -619,6 +705,7 @@ async def run_live_paper_campaign(
                     "side": sp.side.value,
                     "entry_price": float(sp.open_price),
                     "current_price": sp.current_price,
+                    "unrealized_pnl": sp.profit,
                     "stop_loss": sp.stop_loss,
                     "take_profit": sp.take_profit,
                     "volume": float(sp.volume),
@@ -713,6 +800,26 @@ async def run_live_paper_campaign(
         pending_before = confirmation.pending
         transition = confirmation.observe(latest.candle_opened_at, str(facts.get("regime", "UNKNOWN")))
         current_direction = str(signal.get("signal", "NO_TRADE"))
+        chart_snapshot: ChartSnapshot | None = None
+        try:
+            # Reuse the candle response already fetched for this cycle.  The
+            # time filter excludes the currently forming candle when a broker
+            # includes one in its response.
+            closed_candles = [
+                candle for candle in candles
+                if candle.time <= latest.candle_opened_at
+            ]
+            chart_snapshot = render_candlestick_snapshot(
+                closed_candles,
+                symbol=symbol,
+                timeframe=timeframe.value,
+                entry_price=float(latest.close),
+                max_candles=80,
+            )
+        except Exception as exc:
+            # Notification rendering is downstream and must never affect a
+            # strategy, risk, or execution decision.
+            logger.warning("Signal chart snapshot unavailable: {}", exc)
         freshness, expires_at = _signal_freshness(latest, now)
         quality_score = signal.get("confidence", facts.get("signal_confidence"))
         emit("SIGNAL", latest.candle_opened_at, {
@@ -751,6 +858,7 @@ async def run_live_paper_campaign(
                 "Expires at": expires_at.isoformat(),
                 "Data freshness": freshness,
             },
+            chart_snapshot=chart_snapshot,
         )
         current_candidate_id = _candidate_id(symbol, timeframe.value, latest.candle_opened_at, current_direction) if current_direction in {"BUY", "SELL"} else None
 
@@ -844,6 +952,12 @@ async def run_live_paper_campaign(
                     currency=account.currency,
                     reconciliation_state=close_reconciliation.state,
                 )
+                realized_pnl = _persisted_realized_pnl(
+                    position_ledger,
+                    broker=broker_name,
+                    position_id=m_id,
+                    fallback=close_reconciliation.pnl,
+                )
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
                     "symbol": trade["symbol"],
@@ -856,21 +970,23 @@ async def run_live_paper_campaign(
                         if close_reconciliation.closed_at else None
                     ),
                     "exit_price": close_reconciliation.exit_price,
-                    "pnl": close_reconciliation.pnl,
+                    "pnl": realized_pnl,
                     "currency": account.currency,
                     "reconciliation_state": close_reconciliation.state,
                     "exit_reason": close_reconciliation.reason,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
-                await notification_events.demo_trade(kind="CLOSED", facts={
-                    "Symbol": str(trade["symbol"]),
-                    "Side": str(trade["side"]),
-                    "Position": str(m_id),
-                    "Exit": str(close_reconciliation.exit_price),
-                    "P/L": str(close_reconciliation.pnl),
-                    "Exit reason": str(close_reconciliation.reason),
-                })
+                await notification_events.demo_trade(
+                    kind="CLOSED",
+                    facts=_closed_trade_notification_facts(
+                        trade=trade,
+                        position_id=str(m_id),
+                        reconciliation=close_reconciliation,
+                        realized_pnl=realized_pnl,
+                        currency=account.currency,
+                    ),
+                )
 
             own_open = [p for p in broker_positions if p.position_id in _own_order_ids]
 
@@ -1062,6 +1178,29 @@ async def run_live_paper_campaign(
                     reason=result.decision.code.value,
                     facts={"Symbol": symbol, "Details": result.decision.reason},
                 )
+            elif result.order_status is OrderStatus.SUBMITTED:
+                # SUBMITTED is a broker-accepted pending order, not a filled
+                # position. Keep it out of the open-position notification and
+                # surface the pending state with the same signal snapshot.
+                _used_idempotency_keys.add(idempotency_key)
+                await notification_events.pending_order_placed(
+                    facts={
+                        "Symbol": symbol,
+                        "Side": side.value,
+                        "Order": str(result.order_id or "UNAVAILABLE"),
+                        "Entry": _notification_value(entry_price),
+                        "Stop loss": _notification_value(stop_loss),
+                        "Take profit": _notification_value(take_profit),
+                        "Quantity": _notification_value(exec_quantity.value),
+                    },
+                    chart_snapshot=chart_snapshot,
+                )
+                emit("ENTRY_PENDING", now, {
+                    "candidate_id": candidate_id,
+                    "result": "SUBMITTED",
+                    "broker_order_id": result.order_id,
+                    "campaign_mode": "live_paper",
+                }, candidate_id)
             elif result.state == ReconciliationState.ALREADY_EXECUTED or result.order_id:
                 order_id = result.order_id or "ORDER_UNKNOWN"
                 _used_idempotency_keys.add(idempotency_key)
@@ -1115,16 +1254,24 @@ async def run_live_paper_campaign(
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, candidate_id)
-                await notification_events.demo_trade(kind="OPENED", facts={
-                    "Symbol": symbol,
-                    "Side": side.value,
-                    "Position": str(position_id),
-                    "Entry": str(fill_price),
-                    "Stop loss": str(matched_pos.stop_loss if matched_pos else stop_loss),
-                    "Take profit": str(matched_pos.take_profit if matched_pos else take_profit),
-                    "Risk amount": str(intent.authorized_risk_amount),
-                    "Volume": str(filled_vol),
-                })
+                effective_stop_loss = matched_pos.stop_loss if matched_pos else stop_loss
+                effective_take_profit = matched_pos.take_profit if matched_pos else take_profit
+                effective_unrealized_pnl = matched_pos.profit if matched_pos else None
+                await notification_events.demo_trade(
+                    kind="OPENED",
+                    facts=_open_trade_notification_facts(
+                        symbol=symbol,
+                        side=side.value,
+                        position_id=str(position_id),
+                        entry_price=fill_price,
+                        stop_loss=effective_stop_loss,
+                        take_profit=effective_take_profit,
+                        unrealized_pnl=effective_unrealized_pnl,
+                        risk_amount=intent.authorized_risk_amount,
+                        volume=filled_vol,
+                    ),
+                    chart_snapshot=chart_snapshot,
+                )
 
                 _open_trades[position_id] = {
                     "candidate_id": candidate_id,
@@ -1132,6 +1279,9 @@ async def run_live_paper_campaign(
                     "side": side.value,
                     "order_id": order_id,
                     "entry_price": fill_price,
+                    "stop_loss": effective_stop_loss,
+                    "take_profit": effective_take_profit,
+                    "unrealized_pnl": effective_unrealized_pnl,
                     "volume": filled_vol,
                     "opened_at": now.isoformat(),
                 }
@@ -1207,6 +1357,12 @@ async def run_live_paper_campaign(
                     currency=account.currency,
                     reconciliation_state=close_reconciliation.state,
                 )
+                realized_pnl = _persisted_realized_pnl(
+                    position_ledger,
+                    broker=broker_name,
+                    position_id=open_oid,
+                    fallback=close_reconciliation.pnl,
+                )
                 emit("POSITION_CLOSED", now, {
                     "candidate_id": trade.get("candidate_id"),
                     "symbol": trade["symbol"],
@@ -1219,21 +1375,23 @@ async def run_live_paper_campaign(
                         if close_reconciliation.closed_at else None
                     ),
                     "exit_price": close_reconciliation.exit_price,
-                    "pnl": close_reconciliation.pnl,
+                    "pnl": realized_pnl,
                     "currency": account.currency,
                     "reconciliation_state": close_reconciliation.state,
                     "exit_reason": close_reconciliation.reason,
                     "campaign_mode": "live_paper",
                     "session_kind": "live_paper",
                 }, trade.get("candidate_id"))
-                await notification_events.demo_trade(kind="CLOSED", facts={
-                    "Symbol": str(trade["symbol"]),
-                    "Side": str(trade["side"]),
-                    "Position": str(open_oid),
-                    "Exit": str(close_reconciliation.exit_price),
-                    "P/L": str(close_reconciliation.pnl),
-                    "Exit reason": str(close_reconciliation.reason),
-                })
+                await notification_events.demo_trade(
+                    kind="CLOSED",
+                    facts=_closed_trade_notification_facts(
+                        trade=trade,
+                        position_id=str(open_oid),
+                        reconciliation=close_reconciliation,
+                        realized_pnl=realized_pnl,
+                        currency=account.currency,
+                    ),
+                )
 
         if poll_interval_seconds > 0:
             await asyncio.sleep(poll_interval_seconds)

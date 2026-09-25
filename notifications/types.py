@@ -8,6 +8,8 @@ from types import MappingProxyType
 from datetime import datetime
 from typing import Mapping
 
+from notifications.chart import ChartSnapshot
+
 
 class NotificationType(str, Enum):
     SIGNAL_GENERATED = "SIGNAL_GENERATED"
@@ -15,6 +17,7 @@ class NotificationType(str, Enum):
     TRADE_BLOCKED = "TRADE_BLOCKED"
     ORDER_ACCEPTED = "ORDER_ACCEPTED"
     ORDER_REJECTED = "ORDER_REJECTED"
+    PENDING_ORDER_PLACED = "PENDING_ORDER_PLACED"
     POSITION_OPENED = "POSITION_OPENED"
     POSITION_MODIFIED = "POSITION_MODIFIED"
     POSITION_CLOSED = "POSITION_CLOSED"
@@ -54,6 +57,7 @@ class Notification:
     facts: Mapping[str, str] = field(default_factory=dict)
     digest_snapshots: tuple[DigestSnapshot, ...] = ()
     occurred_at: datetime | None = None
+    chart_snapshot: ChartSnapshot | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():

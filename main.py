@@ -27,8 +27,9 @@ from datetime import datetime, time, timezone
 import pandas as pd
 
 from broker.factory import get_gateway
+from broker.scope import enforce_weltrade_only
 from broker.simulation_gateway import ObservedSimulationExecutionGateway
-from broker.types import AccountIdentity, AccountInfo, OrderSide, Timeframe
+from broker.types import AccountIdentity, AccountInfo, OrderSide, OrderStatus, Timeframe
 from config import EmergencyStopState, settings
 from core.data_validator import validate_market_data
 from core.exceptions import ConfigurationError, ExecutionError, JQEError, MarketDataError
@@ -68,6 +69,7 @@ from risk.risk_controller import (
 from risk.position_sizing import ExecutionSizingDecision, authorize_execution_quantity
 from strategy.pipeline import generate_trading_signal
 from notifications.events import JQENotificationEvents
+from notifications.chart import ChartSnapshot, render_candlestick_snapshot
 from notifications.factory import notification_service_from_settings
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
@@ -174,6 +176,11 @@ async def run() -> CycleExecutionResult:
 
     if active_broker not in ("simulation", "deriv", "mt5", "weltrade"):
         raise ConfigurationError(f"Unsupported broker: {active_broker}")
+    if settings.broker_execution_enabled:
+        enforce_weltrade_only(
+            broker=active_broker,
+            market_data_source=settings.market_data_source,
+        )
     if (
         active_broker == "deriv"
         and not settings.broker_execution_enabled
@@ -581,6 +588,19 @@ async def run() -> CycleExecutionResult:
             idempotency_key=idempotency_key,
             risk_approved=risk_decision["approved"],
         )
+        chart_snapshot: ChartSnapshot | None = None
+        try:
+            chart_snapshot = render_candlestick_snapshot(
+                df.to_dict("records"),
+                symbol=normalized_symbol,
+                timeframe=timeframe.value,
+                entry_price=float(latest["close"]),
+                stop_loss=plan.stop_loss,
+                take_profit=plan.take_profit,
+                max_candles=80,
+            )
+        except Exception as exc:
+            logger.warning("Signal chart snapshot unavailable: {}", exc)
         execution_gateway = (
             ObservedSimulationExecutionGateway(gateway, market_observation)
             if active_broker == "simulation"
@@ -737,6 +757,19 @@ async def run() -> CycleExecutionResult:
         if not result.decision.allowed:
             await notification_events.trade_rejected(
                 reason=result.decision.code.value, facts={"Symbol": intent.symbol}
+            )
+        elif getattr(result, "order_status", None) is OrderStatus.SUBMITTED:
+            await notification_events.pending_order_placed(
+                facts={
+                    "Symbol": intent.symbol,
+                    "Side": intent.side.value,
+                    "Order": str(result.order_id or "UNAVAILABLE"),
+                    "Entry": str(intent.entry),
+                    "Stop loss": str(intent.stop_loss),
+                    "Take profit": str(intent.take_profit),
+                    "Quantity": str(intent.quantity),
+                },
+                chart_snapshot=chart_snapshot,
             )
         elif result.state is ReconciliationState.REJECTED:
             await notification_events.trade_rejected(

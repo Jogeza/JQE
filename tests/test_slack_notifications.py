@@ -12,6 +12,7 @@ import pytest
 
 from config.settings import Settings
 from notifications.events import JQENotificationEvents
+from notifications.chart import render_candlestick_snapshot
 from notifications.service import NotificationService, NotificationStatus
 from notifications.slack import (
     SlackConfig,
@@ -24,6 +25,25 @@ from notifications.slack import (
 from notifications import slack as slack_module
 from notifications.telegram import render_telegram
 from notifications.types import DigestSnapshot, Notification, NotificationType
+from tools.live_paper_campaign import (
+    _MT5CloseReconciliation,
+    _closed_trade_notification_facts,
+    _open_trade_notification_facts,
+)
+
+
+def _test_chart_snapshot():
+    return render_candlestick_snapshot(
+        [
+            {"time": datetime(2026, 1, 1, tzinfo=timezone.utc), "open": 100, "high": 102, "low": 99, "close": 101},
+            {"time": datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc), "open": 101, "high": 103, "low": 100, "close": 102},
+        ],
+        symbol="R_75",
+        timeframe="M5",
+        entry_price=101,
+        stop_loss=99,
+        take_profit=105,
+    )
 
 
 def test_slack_webhook_configuration_is_optional_and_secret() -> None:
@@ -82,6 +102,20 @@ def test_slack_category_rendering(notification: Notification, emoji: str, color:
     assert emoji in attachment["blocks"][0]["text"]["text"]
 
 
+def test_slack_chart_notification_renders_an_image_block() -> None:
+    notification = Notification(
+        NotificationType.PENDING_ORDER_PLACED,
+        "JQE PENDING ORDER PLACED",
+        {"Entry": "101.0", "Stop loss": "99.0", "Take profit": "105.0"},
+        chart_snapshot=_test_chart_snapshot(),
+    )
+    payload = render_slack(notification)
+    blocks = payload["attachments"][0]["blocks"]
+    image = next(block for block in blocks if block["type"] == "image")
+    assert image["image_url"].startswith("data:image/png;base64,")
+    assert "chart snapshot" in image["alt_text"]
+
+
 @pytest.mark.parametrize(
     "notification,emoji",
     (
@@ -97,6 +131,60 @@ def test_telegram_category_rendering(notification: Notification, emoji: str) -> 
     rendered = render_telegram(notification)
     assert rendered.startswith(emoji)
     assert "<b>" in rendered
+
+
+def test_live_trade_prices_and_pnl_are_rendered_in_both_channels() -> None:
+    opened = Notification(
+        NotificationType.POSITION_OPENED,
+        "JQE DEMO TRADE OPENED",
+        _open_trade_notification_facts(
+            symbol="R_75",
+            side="BUY",
+            position_id="98765",
+            entry_price=100.5,
+            stop_loss=99.0,
+            take_profit=103.5,
+            unrealized_pnl=0.25,
+            risk_amount=10.0,
+            volume=2.5,
+        ),
+    )
+    closed = Notification(
+        NotificationType.POSITION_CLOSED,
+        "JQE DEMO TRADE CLOSED",
+        _closed_trade_notification_facts(
+            trade={
+                "symbol": "R_75",
+                "side": "BUY",
+                "entry_price": 100.5,
+                "stop_loss": 99.0,
+                "take_profit": 103.5,
+            },
+            position_id="98765",
+            reconciliation=_MT5CloseReconciliation(
+                "RECONCILED", "BROKER_TP", pnl=29.75, exit_price=103.5
+            ),
+            realized_pnl=29.75,
+            currency="USD",
+        ),
+    )
+
+    telegram_open = render_telegram(opened)
+    telegram_closed = render_telegram(closed)
+    slack_open = json.dumps(render_slack(opened))
+    slack_closed = json.dumps(render_slack(closed))
+
+    for rendered in (telegram_open, slack_open):
+        assert "Entry" in rendered and "100.5" in rendered
+        assert "Stop loss" in rendered and "99.0" in rendered
+        assert "Take profit" in rendered and "103.5" in rendered
+        assert "Unrealized P/L" in rendered and "0.25" in rendered
+    for rendered in (telegram_closed, slack_closed):
+        assert "Entry" in rendered and "100.5" in rendered
+        assert "Stop loss" in rendered and "99.0" in rendered
+        assert "Take profit" in rendered and "103.5" in rendered
+        assert "Realized P/L" in rendered and "29.75" in rendered
+        assert "Unrealized P/L" in rendered and "0.0" in rendered
 
 
 @pytest.mark.asyncio

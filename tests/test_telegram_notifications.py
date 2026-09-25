@@ -10,6 +10,7 @@ import pytest
 
 from config.settings import Settings
 from notifications.service import NotificationService, NotificationStatus
+from notifications.chart import render_candlestick_snapshot
 from notifications.events import JQENotificationEvents
 from notifications.telegram import (
     TelegramCommandProcessor,
@@ -19,8 +20,10 @@ from notifications.telegram import (
     TelegramGateway,
     daily_instrument_cap_message,
     telegram_gateway_from_settings,
+    telegram_gateways_from_settings,
 )
 from notifications.types import Notification, NotificationType
+from datetime import datetime, timezone
 
 
 def test_daily_instrument_cap_has_distinct_operator_message() -> None:
@@ -90,6 +93,62 @@ async def test_gateway_fans_out_over_private_chat_ids() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chart_notification_is_sent_as_telegram_photo_with_rendered_caption() -> None:
+    photo_post = AsyncMock()
+    snapshot = render_candlestick_snapshot(
+        [
+            {
+                "time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "open": 100.0,
+                "high": 102.0,
+                "low": 99.0,
+                "close": 101.0,
+            },
+            {
+                "time": datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc),
+                "open": 101.0,
+                "high": 103.0,
+                "low": 100.0,
+                "close": 102.0,
+            },
+        ],
+        symbol="R_75",
+        timeframe="M5",
+        entry_price=101.0,
+        stop_loss=99.0,
+        take_profit=105.0,
+    )
+    gateway = TelegramGateway(
+        TelegramConfig("secret-token", 7),
+        photo_post=photo_post,
+    )
+    await gateway.send(Notification(
+        NotificationType.PENDING_ORDER_PLACED,
+        "JQE PENDING ORDER PLACED",
+        {"Entry": "101.0", "Stop loss": "99.0", "Take profit": "105.0"},
+        chart_snapshot=snapshot,
+    ))
+    url, payload, timeout = photo_post.await_args.args
+    assert url.endswith("/sendPhoto")
+    assert timeout == 10.0
+    assert snapshot.filename.encode() in payload
+    assert b"Entry" in payload and b"101.0" in payload
+    assert payload.endswith(b"\r\n")
+
+
+def test_settings_build_two_isolated_telegram_destinations() -> None:
+    gateways = telegram_gateways_from_settings(Settings(
+        _env_file=None,
+        telegram_enabled=True,
+        telegram_bot_token="token",
+        telegram_allowed_chat_id=7,
+        telegram_signal_chat_id=8,
+    ))
+    assert len(gateways) == 2
+    assert [gateway._config.chat_ids for gateway in gateways] == [(7,), (8,)]
+
+
+@pytest.mark.asyncio
 async def test_delivery_failure_is_generic_and_does_not_authorize_anything() -> None:
     async def fail(*_args):
         raise RuntimeError("secret-token")
@@ -141,6 +200,12 @@ async def test_factual_event_adapter_masks_identity_and_preserves_block_reason()
     await events.trade_blocked(reason="DAILY_LIMIT_REACHED")
     blocked = gateway.send.await_args.args[0]
     assert blocked.facts["Reason"] == "DAILY_LIMIT_REACHED"
+    await events.pending_order_placed(
+        facts={"Symbol": "R_75", "Entry": "100.0"}
+    )
+    pending = gateway.send.await_args.args[0]
+    assert pending.kind is NotificationType.PENDING_ORDER_PLACED
+    assert pending.facts["Entry"] == "100.0"
 
 
 @pytest.mark.asyncio
