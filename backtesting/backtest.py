@@ -96,6 +96,8 @@ async def run_backtest(
     execution_assumptions: BacktestExecutionAssumptions | None = None,
     strategy_configuration: dict | None = None,
     provider: str | None = None,
+    start_index: int | None = None,
+    end_index: int | None = None,
 ) -> BacktestEngine:
     """Runs a full backtest and returns the engine holding its results.
 
@@ -186,7 +188,10 @@ async def run_backtest(
         risk=risk_configuration, execution=execution_assumptions,
     )
 
-    for i in range(_WARMUP_CANDLES, len(df)):
+    eval_start = max(_WARMUP_CANDLES, start_index if start_index is not None else _WARMUP_CANDLES)
+    eval_end = min(len(df), end_index if end_index is not None else len(df))
+
+    for i in range(eval_start, eval_end):
         engine.process_candle(i, df)
         history = df.iloc[: i + 1]
         regime = detect_regime(history)
@@ -198,7 +203,7 @@ async def run_backtest(
         signal = generate_trading_signal(history, symbol, regime=regime, include_details=True)
         engine.queue_signal(signal, i, df)
 
-    engine.finish(len(df) - 1, df)
+    engine.finish(eval_end - 1, df)
 
     basic_stats = engine.statistics()
     logger.info("JQE backtest results: {}", basic_stats)

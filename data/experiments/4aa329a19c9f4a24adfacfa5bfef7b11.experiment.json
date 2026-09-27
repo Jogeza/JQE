@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T21:53:40.492358+00:00",
+  "dataset_hash": "sha256:828578aae71c08f43acc023091b947495e57b7e42eaf56ba81efc390385f9a49",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "4aa329a19c9f4a24adfacfa5bfef7b11",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Ending Balance": 50.0,
+    "Losses": 0,
+    "Net P&L": 0.0,
+    "Net Profit": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 0,
+    "Trades": 0,
+    "Wins": 0
+  },
+  "partition": "TRAIN",
+  "partition_candle_count": 300,
+  "partition_first_candle": "2026-09-27T11:59:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T16:58:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:00fdd95952460dfdc70f381facdd82490792d314e712b76fe6a4f49ae30d4110",
+    "provider": "weltrade",
+    "provider_symbol": "FX Vol 99",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:83c0792f7eada6b06a98dbfd4152946ba61850eebbc226b9d5fb196cfc50f23f",
+  "run_fingerprint": "sha256:8853ef1c6d48672d66f138312254b2721ea8de3bf15d452412acda71281a9ab7",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "FX Vol 99",
+  "timeframe": "M1"
+}

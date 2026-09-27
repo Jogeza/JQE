@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from analytics.performance import calculate_performance
 from backtesting.backtest import run_backtest
 from backtesting.engine import BacktestEngine
+from backtesting.models import BacktestExecutionAssumptions
 from broker.types import Timeframe
 from config.settings import settings
 from data.dataset import CandleDatasetManifest, load_dataset_bundle
@@ -24,7 +25,7 @@ from research.splits import DatasetSplit, chronological_split
 
 @dataclass(frozen=True, slots=True)
 class ResearchRun:
-    """Completed TRAIN-only deterministic research run."""
+    """Completed deterministic research run for a specific dataset partition."""
 
     manifest: CandleDatasetManifest
     split: DatasetSplit
@@ -32,23 +33,24 @@ class ResearchRun:
     experiment: ExperimentRecord
 
 
-async def run_training_experiment(
+async def run_partition_experiment(
     *,
     bundle_directory: Path,
     catalog: ExperimentCatalog | None = None,
     strategy_name: str,
     strategy_config: Mapping[str, Any],
+    partition: ResearchPartition = ResearchPartition.TRAIN,
     starting_balance: float = 50.0,
     train_fraction: float = 0.60,
     validation_fraction: float = 0.20,
+    execution_assumptions: BacktestExecutionAssumptions | None = None,
     created_at: datetime | None = None,
 ) -> ResearchRun:
-    """Run one experiment against only the TRAIN partition.
+    """Run an experiment against a specific partition (TRAIN, VALIDATION, OOS, or FULL).
 
     The frozen dataset bundle is verified during loading. The dataset is then
-    split chronologically, and only the TRAIN partition is supplied to the
-    existing deterministic backtester. Validation and OOS candles are never
-    passed to ``run_backtest`` by this function.
+    split chronologically, and only the target partition is supplied to the
+    existing deterministic backtester.
     """
     candles, manifest = load_dataset_bundle(bundle_directory)
 
@@ -58,19 +60,60 @@ async def run_training_experiment(
         validation_fraction=validation_fraction,
     )
 
-    train = split.train
-    # A partition is itself a different candle sequence from the complete
-    # frozen dataset, so the full-dataset manifest must not be supplied to
-    # run_backtest(). The complete bundle has already been integrity-verified
-    # by load_dataset_bundle().
-    engine = await run_backtest(
-        symbol=manifest.canonical_symbol,
-        timeframe=manifest.timeframe,
-        candles=len(train),
-        starting_balance=starting_balance,
-        dataset=train,
-        strategy_configuration=dict(strategy_config),
-    )
+    train_len = len(split.train)
+    val_len = len(split.validation)
+    total_len = len(candles)
+
+    if partition == ResearchPartition.TRAIN:
+        target_candles = split.train
+        engine = await run_backtest(
+            symbol=manifest.canonical_symbol,
+            timeframe=manifest.timeframe,
+            candles=len(split.train),
+            starting_balance=starting_balance,
+            dataset=split.train,
+            strategy_configuration=dict(strategy_config),
+            execution_assumptions=execution_assumptions,
+        )
+    elif partition == ResearchPartition.VALIDATION:
+        target_candles = split.validation
+        engine = await run_backtest(
+            symbol=manifest.canonical_symbol,
+            timeframe=manifest.timeframe,
+            candles=total_len,
+            starting_balance=starting_balance,
+            dataset=candles,
+            start_index=train_len,
+            end_index=train_len + val_len,
+            strategy_configuration=dict(strategy_config),
+            execution_assumptions=execution_assumptions,
+        )
+    elif partition == ResearchPartition.OOS:
+        target_candles = split.out_of_sample
+        engine = await run_backtest(
+            symbol=manifest.canonical_symbol,
+            timeframe=manifest.timeframe,
+            candles=total_len,
+            starting_balance=starting_balance,
+            dataset=candles,
+            start_index=train_len + val_len,
+            end_index=total_len,
+            strategy_configuration=dict(strategy_config),
+            execution_assumptions=execution_assumptions,
+        )
+    elif partition == ResearchPartition.FULL:
+        target_candles = tuple(candles)
+        engine = await run_backtest(
+            symbol=manifest.canonical_symbol,
+            timeframe=manifest.timeframe,
+            candles=total_len,
+            starting_balance=starting_balance,
+            dataset=candles,
+            strategy_configuration=dict(strategy_config),
+            execution_assumptions=execution_assumptions,
+        )
+    else:
+        raise ValueError(f"Unsupported research partition: {partition}")
 
     if engine.trades:
         metrics = calculate_performance(
@@ -78,8 +121,6 @@ async def run_training_experiment(
             engine.equity_curve,
         )
     else:
-        # Preserve useful deterministic metrics even when a strategy takes
-        # no trades on the TRAIN partition.
         metrics = {
             **engine.statistics(),
             "Total Trades": 0,
@@ -99,10 +140,10 @@ async def run_training_experiment(
         identity_schema_version=backtest_result.identity_schema_version,
         symbol=manifest.canonical_symbol,
         timeframe=manifest.timeframe.value,
-        partition=ResearchPartition.TRAIN,
-        partition_first_candle=train[0].time,
-        partition_last_candle=train[-1].time,
-        partition_candle_count=len(train),
+        partition=partition,
+        partition_first_candle=target_candles[0].time,
+        partition_last_candle=target_candles[-1].time,
+        partition_candle_count=len(target_candles),
         strategy_name=strategy_name,
         configuration={
             "strategy": backtest_result.strategy,
@@ -127,4 +168,29 @@ async def run_training_experiment(
         split=split,
         engine=engine,
         experiment=experiment,
+    )
+
+
+async def run_training_experiment(
+    *,
+    bundle_directory: Path,
+    catalog: ExperimentCatalog | None = None,
+    strategy_name: str,
+    strategy_config: Mapping[str, Any],
+    starting_balance: float = 50.0,
+    train_fraction: float = 0.60,
+    validation_fraction: float = 0.20,
+    created_at: datetime | None = None,
+) -> ResearchRun:
+    """Run one experiment against only the TRAIN partition."""
+    return await run_partition_experiment(
+        bundle_directory=bundle_directory,
+        catalog=catalog,
+        strategy_name=strategy_name,
+        strategy_config=strategy_config,
+        partition=ResearchPartition.TRAIN,
+        starting_balance=starting_balance,
+        train_fraction=train_fraction,
+        validation_fraction=validation_fraction,
+        created_at=created_at,
     )

@@ -1,0 +1,70 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T19:48:37.173822+00:00",
+  "dataset_hash": "sha256:7a75b67177c3baf9cf286ff70042a5c8f17212005884a7b1f72a6fca854d7534",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "ffc810fbcc024547a596bf5642f23dd9",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Average Loss": 0.11,
+    "Average Trade": -0.11,
+    "Average Trade Duration (candles)": 19.0,
+    "Average Win": 0,
+    "Ending Balance": 49.78,
+    "Expectancy": -0.11,
+    "Gross Loss": 0.22,
+    "Gross Profit": 0,
+    "Losing Trades": 2,
+    "Maximum Consecutive Losses": 2,
+    "Maximum Consecutive Wins": 0,
+    "Maximum Drawdown": 0.22,
+    "Net P&L": -0.22,
+    "Profit Factor": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 2,
+    "Win Rate %": 0.0,
+    "Winning Trades": 0
+  },
+  "partition": "TRAIN",
+  "partition_candle_count": 300,
+  "partition_first_candle": "2026-09-27T14:06:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T19:05:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:f2d7b8dac4fb5e9f8604739858abde0054f5fcb23fe1b13ba491c17986b82f56",
+    "provider": "weltrade",
+    "provider_symbol": "SFX Vol 60",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:6fc8b71be4ad1c5f750b090d3fcd1121a3ef4ba6c1e03473fc9e9688fdebc1ed",
+  "run_fingerprint": "sha256:0ddd83712c57a417c78b5ab5cc80619ecca612b3a53c93a6f8c68ce3351d0091",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "SFX Vol 60",
+  "timeframe": "M1"
+}

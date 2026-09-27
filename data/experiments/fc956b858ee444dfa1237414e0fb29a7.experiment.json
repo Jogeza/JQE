@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T21:53:44.302527+00:00",
+  "dataset_hash": "sha256:aa1d790c4fb2d69858f2666644152162a42e295d73c062475cee995554da57fc",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "fc956b858ee444dfa1237414e0fb29a7",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Ending Balance": 50.0,
+    "Losses": 0,
+    "Net P&L": 0.0,
+    "Net Profit": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 0,
+    "Trades": 0,
+    "Wins": 0
+  },
+  "partition": "TRAIN",
+  "partition_candle_count": 300,
+  "partition_first_candle": "2026-09-27T11:59:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T16:58:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:8f3274ca20297173bd8445ce1e84c8df76bf0c6de64c027c6b6eae2dec51af19",
+    "provider": "weltrade",
+    "provider_symbol": "SFX Vol 40",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:3d6ef37bf5bb02a481de9b16dea43a334880eecc9a607a3f2806479c4064ea7b",
+  "run_fingerprint": "sha256:2b086db5a18d3487784e3e29c85478c58dd2eefbd1822b106e897e5f7c772cd5",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "SFX Vol 40",
+  "timeframe": "M1"
+}

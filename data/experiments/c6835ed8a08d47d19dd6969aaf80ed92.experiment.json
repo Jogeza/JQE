@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T21:53:39.026211+00:00",
+  "dataset_hash": "sha256:c81ae4b96cba9a1d389cf3893d6ff288252969eab9d86e1a6ea3966d2dc3b387",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "c6835ed8a08d47d19dd6969aaf80ed92",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Ending Balance": 50.0,
+    "Losses": 0,
+    "Net P&L": 0.0,
+    "Net Profit": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 0,
+    "Trades": 0,
+    "Wins": 0
+  },
+  "partition": "OOS",
+  "partition_candle_count": 100,
+  "partition_first_candle": "2026-09-27T18:39:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T20:18:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:4f57b2a261e888bdc59e19e01bd7fc9a6b875ac21b78a3549cfb13eadb89ace5",
+    "provider": "weltrade",
+    "provider_symbol": "FX Vol 80",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:506e8bf616af07ca761ac453d5359acde3588efa6b54df497de0122e457edfeb",
+  "run_fingerprint": "sha256:f2fa9381892f0a9bd0caeed253725b08d32135c1dce66a95a1f12d2cc41b8a8b",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "FX Vol 80",
+  "timeframe": "M1"
+}

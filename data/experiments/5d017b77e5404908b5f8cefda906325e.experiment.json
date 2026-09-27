@@ -1,0 +1,70 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T19:48:30.020972+00:00",
+  "dataset_hash": "sha256:bad5c15e089f41506c16173a5b44e82250bf53367457923b0d1bfb6e2d51e3a0",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "5d017b77e5404908b5f8cefda906325e",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Average Loss": 0.5,
+    "Average Trade": -0.5,
+    "Average Trade Duration (candles)": 6.0,
+    "Average Win": 0,
+    "Ending Balance": 49.5,
+    "Expectancy": -0.5,
+    "Gross Loss": 0.5,
+    "Gross Profit": 0,
+    "Losing Trades": 1,
+    "Maximum Consecutive Losses": 1,
+    "Maximum Consecutive Wins": 0,
+    "Maximum Drawdown": 0.5,
+    "Net P&L": -0.5,
+    "Profit Factor": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 1,
+    "Win Rate %": 0.0,
+    "Winning Trades": 0
+  },
+  "partition": "TRAIN",
+  "partition_candle_count": 300,
+  "partition_first_candle": "2026-09-27T14:06:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T19:05:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:557a70904e4a2e61942caea04b70ea5a5ad5f4530fdab1ca86ccbad9b39db268",
+    "provider": "weltrade",
+    "provider_symbol": "FX Vol 20",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:8c7e6200904068cb16cdfd9af40d536d2d14317463ac2ce56c6e2e72d71c266a",
+  "run_fingerprint": "sha256:8d4a965d96bd473239da2ec33acdf9c03dfc41b3075f7a43ef7c45d89e9c3667",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "FX Vol 20",
+  "timeframe": "M1"
+}

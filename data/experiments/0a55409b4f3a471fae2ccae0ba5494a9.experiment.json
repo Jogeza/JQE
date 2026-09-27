@@ -1,0 +1,60 @@
+{
+  "configuration": {
+    "execution": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "fee_per_trade": 0.0,
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "slippage": 0.0,
+      "spread": 0.0,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0
+    },
+    "initial_capital": 50.0,
+    "risk": {
+      "maximum_spread": 30.0,
+      "minimum_atr": 1.0,
+      "minimum_confidence": 70,
+      "risk_percent": 1.0
+    },
+    "strategy": {
+      "entrypoint": "strategy.pipeline.generate_trading_signal",
+      "indicator_engine": "core.indicators.calculate_indicators-v1",
+      "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+      "strategy_id": "jqe-canonical-strategy-v1"
+    }
+  },
+  "created_at": "2026-09-27T19:48:43.398300+00:00",
+  "dataset_hash": "sha256:37b95671ad52f1b2a4bd3115a3341aef0c842eec3de8fbf3c46e3595dc15093c",
+  "engine_version": "jqe-backtest-v1",
+  "experiment_id": "0a55409b4f3a471fae2ccae0ba5494a9",
+  "identity_schema_version": 1,
+  "metrics": {
+    "Ending Balance": 50.0,
+    "Losses": 0,
+    "Net P&L": 0.0,
+    "Net Profit": 0.0,
+    "Starting Balance": 50.0,
+    "Total Trades": 0,
+    "Trades": 0,
+    "Wins": 0
+  },
+  "partition": "TRAIN",
+  "partition_candle_count": 300,
+  "partition_first_candle": "2026-09-27T14:06:00.000000+00:00",
+  "partition_last_candle": "2026-09-27T19:05:00.000000+00:00",
+  "provenance": {
+    "frozen_manifest_content_hash": "sha256:1b8d81477a1f30e6f488f2c01f82f9b97b910298b4c37711a3617fc4732787f4",
+    "provider": "weltrade",
+    "provider_symbol": "PainX 1200",
+    "source": "Weltrade MT5 terminal"
+  },
+  "result_hash": "sha256:6935a8f32c94a2ed3e88579ba9838e78814b3b5fe6d947cc63df3f797ff0851d",
+  "run_fingerprint": "sha256:6395650e02467cae59ca9bb74b24a369183b45f64bf957d9e31fcb4791e484f6",
+  "schema_version": 2,
+  "status": "COMPLETED",
+  "strategy_name": "jqe-canonical-strategy-v1",
+  "symbol": "PainX 1200",
+  "timeframe": "M1"
+}
