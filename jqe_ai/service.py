@@ -70,18 +70,26 @@ class JQEAIService:
         )
 
     def status(self) -> AssistantStatusResponse:
-        configured = bool(self.settings.anthropic_api_key)
+        provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
+        if provider in {"meta", "openai_compatible"}:
+            configured = bool(getattr(self.settings, "meta_api_key", None))
+            missing_reason = "META_API_KEY_MISSING"
+        else:
+            configured = bool(self.settings.anthropic_api_key)
+            missing_reason = "ANTHROPIC_API_KEY_MISSING"
+
         if self.settings.ai_assistant_kill_switch:
             state, reasons = "KILLED", ["ASSISTANT_KILL_SWITCH_ACTIVE"]
         elif not self.settings.ai_assistant_enabled:
             state, reasons = "DISABLED", ["ASSISTANT_DISABLED"]
         elif not configured:
-            state, reasons = "UNCONFIGURED", ["ANTHROPIC_API_KEY_MISSING"]
+            state, reasons = "UNCONFIGURED", [missing_reason]
         else:
             state, reasons = "READY", []
         return AssistantStatusResponse(
             state=state, configured=configured, enabled=self.settings.ai_assistant_enabled,
-            healthy=state == "READY", model=self.settings.ai_assistant_model, reason_codes=reasons,
+            healthy=state == "READY", model=self.settings.ai_assistant_model,
+            provider=provider, reason_codes=reasons,
         )
 
     def _ready_client(self) -> ModelClient:
@@ -95,12 +103,24 @@ class JQEAIService:
             raise AssistantUnavailable(status.reason_codes[0], messages[status.state])
         if self._client is None:
             try:
-                self._client = AnthropicModelClient(
-                    api_key=self.settings.anthropic_api_key,
-                    model=self.settings.ai_assistant_model,
-                    max_tokens=self.settings.ai_assistant_max_output_tokens,
-                    timeout=self.settings.ai_assistant_timeout_seconds,
-                )
+                provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
+                if provider in {"meta", "openai_compatible"}:
+                    from jqe_ai.client import MetaModelClient
+
+                    self._client = MetaModelClient(
+                        api_key=self.settings.meta_api_key,
+                        model=self.settings.ai_assistant_model,
+                        api_base=getattr(self.settings, "meta_api_base", "https://api.llama.com/v1"),
+                        max_tokens=self.settings.ai_assistant_max_output_tokens,
+                        timeout=self.settings.ai_assistant_timeout_seconds,
+                    )
+                else:
+                    self._client = AnthropicModelClient(
+                        api_key=self.settings.anthropic_api_key,
+                        model=self.settings.ai_assistant_model,
+                        max_tokens=self.settings.ai_assistant_max_output_tokens,
+                        timeout=self.settings.ai_assistant_timeout_seconds,
+                    )
             except Exception as exc:
                 raise AssistantUnavailable("ASSISTANT_CLIENT_UNAVAILABLE", "JQE AI is temporarily unavailable. No answer was generated.") from exc
         return self._client
@@ -124,10 +144,11 @@ class JQEAIService:
             overall_freshness=bundle.overall_freshness,
             stale_sources=bundle.stale_sources, unavailable_sources=bundle.unavailable_sources,
         )
+        provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
         if len(bundle.unavailable_sources) == 7:
             return AssistantChatResponse(
                 state="ANSWERED", answer="No Workspace evidence is available.", generated_at=now.isoformat(),
-                model=self.settings.ai_assistant_model, context=summary,
+                model=self.settings.ai_assistant_model, provider=provider, context=summary,
             )
         encoded = serialize_context(bundle)
         try:
@@ -139,14 +160,21 @@ class JQEAIService:
             raise AssistantUnavailable("ASSISTANT_TIMEOUT", "JQE AI timed out. No answer was generated.", 504) from exc
         except Exception as exc:
             error_types = {base.__name__ for base in type(exc).__mro__}
-            if "AuthenticationError" in error_types:
-                raise AssistantUnavailable("ANTHROPIC_AUTH_FAILED", "JQE AI is unavailable — Anthropic authentication failed.") from exc
-            if "APITimeoutError" in error_types:
+            err_str = str(exc)
+
+            if "AuthenticationError" in error_types or "HTTP 401" in err_str:
+                auth_code = "META_AUTH_FAILED" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_AUTH_FAILED"
+                provider_name = "Meta AI" if provider == "meta" else "Anthropic"
+                raise AssistantUnavailable(auth_code, f"JQE AI is unavailable — {provider_name} authentication failed.") from exc
+            if "APITimeoutError" in error_types or "timed out" in err_str.lower():
                 raise AssistantUnavailable("ASSISTANT_TIMEOUT", "JQE AI timed out. No answer was generated.", 504) from exc
-            if "RateLimitError" in error_types:
-                raise AssistantUnavailable("ANTHROPIC_RATE_LIMITED", "JQE AI is temporarily unavailable — Anthropic request limit reached.", 429) from exc
-            if "APIConnectionError" in error_types:
-                raise AssistantUnavailable("ANTHROPIC_CONNECTION_ERROR", "JQE AI is temporarily unavailable. No answer was generated.") from exc
+            if "RateLimitError" in error_types or "HTTP 429" in err_str:
+                rate_code = "META_RATE_LIMITED" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_RATE_LIMITED"
+                provider_name = "Meta AI" if provider == "meta" else "Anthropic"
+                raise AssistantUnavailable(rate_code, f"JQE AI is temporarily unavailable — {provider_name} request limit reached.", 429) from exc
+            if "APIConnectionError" in error_types or "ConnectionError" in error_types:
+                conn_code = "META_CONNECTION_ERROR" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_CONNECTION_ERROR"
+                raise AssistantUnavailable(conn_code, "JQE AI is temporarily unavailable. No answer was generated.") from exc
             if "APIStatusError" in error_types:
                 raise AssistantUnavailable("ANTHROPIC_STATUS_ERROR", "JQE AI is temporarily unavailable. No answer was generated.") from exc
             raise AssistantUnavailable("ASSISTANT_PROVIDER_ERROR", "JQE AI is temporarily unavailable. No answer was generated.") from exc
@@ -155,7 +183,7 @@ class JQEAIService:
             raise AssistantUnavailable("ASSISTANT_INVALID_RESPONSE", "JQE AI returned no usable answer. No answer was generated.", 502)
         return AssistantChatResponse(
             state="ANSWERED", answer=answer, generated_at=now.isoformat(),
-            model=self.settings.ai_assistant_model, context=summary,
+            model=self.settings.ai_assistant_model, provider=provider, context=summary,
             usage=UsageSummary(input_tokens=result.input_tokens, output_tokens=result.output_tokens),
             warning=output_warning(answer, encoded, message),
         )

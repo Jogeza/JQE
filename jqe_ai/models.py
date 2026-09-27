@@ -43,6 +43,7 @@ class AssistantStatusResponse(BaseModel):
     enabled: bool
     healthy: bool
     model: str
+    provider: str = "anthropic"
     reason_codes: list[str] = Field(default_factory=list)
 
 
@@ -66,6 +67,7 @@ class AssistantChatResponse(BaseModel):
     answer: str | None
     generated_at: str
     model: str
+    provider: str = "anthropic"
     context: ContextSummary | None = None
     usage: UsageSummary | None = None
     warning: str | None = None
