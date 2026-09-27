@@ -88,6 +88,8 @@ export const WorkspacePage: React.FC<Props> = ({
   const verifiedAt = identity?.verified_at && Number.isFinite(Date.parse(identity.verified_at)) ? identity.verified_at : null;
   const verificationAge = formatAge(verifiedAt);
   const verificationFresh = !!verifiedAt && withinAge(verifiedAt, WORKSPACE_FRESHNESS_THRESHOLDS_MS.demoVerification);
+  const liveConnected = brokerData?.live_connection_state === 'CONNECTED'
+    || (!brokerData?.live_connection_state && brokerData?.observation_state === 'OBSERVED' && brokerData.connected);
   const demoResult = !guardPassed
     ? { verified: false, text: 'unverified · demo guard not passed', tone: 'danger' }
     : !identityMatches
@@ -96,14 +98,17 @@ export const WorkspacePage: React.FC<Props> = ({
         ? { verified: false, text: 'unverified · no verification time', tone: 'neutral' }
         : !verificationFresh
           ? { verified: false, text: `unverified · evidence expired (age ${verificationAge})`, tone: 'neutral' }
-          : brokerState !== 'LIVE'
-            ? { verified: false, text: `unverified · snapshot stale (snapshot age ${brokerAge})`, tone: 'neutral' }
+          : !liveConnected
+            ? { verified: false, text: `unverified · live connection unavailable (status age ${brokerAge})`, tone: 'neutral' }
             : { verified: true, text: `Yes · age ${verificationAge}`, tone: 'verified' };
   const demoVerified = demoResult.verified;
   const maskedAccount = identityMatches && identity?.account_id_masked?.includes('*')
     ? identity.account_id_masked : 'unavailable';
-  const snapshotConnected = brokerData?.observation_state === 'OBSERVED'
-    ? (brokerData.connected ? 'Yes · snapshot reported' : 'No · snapshot reported') : 'unavailable';
+  const liveConnection = brokerData?.live_connection_state === 'CONNECTED'
+    ? 'Yes · live'
+    : brokerData?.live_connection_state === 'DISCONNECTED'
+      ? 'No · live'
+      : 'unavailable';
   const brokerConnectionLabel = brokerData?.active_broker === 'weltrade'
     ? 'Weltrade'
     : brokerData?.active_broker === 'mt5'
@@ -215,7 +220,7 @@ export const WorkspacePage: React.FC<Props> = ({
       <div className="workspace-title"><p className="workspace-eyebrow">JQE / decision workspace · broker status {brokerState}</p><h1>Research, with the evidence in view.</h1></div>
       <div className="workspace-topbar-facts" aria-label="Broker and execution status">
         <div><span>Reported active broker</span><strong>{brokerData ? brokerData.active_broker : 'unavailable'}</strong></div>
-        <div><span>Snapshot-reported connection</span><strong>{snapshotConnected}</strong></div>
+        <div><span>Live broker connection</span><strong>{liveConnection}</strong></div>
         <div className={`workspace-demo-result workspace-demo-result-${demoResult.tone}`}><span>Demo verified</span><strong>{demoResult.text}</strong></div>
         <div><span>Masked account</span><strong>{maskedAccount}</strong></div>
         <div><span>Verified at</span><strong>{formatTime(verifiedAt)}</strong></div>
@@ -230,10 +235,10 @@ export const WorkspacePage: React.FC<Props> = ({
 
     <Panel title="Readiness" source="Evidence checklist" state={brokerState} className="workspace-readiness">
       <ul className="workspace-readiness-list">
-        <ReadinessItem label={`${brokerConnectionLabel} connection`} source="GET /brokers/status · snapshot-reported" result={brokerConnectionAvailable ? snapshotConnected : 'unavailable'} observed={brokerConnectionAvailable ? brokerObservedAt : null} age={brokerConnectionAvailable ? brokerAge : 'unavailable'} />
+        <ReadinessItem label={`${brokerConnectionLabel} connection`} source="GET /brokers/status · live execution session" result={brokerConnectionAvailable ? liveConnection : 'unavailable'} observed={brokerConnectionAvailable ? brokerData?.live_checked_at ?? null : null} age={brokerConnectionAvailable ? formatAge(brokerData?.live_checked_at) : 'unavailable'} />
         <ReadinessItem label="Demo verification" source="GET /brokers/status · DemoOnlyGuard" result={demoVerified ? 'Verified' : 'unverified'} observed={verifiedAt} />
         <ReadinessItem label="Execution status" source="GET /execution · broker state" state={executionState} result={executionData ? `${executionData.connected ? 'Connected' : 'Disconnected'} · ${executionData.open_positions_count} open positions` : executionState.toLowerCase()} observed={null} />
-        <ReadinessItem label="Observation-daemon heartbeat" source="GET /observation/health" state={healthState} result={health ? health.running && health.healthy ? 'Healthy' : 'Not healthy' : healthState.toLowerCase()} observed={health?.updated_at} />
+        <ReadinessItem label="Weltrade supervisor heartbeat" source="GET /observation/health · supervisor + PainX" state={healthState} result={health ? health.running && health.healthy ? 'Healthy' : 'Not healthy' : healthState.toLowerCase()} observed={health?.updated_at} />
         <ReadinessItem label="Notification channel" source="GET /notifications/status · configuration" state={notificationState} result={notificationSummary ?? notificationState.toLowerCase()} observed={notificationData?.observed_at ?? null} />
       </ul>
       {brokerData?.broker_execution_enabled === true && <div className="workspace-live-action">
@@ -338,8 +343,8 @@ export const WorkspacePage: React.FC<Props> = ({
       <Panel title="Daily digest" source="GET /notifications/status · digest telemetry" state={notificationData ? notificationState : 'UNAVAILABLE'} observed={notificationData?.observed_at}>
         {notificationData ? <p><strong>{notificationData.daily_digest.state}</strong> · {notificationData.daily_digest.reason_codes.join(' · ')}{notificationData.daily_digest.last_sent_at ? ` · sent ${formatTime(notificationData.daily_digest.last_sent_at)}` : ''}</p> : <p>Notification status is unavailable.</p>}
       </Panel>
-      <Panel title="Notification channels" source="GET /notifications/status · configuration" state={notificationData ? notificationState : 'UNAVAILABLE'}>
-        {notificationData ? <ul className="workspace-list">{notificationData.channels.map(channel => <li key={channel.channel}><strong>{channel.channel}</strong><span>{channel.state}</span><small>{channel.reason_codes.join(' · ')}</small></li>)}</ul> : <p>Notification status is unavailable.</p>}
+      <Panel title="Notification channels" source="GET /notifications/status · config check" state={notificationData ? notificationState : 'UNAVAILABLE'}>
+        {notificationData ? <ul className="workspace-list">{notificationData.channels.map(channel => <li key={channel.channel}><strong>{channel.channel}</strong><span>{channel.state} · {channel.reachability}</span><small>{channel.reason_codes.join(' · ')} · checked {formatTime(channel.checked_at)}</small></li>)}</ul> : <p>Notification status is unavailable.</p>}
       </Panel>
     </div>
 

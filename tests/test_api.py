@@ -312,6 +312,93 @@ class TestApplicationService:
             candle.time for candle in response.candles
         )
 
+    async def test_broker_chart_uses_newest_case_insensitive_cache_partition(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        cache_path = tmp_path / "historical.sqlite3"
+        monkeypatch.setattr(settings, "historical_data_path", cache_path)
+        monkeypatch.setattr(settings, "market_data_source", "broker")
+        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr("api.service._uses_mt5_session", lambda: False)
+        now = datetime.now(timezone.utc)
+
+        def candles(symbol: str, latest_close: float, latest_open: datetime) -> list[Candle]:
+            return [
+                Candle(
+                    time=latest_open - timedelta(minutes=5 * (4 - index)),
+                    open=latest_close - 1 + index,
+                    high=latest_close + 1 + index,
+                    low=latest_close - 2 + index,
+                    close=latest_close + index,
+                    volume=1.0,
+                    source="mt5",
+                )
+                for index in range(5)
+            ]
+
+        store = CandleStore(cache_path)
+        store.save_candles(
+            "FX VOL 20", Timeframe.M5,
+            candles("FX VOL 20", 111.0, now - timedelta(hours=2)),
+            provider="broker",
+        )
+        store.save_candles(
+            "FX Vol 20", Timeframe.M5,
+            candles("FX Vol 20", 222.0, now - timedelta(minutes=6)),
+            provider="broker",
+        )
+
+        source = FakePublicMarketData()
+        source.get_candles = AsyncMock(side_effect=AssertionError("stale partition selected"))
+        service = ApplicationService(gateway=source)
+
+        response = await service.get_market_candles("FX VOL 20", "M5", 5)
+
+        assert response.market_data_status == "CURRENT"
+        assert response.stale is False
+        assert response.candles[-1].close == 226.0
+        assert store.resolve_symbol_partition(
+            "FX VOL 20", Timeframe.M5, provider="broker"
+        ) == "FX Vol 20"
+        source.get_candles.assert_not_called()
+
+    async def test_broker_market_refresh_failure_is_logged_before_cache_fallback(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        cache_path = tmp_path / "historical.sqlite3"
+        monkeypatch.setattr(settings, "historical_data_path", cache_path)
+        monkeypatch.setattr(settings, "market_data_source", "broker")
+        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr("api.service._uses_mt5_session", lambda: False)
+        old = datetime.now(timezone.utc) - timedelta(hours=2)
+        cached = [
+            Candle(
+                time=old + timedelta(minutes=5 * index),
+                open=100 + index,
+                high=102 + index,
+                low=99 + index,
+                close=101 + index,
+                volume=1.0,
+                source="mt5",
+            )
+            for index in range(5)
+        ]
+        CandleStore(cache_path).save_candles(
+            "FX Vol 20", Timeframe.M5, cached, provider="broker"
+        )
+        source = FakePublicMarketData()
+        source.get_candles = AsyncMock(
+            side_effect=MarketDataError("Weltrade history unavailable")
+        )
+        service = ApplicationService(gateway=source)
+
+        with patch("api.service.logger.exception") as log_exception:
+            response = await service.get_market_candles("FX Vol 20", "M5", 5)
+
+        assert response.market_data_status == "CACHED"
+        log_exception.assert_called_once()
+        assert log_exception.call_args.args[2] == "FX Vol 20"
+
     async def test_deriv_market_failure_without_cache_is_typed_unavailable(
         self, tmp_path, monkeypatch
     ) -> None:

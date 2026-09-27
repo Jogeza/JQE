@@ -293,6 +293,34 @@ class CandleStore:
             ).fetchone()
         return int(row["n"])
 
+    def resolve_symbol_partition(
+        self, symbol: str, timeframe: Timeframe, provider: str | None = None
+    ) -> str | None:
+        """Resolve a cached symbol partition without rewriting cache data.
+
+        Broker catalogues can vary only in symbol casing (for example,
+        ``FX VOL 20`` versus ``FX Vol 20``).  Cache partitions are intentionally
+        kept lossless and case-sensitive, so a lookup must choose one complete
+        partition rather than combining rows from both.  Prefer the matching
+        partition with the newest candle; an exact spelling breaks ties.
+        """
+        query = (
+            "SELECT symbol, MAX(time) AS latest_time "
+            "FROM candles WHERE LOWER(symbol) = LOWER(?) AND timeframe = ?"
+        )
+        params: list[object] = [symbol, timeframe.value]
+        if provider is not None:
+            query += " AND provider = ?"
+            params.append(provider)
+        query += (
+            " GROUP BY symbol ORDER BY latest_time DESC, "
+            "CASE WHEN symbol = ? THEN 0 ELSE 1 END, symbol LIMIT 1"
+        )
+        params.append(symbol)
+        with closing(self._connect()) as conn:
+            row = conn.execute(query, params).fetchone()
+        return None if row is None else str(row["symbol"])
+
     def save_provenance(self, value: DatasetProvenance) -> None:
         """Persist explicit dataset semantics without altering candle values."""
         if value.retrieved_at.tzinfo is None:

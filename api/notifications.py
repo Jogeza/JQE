@@ -22,6 +22,8 @@ class NotificationChannelStatus(BaseModel):
     state: ChannelState
     configured: bool
     reason_codes: list[str]
+    checked_at: str
+    reachability: Literal["NOT_PROBED", "DISABLED"] = "NOT_PROBED"
 
 
 class DailyDigestStatus(BaseModel):
@@ -33,6 +35,7 @@ class DailyDigestStatus(BaseModel):
 
 class NotificationStatusResponse(BaseModel):
     observed_at: str
+    check_mode: Literal["CONFIG_ONLY_NO_NETWORK_PROBE"] = "CONFIG_ONLY_NO_NETWORK_PROBE"
     channels: list[NotificationChannelStatus]
     daily_digest: DailyDigestStatus
 
@@ -40,7 +43,7 @@ class NotificationStatusResponse(BaseModel):
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
-def _channel_status() -> list[NotificationChannelStatus]:
+def _channel_status(checked_at: str) -> list[NotificationChannelStatus]:
     telegram_enabled = bool(settings.telegram_enabled)
     telegram_configured = bool(
         settings.telegram_bot_token and settings.telegram_allowed_chat_id is not None
@@ -50,7 +53,7 @@ def _channel_status() -> list[NotificationChannelStatus]:
         telegram_reasons = ["TELEGRAM_DISABLED"]
     elif telegram_configured:
         telegram_state = "READY"
-        telegram_reasons = ["TELEGRAM_CONFIGURED"]
+        telegram_reasons = ["TELEGRAM_CONFIGURED_REACHABILITY_NOT_PROBED"]
     else:
         telegram_state = "UNAVAILABLE"
         telegram_reasons = ["TELEGRAM_CONFIGURATION_INCOMPLETE"]
@@ -62,12 +65,19 @@ def _channel_status() -> list[NotificationChannelStatus]:
             state=telegram_state,
             configured=telegram_configured,
             reason_codes=telegram_reasons,
+            checked_at=checked_at,
+            reachability="DISABLED" if not telegram_enabled else "NOT_PROBED",
         ),
         NotificationChannelStatus(
             channel="slack",
             state="READY" if slack_configured else "DISABLED",
             configured=slack_configured,
-            reason_codes=["SLACK_CONFIGURED" if slack_configured else "SLACK_DISABLED"],
+            reason_codes=[
+                "SLACK_CONFIGURED_REACHABILITY_NOT_PROBED"
+                if slack_configured else "SLACK_DISABLED"
+            ],
+            checked_at=checked_at,
+            reachability="NOT_PROBED" if slack_configured else "DISABLED",
         ),
     ]
 
@@ -107,6 +117,6 @@ def get_notification_status() -> NotificationStatusResponse:
     now = datetime.now(timezone.utc)
     return NotificationStatusResponse(
         observed_at=now.isoformat(),
-        channels=_channel_status(),
+        channels=_channel_status(now.isoformat()),
         daily_digest=_digest_status(now),
     )

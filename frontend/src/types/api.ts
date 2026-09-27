@@ -410,6 +410,21 @@ export interface ObservationHealthResponse {
   last_error: string | null;
   cycles_completed: number;
   session_id: string;
+  source: string;
+  supervisor: ObservationHealthComponent;
+  forward_collector: ObservationHealthComponent;
+}
+
+export interface ObservationHealthComponent {
+  name: string;
+  running: boolean;
+  healthy: boolean;
+  updated_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  pid: number | null;
+  source: string;
+  mode: string | null;
 }
 
 export interface AssistantStatusResponse {
@@ -442,6 +457,8 @@ export interface NotificationChannelStatus {
   state: 'READY' | 'DISABLED' | 'UNAVAILABLE';
   configured: boolean;
   reason_codes: string[];
+  checked_at: string;
+  reachability: 'NOT_PROBED' | 'DISABLED';
 }
 
 export interface DailyDigestStatus {
@@ -453,6 +470,7 @@ export interface DailyDigestStatus {
 
 export interface NotificationStatusResponse {
   observed_at: string;
+  check_mode: 'CONFIG_ONLY_NO_NETWORK_PROBE';
   channels: NotificationChannelStatus[];
   daily_digest: DailyDigestStatus;
 }
@@ -728,6 +746,12 @@ export interface BrokerStatusResponse {
   account_currency: string | null;
   account_trade_mode: string | null;
   broker_execution_enabled?: boolean;
+  snapshot_observed_at?: string | null;
+  snapshot_observation_state?: string;
+  snapshot_connected?: boolean;
+  live_checked_at?: string | null;
+  live_connection_state?: string;
+  live_error?: string | null;
 }
 
 export interface SelectBrokerRequest {

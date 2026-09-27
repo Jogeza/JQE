@@ -229,12 +229,12 @@ async def get_system_status(
 
 
 @router.get("/brokers/status", response_model=BrokerStatusResponse)
-def get_broker_status(
+async def get_broker_status(
     service: ApplicationService = Depends(get_service),
 ) -> BrokerStatusResponse:
     """Returns multi-broker connection state and DemoOnlyGuard verification status."""
     try:
-        return service.get_broker_status()
+        return await service.get_live_broker_status()
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

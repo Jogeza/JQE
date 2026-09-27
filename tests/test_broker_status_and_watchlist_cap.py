@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -183,6 +184,59 @@ def test_get_broker_status_attributes_weltrade_evidence_to_weltrade(
     assert mt5_b.demo_guard_verified_at is None
 
 
+def test_mt5_card_does_not_claim_weltrade_account_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_evidence_path = tmp_path / "evidence.sqlite3"
+    monkeypatch.setattr(settings, "execution_safety_store_path", tmp_path / "safety.sqlite3")
+    monkeypatch.setattr(settings, "broker_selection_store_path", tmp_path / "broker-selection.sqlite3")
+    monkeypatch.setattr(settings, "broker", "weltrade")
+    monkeypatch.setattr(settings, "mt5_login", None)
+    monkeypatch.setattr(settings, "mt5_server", None)
+    monkeypatch.setattr(settings, "weltrade_login", 8111)
+    monkeypatch.setattr(settings, "weltrade_demo_login", None)
+    monkeypatch.setattr("api.service.DEFAULT_BROKER_EVIDENCE_PATH", fake_evidence_path)
+
+    _seed_evidence(fake_evidence_path, "weltrade", "8111")
+
+    status = ApplicationService().get_broker_status()
+    mt5_b = next(b for b in status.brokers if b.broker == "mt5")
+    weltrade_b = next(b for b in status.brokers if b.broker == "weltrade")
+
+    assert mt5_b.demo_guard_status == "UNVERIFIED"
+    assert mt5_b.account_id_masked is None
+    assert mt5_b.notes is None
+    assert weltrade_b.demo_guard_status == "PASSED"
+    assert weltrade_b.account_id_masked == "8111"
+
+
+@pytest.mark.asyncio
+async def test_live_broker_status_reconciles_active_connection_with_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "execution_safety_store_path", tmp_path / "safety.sqlite3")
+    monkeypatch.setattr(settings, "broker_selection_store_path", tmp_path / "broker-selection.sqlite3")
+    monkeypatch.setattr(settings, "broker", "weltrade")
+    monkeypatch.setattr(settings, "weltrade_login", 8111)
+    monkeypatch.setattr(settings, "weltrade_demo_login", None)
+    monkeypatch.setattr("api.service.DEFAULT_BROKER_EVIDENCE_PATH", tmp_path / "evidence.sqlite3")
+    service = ApplicationService()
+
+    async def fake_execution():
+        return SimpleNamespace(connected=True)
+
+    monkeypatch.setattr(service, "get_execution_state", fake_execution)
+    status = await service.get_live_broker_status()
+
+    assert status.connected is True
+    assert status.live_connection_state == "CONNECTED"
+    assert status.observation_state == "LIVE"
+    assert status.live_checked_at is not None
+    assert status.snapshot_observation_state in {"NOT_OBSERVED", "UNAVAILABLE"}
+    assert status.snapshot_observed_at is None
+    assert next(item for item in status.brokers if item.is_active).connected is True
+
+
 def test_get_watchlist_cap_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_watchlist_path = tmp_path / "watchlist.sqlite3"
     fake_guard_path = tmp_path / "guard.sqlite3"
@@ -216,15 +270,19 @@ def test_get_watchlist_cap_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert fx.available is True
 
 
-def test_api_endpoints_routes() -> None:
+@pytest.mark.asyncio
+async def test_api_endpoints_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_app()
     paths = app.openapi()["paths"]
     assert "/api/v1/brokers/status" in paths
     assert "/api/v1/watchlist/cap-usage" in paths
 
     service = ApplicationService()
+    async def live_status():
+        return service.get_broker_status()
+    monkeypatch.setattr(service, "get_live_broker_status", live_status)
     # Test route_get_broker_status handler
-    resp_b = route_get_broker_status(service=service)
+    resp_b = await route_get_broker_status(service=service)
     assert resp_b.active_broker is not None
     assert len(resp_b.brokers) > 0
 

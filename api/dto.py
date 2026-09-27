@@ -453,6 +453,14 @@ class BrokerStatusResponse(BaseModel):
     account_currency: str | None = None
     account_trade_mode: str | None = None
     broker_execution_enabled: bool = False
+    # The durable safety snapshot is retained for audit/history, but these
+    # fields identify the live connection check used by the dashboard.
+    snapshot_observed_at: str | None = None
+    snapshot_observation_state: str = "NOT_OBSERVED"
+    snapshot_connected: bool = False
+    live_checked_at: str | None = None
+    live_connection_state: str = "NOT_CHECKED"
+    live_error: str | None = None
 
 
 class SelectBrokerRequest(BaseModel):

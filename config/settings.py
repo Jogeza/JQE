@@ -241,6 +241,9 @@ class Settings(BaseSettings):
     observation_evidence_path: Path = Path(
         "state/live_paper_operational/observation_daemon.evidence.sqlite3"
     )
+    painx_forward_progress_path: Path = Path(
+        "state/painx1200_forward/progress.json"
+    )
     observation_close_grace_seconds: float = Field(default=5.0, ge=0, le=300)
     observation_max_backoff_seconds: float = Field(default=300.0, ge=1, le=3600)
     observation_heartbeat_stale_cycles: int = Field(default=2, ge=1, le=24)

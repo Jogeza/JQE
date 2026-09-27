@@ -8,6 +8,7 @@ behavior for POST /api/v1/brokers/select.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -381,4 +382,4 @@ def test_select_route_registered_in_openapi() -> None:
     paths = app.openapi()["paths"]
     assert "/api/v1/brokers/select" in paths
     assert "post" in paths["/api/v1/brokers/select"]
-    assert route_get_broker_status(service=ApplicationService()).can_switch in (True, False)
+    assert inspect.iscoroutinefunction(route_get_broker_status)

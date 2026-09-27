@@ -148,7 +148,7 @@ describe('WorkspacePage', () => {
     ['ERROR', resource<ObservationHealthResponse>(null, { error: 'request failed' })],
   ] as const)('renders observation heartbeat %s', async (state, observationHealth) => {
     await render({ observationHealth });
-    expect(host.querySelector('[aria-label="Observation-daemon heartbeat"]')?.getAttribute('data-state')).toBe(state);
+    expect(host.querySelector('[aria-label="Weltrade supervisor heartbeat"]')?.getAttribute('data-state')).toBe(state);
   });
   it('rejects invalid timestamps', async () => {
     expect(validBroker({ ...broker, observed_at: 'invalid' })).toBe(false);
@@ -166,7 +166,7 @@ describe('WorkspacePage', () => {
   });
   it('uses one human broker age in the top card and MT5 checklist detail', async () => {
     vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
-    await render();
+    await render({ broker: resource({ ...broker, live_connection_state: 'CONNECTED', live_checked_at: observed }) });
     const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
     const connection = host.querySelector('[aria-label="MT5 connection"]') as HTMLElement;
     expect(facts.textContent).toContain('Broker-status observation age7d 0h');
@@ -190,9 +190,9 @@ describe('WorkspacePage', () => {
     expect(demoCard().classList).toContain('workspace-demo-result-danger');
     expect(host.textContent).toContain(new Date(observed).toLocaleString('en-GB'));
   });
-  it('explains stale broker snapshot verification with neutral styling', async () => {
-    await render({ broker: resource(broker, { stale: true }) });
-    expect(demoCard().textContent).toContain('unverified · snapshot stale (snapshot age 1m)');
+  it('explains an unavailable live connection with neutral styling', async () => {
+    await render({ broker: resource({ ...broker, live_connection_state: 'DISCONNECTED' }, { stale: true }) });
+    expect(demoCard().textContent).toContain('unverified · live connection unavailable (status age 1m)');
     expect(demoCard().classList).toContain('workspace-demo-result-neutral');
     expect(host.textContent).toContain(new Date(observed).toLocaleString('en-GB'));
   });
@@ -220,7 +220,7 @@ describe('WorkspacePage', () => {
   it('shows top-bar connection and demo verification separately', async () => {
     await render();
     const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
-    expect(facts.textContent).toContain('Snapshot-reported connectionYes · snapshot reported');
+    expect(facts.textContent).toContain('Live broker connectionunavailable');
     expect(facts.textContent).toContain('Demo verifiedYes');
     expect(facts.querySelectorAll(':scope > div')).toHaveLength(7);
   });

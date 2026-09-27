@@ -63,6 +63,7 @@ from config.settings import settings
 from core.data_validator import validate_market_data
 from core.exceptions import MarketDataError
 from core.indicators import calculate_indicators
+from core.logger import logger
 from core.regime import detect_regime
 from data.broker_selection import BrokerSelectionStore, normalize_broker_name
 from data.watchlist import WatchlistStore
@@ -302,12 +303,15 @@ class ApplicationService:
             "BROKER": "broker",
         }.get(configured, "simulation")
         provider_symbol = self._provider_symbol(symbol, configured)
+        cache_symbol = self._candle_store.resolve_symbol_partition(
+            symbol, timeframe, provider=provider
+        ) or symbol
         historical_service = HistoricalDataService(gateway=source, store=self._candle_store)
 
         try:
             async with self._connected_source(source):
                 candles, downloaded = await historical_service.refresh_latest(
-                    symbol=symbol,
+                    symbol=cache_symbol,
                     provider_symbol=provider_symbol,
                     provider=provider,
                     timeframe=timeframe,
@@ -319,10 +323,14 @@ class ApplicationService:
                 cache_status = "REFRESHED" if downloaded > 0 else "FRESH_CACHE"
                 return candles, provenance, "CURRENT", cache_status
         except Exception:
-            pass
+            logger.exception(
+                "Market-data refresh failed; falling back to cached candles "
+                "for symbol={} cache_symbol={} timeframe={} provider={}",
+                symbol, cache_symbol, timeframe.value, provider,
+            )
 
         cached = self._candle_store.load_latest(
-            symbol, timeframe, count, provider=provider
+            cache_symbol, timeframe, count, provider=provider
         )
         if cached:
             cached_df = pd.DataFrame([c.model_dump() for c in cached])
@@ -1729,7 +1737,60 @@ class ApplicationService:
             account_currency=active_item.account_currency if active_item else None,
             account_trade_mode=active_item.account_trade_mode if active_item else None,
             broker_execution_enabled=settings.broker_execution_enabled,
+            snapshot_observed_at=observed_at,
+            snapshot_observation_state=obs_state,
+            snapshot_connected=active_item.connected if active_item else False,
         )
+
+    async def get_live_broker_status(self) -> BrokerStatusResponse:
+        """Reconcile the broker card with the live execution session.
+
+        The durable safety snapshot remains available on the response as the
+        last-known-good snapshot.  The active Weltrade card and the flat
+        connection fields are instead updated from the same read path used by
+        ``/execution`` so a stale safety observation cannot masquerade as the
+        current broker connection state.
+        """
+        snapshot_status = self.get_broker_status()
+        if snapshot_status.active_broker != "weltrade":
+            return snapshot_status.model_copy(update={
+                "live_connection_state": "NOT_APPLICABLE",
+                "live_error": None,
+            })
+
+        checked_at = utc_now().isoformat()
+        try:
+            execution = await self.get_execution_state()
+        except Exception as exc:
+            logger.exception("Live broker status check failed for Weltrade")
+            items = [
+                item.model_copy(update={"connected": False}) if item.is_active else item
+                for item in snapshot_status.brokers
+            ]
+            return snapshot_status.model_copy(update={
+                "brokers": items,
+                "connected": False,
+                "observed_at": checked_at,
+                "observation_state": "UNAVAILABLE",
+                "live_checked_at": checked_at,
+                "live_connection_state": "UNAVAILABLE",
+                "live_error": type(exc).__name__,
+            })
+
+        items = [
+            item.model_copy(update={"connected": execution.connected})
+            if item.is_active else item
+            for item in snapshot_status.brokers
+        ]
+        return snapshot_status.model_copy(update={
+            "brokers": items,
+            "connected": execution.connected,
+            "observed_at": checked_at,
+            "observation_state": "LIVE",
+            "live_checked_at": checked_at,
+            "live_connection_state": "CONNECTED" if execution.connected else "DISCONNECTED",
+            "live_error": None,
+        })
 
     def _unresolved_intent_summary(self) -> tuple[int | None, str | None]:
         """Return (unresolved_count, blocked_reason) from the durable intent store.
