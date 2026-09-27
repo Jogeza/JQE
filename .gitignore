@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 
@@ -26,6 +26,9 @@ credentials.json
 
 # Logs
 logs/
+*.log
+*.err
+*.bak
 
 # Reports
 reports/
