@@ -44,15 +44,28 @@ class BacktestExecutionAssumptions:
     max_holding_candles: int = 19
     stop_atr_multiple: float = 1.5
     target_atr_multiple: float = 3.0
+    # Phase 4 – microstructure cost realism.
+    # Adverse slippage expressed as a fraction of the candle ATR at entry.
+    # Realistic range: 0.05–0.20 (i.e. 5–20 % of ATR per fill).
+    # Default 0.0 preserves backward compatibility with all existing tests.
+    adverse_slippage_atr_fraction: float = 0.0
+    # Dynamic spread widening expressed as a fraction of the candle ATR at
+    # entry. Models wider quoted spreads during volatile conditions.
+    # Realistic range: 0.05–0.15. Default 0.0 = fixed spread only.
+    spread_atr_fraction: float = 0.0
 
     def __post_init__(self) -> None:
         numeric = (
             self.spread, self.slippage, self.fee_per_trade,
             self.stop_atr_multiple, self.target_atr_multiple,
+            self.adverse_slippage_atr_fraction, self.spread_atr_fraction,
         )
         if not all(math.isfinite(value) for value in numeric):
             raise ValueError("Backtest execution assumptions must be finite")
-        if any(value < 0 for value in (self.spread, self.slippage, self.fee_per_trade)):
+        if any(value < 0 for value in (
+            self.spread, self.slippage, self.fee_per_trade,
+            self.adverse_slippage_atr_fraction, self.spread_atr_fraction,
+        )):
             raise ValueError("Backtest costs cannot be negative")
         if self.max_holding_candles <= 0:
             raise ValueError("max_holding_candles must be positive")

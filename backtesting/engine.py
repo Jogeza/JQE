@@ -157,12 +157,20 @@ class BacktestEngine:
 
     def _enter(self, index: int, row: pd.Series) -> None:
         assert self._pending is not None
-        adverse = self.execution_assumptions.spread + self.execution_assumptions.slippage
+        atr = self._pending.atr
+        ea = self.execution_assumptions
+        # Phase 4: total adverse fill cost = fixed components + ATR-scaled components.
+        # ATR-scaling models dynamic spread widening and adverse tick slippage that
+        # grow in proportion to instrument volatility, ensuring position sizing
+        # remains parity-normalised across symbols with different ATR magnitudes.
+        fixed_adverse = ea.spread + ea.slippage
+        atr_adverse = atr * (ea.spread_atr_fraction + ea.adverse_slippage_atr_fraction)
+        total_adverse = fixed_adverse + atr_adverse
         raw_open = float(row["open"])
-        entry = raw_open + adverse if self._pending.direction == "BUY" else raw_open - adverse
-        stop_distance = self._pending.atr * self.execution_assumptions.stop_atr_multiple
+        entry = raw_open + total_adverse if self._pending.direction == "BUY" else raw_open - total_adverse
+        stop_distance = atr * ea.stop_atr_multiple
         risk_amount = self.balance * self.risk_configuration.risk_percent / 100.0
-        if stop_distance <= 0 or risk_amount <= self.execution_assumptions.fee_per_trade or risk_amount > self.balance:
+        if stop_distance <= 0 or risk_amount <= ea.fee_per_trade or risk_amount > self.balance:
             return
         sizing = authorize_execution_quantity(
             broker="simulation", balance=self.balance,
@@ -174,14 +182,14 @@ class BacktestEngine:
             self.decisions.append(BacktestDecision(
                 candle_index=index, timestamp=row["time"], signal=self._pending.direction,
                 confidence=self._pending.confidence, state="EXECUTION_REJECTED",
-                reasons=(sizing.reason,),
+                reasons=(sizing.reason, f"atr_adverse={atr_adverse:.5f} fixed_adverse={fixed_adverse:.5f}"),
             ))
             return
         quantity = sizing.quantity
         if self._pending.direction == "BUY":
-            stop, target = entry - stop_distance, entry + self._pending.atr * self.execution_assumptions.target_atr_multiple
+            stop, target = entry - stop_distance, entry + atr * ea.target_atr_multiple
         else:
-            stop, target = entry + stop_distance, entry - self._pending.atr * self.execution_assumptions.target_atr_multiple
+            stop, target = entry + stop_distance, entry - atr * ea.target_atr_multiple
         self._position = _OpenPosition(self._pending.direction, self._pending.signal_index, index, entry, stop, target, quantity, self.balance)
 
     def _evaluate_exit(self, index: int, row: pd.Series, dataframe: pd.DataFrame) -> None:
