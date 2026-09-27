@@ -1,4 +1,4 @@
-"""Application execution remains simulation-only after path consolidation."""
+"""Unsupported deployment brokers fail before gateway construction."""
 
 from __future__ import annotations
 
@@ -21,17 +21,17 @@ def _restore_broker():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("broker", ["deriv"])
-async def test_non_simulation_application_execution_is_rejected_before_gateway(
+async def test_unsupported_broker_application_execution_is_rejected_before_gateway(
     broker: str,
 ) -> None:
     settings.broker = broker
     with patch("main.get_gateway") as get_gateway:
-        with pytest.raises(ConfigurationError, match="simulation only"):
+        with pytest.raises(ConfigurationError, match="Unsupported broker"):
             await main.run()
     get_gateway.assert_not_called()
 
 
-def test_non_simulation_rejection_has_no_network_side_effects() -> None:
+def test_unsupported_broker_rejection_has_no_network_side_effects() -> None:
     settings.broker = "deriv"
     with patch(
         "broker.deriv_gateway.websockets.connect",
@@ -40,7 +40,7 @@ def test_non_simulation_rejection_has_no_network_side_effects() -> None:
         "broker.deriv_auth.urlopen",
         side_effect=AssertionError("network access is forbidden"),
     ) as urlopen:
-        with pytest.raises(ConfigurationError, match="simulation only"):
+        with pytest.raises(ConfigurationError, match="Unsupported broker"):
             asyncio.run(main.run())
     websocket_connect.assert_not_called()
     urlopen.assert_not_called()

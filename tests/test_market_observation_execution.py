@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import main
-from broker.simulation_gateway import SimulationGateway
+from tests.weltrade_stubs import WeltradeStubGateway
 from broker.types import Candle, Timeframe
 from config import EmergencyStopState, settings
 from core.exceptions import ConfigurationError, ExecutionError, MarketDataError
@@ -46,7 +46,7 @@ async def test_broker_market_source_uses_the_supplied_gateway_read_only() -> Non
         async def disconnect(self):
             raise AssertionError("the active gateway lifecycle belongs to main.run")
 
-    source_settings = SimpleNamespace(market_data_source="broker")
+    source_settings = SimpleNamespace(market_data_source="broker", effective_broker="weltrade")
     gateway = Gateway()
 
     async with resolved_market_source(source_settings, broker_gateway=gateway) as (source, name):
@@ -55,20 +55,23 @@ async def test_broker_market_source_uses_the_supplied_gateway_read_only() -> Non
 
 
 @pytest.fixture(autouse=True)
-def _settings(tmp_path):
+def _settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "broker_execution_enabled", True)
+    monkeypatch.setattr(settings, "execution_position_ledger_path", tmp_path / "positions.sqlite3")
+    monkeypatch.setattr(settings, "execution_lifetime_store_path", tmp_path / "lifetime.sqlite3")
     original = (
         settings.broker, settings.market_data_source, settings.default_candle_count,
         settings.intent_store_path, settings.execution_safety_store_path,
         settings.emergency_stop, settings.default_symbol,
         settings.daily_instrument_trade_store_path,
     )
-    settings.broker = "simulation"
-    settings.market_data_source = "deriv_public"
+    settings.broker = "weltrade"
+    settings.market_data_source = "broker"
     settings.default_candle_count = 2
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
-    settings.default_symbol = "XAUUSD"
+    settings.default_symbol = "FX VOL 20"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     yield
     (
@@ -80,40 +83,40 @@ def _settings(tmp_path):
 
 
 @asynccontextmanager
-async def _public_fixture_source(_settings):
+async def _public_fixture_source(_settings, broker_gateway=None):
     class PublicOnlySource:
-        async def get_candles(self, *, symbol, timeframe, count):
-            assert symbol == "frxXAUUSD"
+        async def get_candles(self, symbol, timeframe, count):
+            assert symbol == "FX VOL 20"
             assert timeframe is Timeframe.M5
-            assert count == 3
+            assert count == 102  # Terminal source includes the closed-bar buffer.
             return _candles()
-    yield PublicOnlySource(), "deriv_public"
+    yield PublicOnlySource(), "broker"
 
 
 @asynccontextmanager
-async def _failed_public_source(_settings):
+async def _failed_public_source(_settings, broker_gateway=None):
     class PublicOnlySource:
         async def get_candles(self, **_kwargs):
             raise MarketDataError("fixture public source unavailable")
-    yield PublicOnlySource(), "deriv_public"
+    yield PublicOnlySource(), "broker"
 
 
 def _approved_plan():
     return SimpleNamespace(
-        symbol="XAUUSD", signal="BUY", stop_loss=2_340.0, take_profit=2_356.0,
+        symbol="FX VOL 20", signal="BUY", stop_loss=2_340.0, take_profit=2_356.0,
         warnings=[], invalidation=None, is_valid=lambda: True,
     )
 
 
 @pytest.mark.asyncio
-async def test_public_closed_candle_drives_exact_simulation_fill() -> None:
-    gateway = SimulationGateway(starting_balance=1_000.0)
+async def test_closed_candle_drives_plan_and_sizing_but_not_broker_fill_price() -> None:
+    gateway = WeltradeStubGateway(starting_balance=1_000.0)
     captured = []
-    original_submit = gateway.submit_order_from_market_observation
+    original_submit = gateway.submit_order
 
-    async def capture(order, observation):
-        result = await original_submit(order, observation)
-        captured.append((order, observation, result))
+    async def capture(order):
+        result = await original_submit(order)
+        captured.append((order, result))
         return result
 
     with (
@@ -129,18 +132,19 @@ async def test_public_closed_candle_drives_exact_simulation_fill() -> None:
             "approved": True, "reason": "ok", "risk_percent": 1.0,
             "authorized_risk_amount": 10.0,
         }),
-        patch("main.TradePlanBuilder.build", return_value=_approved_plan()),
-        patch.object(gateway, "submit_order_from_market_observation", side_effect=capture),
+        patch("main.TradePlanBuilder.build", return_value=_approved_plan()) as build_plan,
+        patch.object(gateway, "authorize_account_currency_risk", wraps=gateway.authorize_account_currency_risk) as size,
+        patch.object(gateway, "submit_order", side_effect=capture),
     ):
         await main.run()
 
     assert len(captured) == 1
-    order, observation, result = captured[0]
-    assert observation.canonical_symbol == order.symbol == "XAUUSD"
-    assert observation.provider_symbol == "frxXAUUSD"
-    assert observation.close == 2_345.67
-    assert result.filled_price == observation.reference_price == 2_345.67
-    assert result.filled_price != 100.0
+    order, result = captured[0]
+    assert order.symbol == "FX VOL 20"
+    assert build_plan.call_args.kwargs["price"] == 2_345.67
+    assert size.call_args.kwargs["entry"] == 2_345.67
+    assert order.entry_price is None  # Market order: the broker owns its fill price.
+    assert result.filled_price == 101.0  # Explicit offline gateway fill fixture.
 
 
 def test_forming_candle_is_excluded_and_fails_closed_when_no_closed_candle() -> None:
@@ -150,14 +154,14 @@ def test_forming_candle_is_excluded_and_fails_closed_when_no_closed_candle() -> 
     )
     with pytest.raises(MarketDataError, match="provably closed"):
         closed_observations_from_candles(
-            candles=[candle], canonical_symbol="XAUUSD", provider_symbol="frxXAUUSD",
-            source="deriv_public", timeframe=Timeframe.M5,
+            candles=[candle], canonical_symbol="FX VOL 20", provider_symbol="FX VOL 20",
+            source="broker", timeframe=Timeframe.M5,
         )
 
 
 @pytest.mark.asyncio
-async def test_cross_symbol_trade_plan_fails_before_simulation_submission() -> None:
-    gateway = SimulationGateway()
+async def test_cross_symbol_trade_plan_fails_before_offline_submission() -> None:
+    gateway = WeltradeStubGateway()
     invalid = _approved_plan()
     invalid.symbol = "EURUSD"
     with (
@@ -176,8 +180,8 @@ async def test_cross_symbol_trade_plan_fails_before_simulation_submission() -> N
 
 
 @pytest.mark.asyncio
-async def test_public_data_failure_stops_before_simulation_submission() -> None:
-    gateway = SimulationGateway()
+async def test_public_data_failure_stops_before_offline_submission() -> None:
+    gateway = WeltradeStubGateway()
     with patch("main.get_gateway", return_value=gateway), patch(
         "main.resolved_market_source", _failed_public_source
     ), pytest.raises(MarketDataError, match="fixture public source unavailable"):
@@ -186,8 +190,8 @@ async def test_public_data_failure_stops_before_simulation_submission() -> None:
 
 
 @pytest.mark.asyncio
-async def test_risk_rejection_keeps_the_observation_out_of_simulation_submission() -> None:
-    gateway = SimulationGateway()
+async def test_risk_rejection_keeps_the_observation_out_of_offline_submission() -> None:
+    gateway = WeltradeStubGateway()
     with (
         patch("main.get_gateway", return_value=gateway),
         patch("main.resolved_market_source", _public_fixture_source),
@@ -202,9 +206,9 @@ async def test_risk_rejection_keeps_the_observation_out_of_simulation_submission
 
 
 @pytest.mark.asyncio
-async def test_emergency_stop_blocks_the_observation_before_a_simulation_fill() -> None:
+async def test_emergency_stop_blocks_the_observation_before_a_offline_fill() -> None:
     settings.emergency_stop = EmergencyStopState.ACTIVE
-    gateway = SimulationGateway()
+    gateway = WeltradeStubGateway()
     with (
         patch("main.get_gateway", return_value=gateway),
         patch("main.resolved_market_source", _public_fixture_source),
@@ -220,9 +224,9 @@ async def test_emergency_stop_blocks_the_observation_before_a_simulation_fill() 
 
 
 @pytest.mark.asyncio
-async def test_non_simulation_configuration_rejects_before_any_gateway_factory_call() -> None:
+async def test_unsupported_broker_configuration_rejects_before_any_gateway_factory_call() -> None:
     settings.broker = "deriv"
     factory = MagicMock()
-    with patch("main.get_gateway", factory), pytest.raises(ConfigurationError, match="simulation only"):
+    with patch("main.get_gateway", factory), pytest.raises(ConfigurationError, match="Unsupported broker"):
         await main.run()
     factory.assert_not_called()

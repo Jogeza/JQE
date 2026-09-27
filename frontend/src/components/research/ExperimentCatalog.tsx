@@ -30,7 +30,7 @@ function dateRange(start: string, end: string) {
 }
 
 function Reproducibility({ status, fully }: { status: ExperimentStatus; fully: boolean }) {
-  const label = fully ? 'Fully reproducible' : status === 'LEGACY_INCOMPLETE' ? 'Legacy / incomplete' : 'Identity unavailable';
+  const label = fully ? 'Identity complete · audit pending' : status === 'LEGACY_INCOMPLETE' ? 'Legacy / incomplete' : 'Identity unavailable';
   return <span className={`reproducibility-state ${fully ? 'complete' : 'incomplete'}`}>{label}</span>;
 }
 
@@ -72,13 +72,14 @@ function DetailPanel({ detail, loading, error, onClose }: {
   return (
     <aside className="experiment-detail" aria-label="Experiment detail" aria-live="polite">
       <div className="experiment-detail-heading">
-        <div><span>Authoritative record</span><strong>{detail?.experiment_id ?? 'Experiment detail'}</strong></div>
+        <div><span>Persisted record · validation pending</span><strong>{detail?.experiment_id ?? 'Experiment detail'}</strong></div>
         <button className="btn-quant" type="button" onClick={onClose} aria-label="Close experiment detail">Close</button>
       </div>
       {loading && <p className="experiment-state">Loading experiment detail\u2026</p>}
       {error && <p className="experiment-state error" role="alert">{error}</p>}
       {detail && !loading && (
         <div className="experiment-detail-content">
+          <p role="status">The September 27 timestamp and partition audit is incomplete. These simulation metrics are unverified research observations, not demonstrated profitability.</p>
           <section><h3>Observation</h3><FactGrid values={{ experiment_id: detail.experiment_id, created_at: dateTime(detail.created_at), status: detail.status }} /></section>
           <section><h3>Dataset</h3><FactGrid values={{ symbol: detail.symbol, timeframe: detail.timeframe, partition: detail.partition, effective_range: dateRange(detail.partition_first_candle, detail.partition_last_candle), candle_count: detail.partition_candle_count }} /><IdentityRow label="Dataset" value={detail.dataset_hash} /></section>
           <section><h3>Run configuration</h3><FactGrid values={{ strategy_name: detail.strategy_name, ...detail.configuration }} /><IdentityRow label="Run" value={detail.run_fingerprint} /></section>
@@ -112,6 +113,7 @@ function ComparisonPanel({ comparison, loading, error, onClose }: {
       {loading && <p className="experiment-state">Loading authoritative comparison\u2026</p>}
       {error && <p className="experiment-state error" role="alert">{error}</p>}
       {comparison && !loading && <div className="experiment-detail-content">
+        <p role="status">Comparison identities do not validate timestamp alignment, dataset partitions, or strategy performance.</p>
         <section className="comparison-classification"><span>Classification</span><strong>{classificationLabels[comparison.classification]}</strong><small>{comparison.classification}</small></section>
         <section><h3>Compared observations</h3><FactGrid values={{ left: comparison.left_experiment_id, right: comparison.right_experiment_id }} /></section>
         <section><h3>Reproducibility facts</h3><FactGrid values={facts} /></section>
@@ -173,7 +175,7 @@ export function ExperimentCatalog() {
 
   return (
     <section className="experiment-catalog" aria-labelledby="experiment-catalog-title">
-      <header className="experiment-catalog-header"><div><span className="research-eyebrow">Persisted deterministic research runs</span><h2 id="experiment-catalog-title">Durable experiment catalog</h2><p>Inspect reproducibility identities and compare two recorded observations without changing them.</p></div><div className="comparison-actions"><span aria-live="polite">{selected.length} of 2 selected</span><button className="btn-quant btn-quant-primary" disabled={selected.length !== 2 || comparisonLoading} onClick={compare}>Compare selected</button><button className="btn-quant" disabled={!selected.length} onClick={() => setSelected([])}>Clear selection</button></div></header>
+      <header className="experiment-catalog-header"><div><span className="research-eyebrow">Persisted research runs · validation pending</span><h2 id="experiment-catalog-title">Durable experiment catalog</h2><p>September 27 results await Antigravity’s timestamp and partition audit. Returns here are unverified simulations and do not establish profitability. Job activity is not reported by this catalog.</p></div><div className="comparison-actions"><span aria-live="polite">{selected.length} of 2 selected</span><button className="btn-quant btn-quant-primary" disabled={selected.length !== 2 || comparisonLoading} onClick={compare}>Compare selected</button><button className="btn-quant" disabled={!selected.length} onClick={() => setSelected([])}>Clear selection</button></div></header>
       <form className="experiment-filters" onSubmit={(event) => { event.preventDefault(); apply(); }}>
         <label><span>Symbol</span><input value={draft.symbol ?? ''} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} /></label>
         <label><span>Timeframe</span><input value={draft.timeframe ?? ''} onChange={(e) => setDraft({ ...draft, timeframe: e.target.value })} /></label>

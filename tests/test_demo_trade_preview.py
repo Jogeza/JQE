@@ -370,10 +370,10 @@ async def test_mt5_selection_is_rejected(harness: Harness, capsys) -> None:
     assert "not a supported demo broker" in capsys.readouterr().out
 
 
-async def test_requested_broker_must_match_the_selection(harness: Harness, capsys) -> None:
+async def test_unsupported_broker_is_rejected_before_selection(harness: Harness, capsys) -> None:
     assert await run(_args(broker="deriv")) == 2
     assert harness.constructed == []
-    assert "does not match the selected broker" in capsys.readouterr().out
+    assert "Unsupported broker" in capsys.readouterr().out
 
 
 async def test_active_emergency_stop_blocks_before_broker_contact(

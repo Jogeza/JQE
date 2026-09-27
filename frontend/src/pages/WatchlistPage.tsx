@@ -123,13 +123,13 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
             <Plus size={14} color="var(--quant-cyan)" />
             <span>Add Instrument to Universe</span>
           </div>
-          <span className="badge badge-neutral">TELEGRAM SYNCED</span>
+          <span className="badge badge-neutral">WELTRADE SYNTHETICS</span>
         </div>
         <div className="quant-panel-body" style={{ padding: '14px' }}>
           <form onSubmit={handleAdd} style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="text"
-              placeholder="e.g. R_75, FX VOL 20, PAINX 400"
+              placeholder="e.g. FX Vol 20, PainX 400"
               value={newSymbol}
               onChange={e => setNewSymbol(e.target.value)}
               disabled={submitting}
@@ -191,7 +191,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
         <div className="quant-panel-body" style={{ padding: '16px' }}>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-              Watchlist is empty. Add instruments above or via Telegram /add command.
+              Watchlist is empty. Add a Weltrade synthetic index above.
             </div>
           ) : (
             <div

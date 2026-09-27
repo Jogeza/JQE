@@ -8,7 +8,7 @@ structurally impossible from this tool.
 Authorize explicitly before running::
 
     set JQE_RUN_DEMO_VERIFICATION=1
-    D:\\JQE\\venv\\Scripts\\python.exe tools/demo_synthetic_verification.py --broker all
+    D:\\JQE\\venv\\Scripts\\python.exe tools/demo_synthetic_verification.py --broker weltrade
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from typing import Any
 import pandas as pd
 
 from broker.base import BrokerGateway
+from broker.weltrade_symbols import is_weltrade_synthetic
 from broker.demo_guard import DEFAULT_BROKER_EVIDENCE_PATH
 from broker.factory import get_gateway
 from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
@@ -102,8 +103,7 @@ def _mask(value: str | None) -> str:
 
 
 def _is_weltrade_synthetic(name: str) -> bool:
-    upper = name.upper()
-    return any(token in upper for token in _WELTRADE_SYNTHETIC_TOKENS)
+    return is_weltrade_synthetic(name)
 
 
 def _closed_candles(candles: list[Candle], timeframe: Timeframe) -> list[Candle]:
@@ -321,62 +321,11 @@ def _evaluate_pipeline(
 
 
 async def _verify_deriv(settings: Settings, args: argparse.Namespace) -> BrokerVerificationReport:
-    report = BrokerVerificationReport(
-        broker="deriv", started_at=datetime.now(timezone.utc).isoformat()
-    )
-    if not settings.deriv_api_token or not settings.deriv_options_account_id:
-        report.outcome = "BLOCKED"
-        report.blocker = "Deriv demo credentials are not configured"
-        report.record("1-select", "BLOCKED", reason=report.blocker)
-        return report
-    if settings.deriv_expected_environment != "demo":
-        report.outcome = "BLOCKED"
-        report.blocker = "JQE_DERIV_EXPECTED_ENVIRONMENT is not 'demo'"
-        report.record("1-select", "BLOCKED", reason=report.blocker)
-        return report
-
-    async with _connected(report, settings, "deriv") as gateway:
-        if gateway is None:
-            return report
-        account = await gateway.get_account_info()
-        identity = getattr(gateway.inner, "account_identity", None)
-        report.record(
-            "4-demo-identity",
-            "PASSED" if getattr(gateway.inner, "_demo_verified", False) else "FAILED",
-            account_id_masked=_mask(account.account_id),
-            currency=account.currency,
-            balance=account.balance,
-            identity_state=getattr(getattr(identity, "state", None), "value", None),
-            identity_environment=getattr(identity, "environment", None),
-            demo_verified=bool(getattr(gateway.inner, "_demo_verified", False)),
-        )
-        report.record(
-            "5-demo-guard-evidence", "OBSERVED", **_latest_demo_guard_evidence(("deriv",))
-        )
-
-        discovered = await _discover_deriv_symbols(settings)
-        requested = args.symbol or next(
-            (
-                entry["symbol"]
-                for entry in discovered
-                if entry.get("exchange_is_open") in (1, True)
-            ),
-            discovered[0]["symbol"] if discovered else "",
-        )
-        report.record(
-            "6-symbol-discovery",
-            "PASSED" if requested else "FAILED",
-            discovery_source="deriv active_symbols (market=synthetic_index)",
-            synthetic_symbol_count=len(discovered),
-            synthetic_symbols=[entry["symbol"] for entry in discovered],
-            selected_symbol=requested or None,
-        )
-        if not requested:
-            report.outcome = "BLOCKED"
-            report.blocker = "Deriv active_symbols returned no synthetic_index symbols"
-            return report
-
-        await _fetch_and_evaluate(report, gateway, requested, settings, args)
+    """Retired operator entry point: keep old invocations fail-closed."""
+    report = BrokerVerificationReport(broker="deriv", started_at=datetime.now(timezone.utc).isoformat())
+    report.outcome = "BLOCKED"
+    report.blocker = "Unsupported broker: only Weltrade verification is available"
+    report.record("1-select", "BLOCKED", reason=report.blocker)
     return report
 
 
@@ -575,7 +524,7 @@ async def run(args: argparse.Namespace) -> int:
 
     store = BrokerSelectionStore(settings.broker_selection_store_path)
     previous = store.get_selected_broker()
-    targets = ["deriv", "weltrade"] if args.broker == "all" else [args.broker]
+    targets = ["weltrade"] if args.broker == "all" else [args.broker]
     reports: list[BrokerVerificationReport] = []
     restore_error: str | None = None
     try:
@@ -611,7 +560,7 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--broker", choices=("deriv", "weltrade", "all"), default="all")
+    parser.add_argument("--broker", choices=("weltrade",), default="weltrade")
     parser.add_argument("--symbol", default=None, help="broker-confirmed symbol override")
     parser.add_argument("--timeframe", default="H1", choices=[tf.value for tf in Timeframe])
     parser.add_argument("--count", type=int, default=300)

@@ -52,20 +52,22 @@ async def test_connect_rejects_missing_credentials(monkeypatch) -> None:
     monkeypatch.setattr(settings, "weltrade_server", None)
     monkeypatch.setattr(settings, "weltrade_demo_server", None)
     gateway = WeltradeGateway(login=None, password=None, server=None, expected_environment="demo")
-    with pytest.raises(BrokerConnectionError, match="Weltrade demo login configuration missing"):
+    with patch("broker.mt5_gateway.mt5_disconnect"), pytest.raises(
+        BrokerConnectionError, match="Weltrade demo login configuration missing"
+    ):
         await gateway.connect()
 
 
 def test_synthetic_symbol_resolves_from_terminal_catalogue() -> None:
     gateway = WeltradeGateway(expected_environment="demo")
     item = MagicMock(name="symbol")
-    item.name = "FX Vol.75"
+    item.name = "FX Vol.20"
     item.visible = True
     with (
         patch("broker.weltrade_gateway.mt5.symbol_info", return_value=None),
         patch("broker.weltrade_gateway.mt5.symbols_get", return_value=[item]),
     ):
-        assert gateway._resolve_symbol("R_75") == "FX Vol.75"
+        assert gateway._resolve_symbol("FX VOL 20") == "FX Vol.20"
 
 
 @pytest.mark.asyncio
@@ -75,7 +77,7 @@ async def test_submit_rechecks_demo_before_shared_mt5_order_path() -> None:
     gateway._demo_verified = True
     real_account = MagicMock(login=42, server="Weltrade-Live", trade_mode=2)
     order = OrderRequest(
-        symbol="R_75", side=OrderSide.BUY,
+        symbol="FX VOL 20", side=OrderSide.BUY,
         quantity={"value": 0.01, "unit": "MT5_LOTS"}, stop_loss=90.0,
     )
     with (
@@ -85,3 +87,4 @@ async def test_submit_rechecks_demo_before_shared_mt5_order_path() -> None:
         with pytest.raises(UnsafeBrokerAccountError):
             await gateway.submit_order(order)
     order_send.assert_not_called()
+

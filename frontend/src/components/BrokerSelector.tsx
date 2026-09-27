@@ -2,13 +2,10 @@ import React, { useState } from 'react';
 import { AlertTriangle, Loader2, Plug } from 'lucide-react';
 import type { BrokerItemStatusDTO, BrokerStatusResponse } from '../types/api';
 
-const BROKER_ORDER = ['mt5', 'weltrade', 'deriv', 'simulation'] as const;
+const BROKER_ORDER = ['weltrade'] as const;
 
 const BROKER_LABELS: Record<string, string> = {
-  mt5: 'MT5 Demo',
-  weltrade: 'Weltrade Demo',
-  deriv: 'Deriv Demo',
-  simulation: 'Simulation (Test Only)',
+  weltrade: 'Weltrade SyntX · MT5',
 };
 
 interface BrokerSelectorProps {
@@ -32,7 +29,7 @@ export const BrokerSelector: React.FC<BrokerSelectorProps> = ({
 
   const handleChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
     const next = event.target.value;
-    if (!next || next === activeBroker || switching) return;
+    if (next !== 'weltrade' || next === activeBroker || switching) return;
     setSwitching(true);
     setError(null);
     try {
@@ -46,7 +43,7 @@ export const BrokerSelector: React.FC<BrokerSelectorProps> = ({
 
   const title = globallyBlocked && blockedReason
     ? blockedReason
-    : 'Select the active execution broker (persisted; demo only)';
+    : 'Weltrade SyntX through your local MT5 terminal · demo only';
 
   return (
     <div className="broker-selector" style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>

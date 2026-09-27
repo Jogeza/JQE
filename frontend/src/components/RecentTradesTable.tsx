@@ -7,9 +7,10 @@ interface RecentTradesTableProps {
   trades: TradeHistoryDTO[];
   loading?: boolean;
   currency?: string;
+  broker?: string;
 }
 
-export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, loading, currency }) => {
+export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, loading, currency, broker }) => {
   const formatTime = (timeStr: string) => {
     const d = new Date(timeStr);
     if (Number.isNaN(d.getTime())) return timeStr || '—';
@@ -23,7 +24,7 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, lo
           <History size={14} color="var(--quant-cyan)" />
           <span>Execution History ({trades.length})</span>
         </div>
-        <span className="badge badge-neutral">API HISTORY</span>
+        <span className="badge badge-neutral">{broker?.toLowerCase() === 'weltrade' ? 'WELTRADE MT5 HISTORY' : 'BROKER SOURCE UNAVAILABLE'}</span>
       </div>
 
       <div className="quant-table-wrapper">

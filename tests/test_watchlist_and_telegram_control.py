@@ -82,35 +82,35 @@ def test_watchlist_api_endpoints(tmp_path: Path) -> None:
     assert any(i.symbol == "FX VOL 20" and i.timeframe == "M1" for i in initial_resp.items)
 
     # 2. POST add instrument
-    req = WatchlistAddRequest(symbol="QuadX 2000", timeframe="M15")
+    req = WatchlistAddRequest(symbol="PainX 600", timeframe="M15")
     added_dto = add_to_watchlist(request=req, store=store)
-    assert added_dto.symbol == "QUADX 2000"
+    assert added_dto.symbol == "PAINX 600"
     assert added_dto.timeframe == "M15"
-    assert added_dto.scope == "QUADX 2000:M15"
+    assert added_dto.scope == "PAINX 600:M15"
 
     # 3. Verify it appears in GET
     after_add = get_watchlist(store=store)
-    assert any(i.symbol == "QUADX 2000" and i.timeframe == "M15" for i in after_add.items)
+    assert any(i.symbol == "PAINX 600" and i.timeframe == "M15" for i in after_add.items)
 
     # 4. DELETE instrument by path
-    del_resp = delete_from_watchlist_path(symbol="QUADX 2000", timeframe="M15", store=store)
+    del_resp = delete_from_watchlist_path(symbol="PAINX 600", timeframe="M15", store=store)
     assert del_resp.deleted is True
-    assert del_resp.symbol == "QUADX 2000"
+    assert del_resp.symbol == "PAINX 600"
 
     # 5. Verify it is removed
     after_del = get_watchlist(store=store)
-    assert not any(i.symbol == "QUADX 2000" for i in after_del.items)
+    assert not any(i.symbol == "PAINX 600" and i.timeframe == "M15" for i in after_del.items)
 
     # 6. DELETE instrument by query
-    req2 = WatchlistAddRequest(symbol="MAX 1000", timeframe="H1")
+    req2 = WatchlistAddRequest(symbol="MAX PainX 1000", timeframe="H1")
     add_to_watchlist(request=req2, store=store)
-    del_query_resp = delete_from_watchlist_query(symbol="MAX 1000", timeframe=None, store=store)
+    del_query_resp = delete_from_watchlist_query(symbol="MAX PainX 1000", timeframe=None, store=store)
     assert del_query_resp.deleted is True
-    assert not any(i.symbol == "MAX 1000" for i in get_watchlist(store=store).items)
+    assert not any(i.symbol == "MAX PAINX 1000" for i in get_watchlist(store=store).items)
 
     # 7. Invalid timeframe rejection raises HTTPException 400
     with pytest.raises(HTTPException) as exc_info:
-        add_to_watchlist(request=WatchlistAddRequest(symbol="R_50", timeframe="INVALID_TF"), store=store)
+        add_to_watchlist(request=WatchlistAddRequest(symbol="FX Vol 20", timeframe="INVALID_TF"), store=store)
     assert exc_info.value.status_code == 400
 
 

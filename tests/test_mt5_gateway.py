@@ -34,7 +34,7 @@ class TestConnectionLifecycle:
     async def test_connect_failure_raises(
         self, mock_connect: MagicMock, gateway: MT5Gateway
     ) -> None:
-        with pytest.raises(BrokerConnectionError):
+        with patch("broker.mt5_gateway.mt5_disconnect"), pytest.raises(BrokerConnectionError):
             await gateway.connect()
         assert gateway.is_connected is False
 
@@ -220,7 +220,13 @@ class TestGetCandles:
         assert len(candles) == 1
         assert candles[0].close == 1.5
         assert candles[0].volume == 10.0
-        assert candles[0].time == datetime.fromtimestamp(1700000000, tz=timezone.utc)
+        # The raw MT5 server timestamp 1700000000 is in server-local time
+        # (UTC+3).  The gateway must subtract _MT5_SERVER_UTC_OFFSET_SECONDS
+        # (10 800 s) before constructing the UTC datetime.
+        from broker.mt5_gateway import _MT5_SERVER_UTC_OFFSET_SECONDS
+        assert candles[0].time == datetime.fromtimestamp(
+            1700000000 - _MT5_SERVER_UTC_OFFSET_SECONDS, tz=timezone.utc
+        )
         mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 15, 0, 1)
 
     @patch("broker.mt5_gateway.mt5")

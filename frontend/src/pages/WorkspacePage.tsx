@@ -120,6 +120,17 @@ export const WorkspacePage: React.FC<Props> = ({
     ? activeAnalysis.data.setup : null;
   const activeCandles = activeAnalysis?.data && Array.isArray(activeAnalysis.data.candles?.candles)
     ? activeAnalysis.data.candles : null;
+  const marketContext = activeAnalysis?.data?.context;
+  const marketFreshness = activeAnalysis?.error || activeAnalysis?.stale
+    ? 'unavailable · last request failed'
+    : marketContext?.freshness_state === 'FRESH' ? 'fresh · closed candles'
+    : marketContext?.freshness_state
+      ? `${marketContext.freshness_state.toLowerCase()} · ${reasonText(marketContext.freshness_reason_codes)}`
+      : 'unavailable';
+  const chartDataStatus = marketContext?.freshness_state === 'FRESH' && !activeAnalysis?.stale
+    ? activeCandles?.market_data_status
+    : marketContext?.freshness_state === 'UNKNOWN' ? 'UNKNOWN'
+    : activeCandles ? 'CACHED' : 'UNAVAILABLE';
   const activeSignal = activeAnalysis?.data?.signal ?? null;
   const activeAnalysisState = activeAnalysis ? panelState(activeAnalysis) : 'UNAVAILABLE';
   const assessmentValid = validAssessment(monitoring.data?.assessment);
@@ -134,8 +145,9 @@ export const WorkspacePage: React.FC<Props> = ({
     ? observationState(monitoring, monitoring.data?.observed_at ?? monitoring.data?.assessment?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.monitoring)
     : lifecycleMonitoringState;
   const assessment = activeSetup ?? (assessmentValid && monitoringState === 'LIVE' ? monitoring.data?.assessment : null);
+  const safetyTransportState = observationState(safety, safety.data?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.executionSafety);
   const safetyState = safety.data && !validSafety(safety.data) ? 'UNAVAILABLE'
-    : observationState(safety, safety.data?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.executionSafety);
+    : safetyTransportState === 'LIVE' && safety.data?.observation_state === 'STALE' ? 'STALE' : safetyTransportState;
   const riskObservedAt = risk.data?.observation_age_seconds === null || risk.data?.observation_age_seconds === undefined
     ? null : new Date(Date.now() - risk.data.observation_age_seconds * 1000).toISOString();
   const riskState = risk.data && !validRisk(risk.data) ? 'UNAVAILABLE'
@@ -225,6 +237,10 @@ export const WorkspacePage: React.FC<Props> = ({
         <div><span>Masked account</span><strong>{maskedAccount}</strong></div>
         <div><span>Verified at</span><strong>{formatTime(verifiedAt)}</strong></div>
         <div><span>Broker-status observation age</span><strong>{brokerAge}</strong></div>
+        <div><span>Market data freshness</span><strong>{marketFreshness}</strong></div>
+        <div><span>Broker execution</span><strong>{brokerData ? brokerData.broker_execution_enabled ? 'enabled · guarded demo only' : 'disabled' : 'unavailable'}</strong></div>
+        <div><span>Research batch job</span><strong>unknown · no live job telemetry</strong></div>
+        <div><span>Execution snapshot</span><strong>{safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : `${safetyState.toLowerCase()} · fail closed`}</strong></div>
         <div><span>Execution</span><strong>{executionData ? `${executionData.connected ? 'connected' : 'disconnected'} · ${executionData.open_positions_count} open` : 'unavailable'}</strong></div>
       </div>
       <button ref={paletteTrigger} type="button" className="workspace-command" onClick={() => {
@@ -292,12 +308,12 @@ export const WorkspacePage: React.FC<Props> = ({
           priceDecimals={activeCandles.price_decimals}
           loading={activeAnalysis?.loading}
           error={activeAnalysis?.error}
-          dataStatus={activeCandles.market_data_status}
+          dataStatus={chartDataStatus}
         /> : <div className="workspace-chart-frame">
           <p className="workspace-empty">Active market analysis is unavailable.</p>
           <div className="workspace-chart-overlay" role="status">{activeAnalysis?.error ?? 'NO_MARKET_SNAPSHOT'}</div>
         </div>}
-        <p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · strategy, setup, and candles share one observation.</p>
+        <p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p>
       </Panel>
     </div>
 
@@ -337,7 +353,7 @@ export const WorkspacePage: React.FC<Props> = ({
       </Panel>
       <Panel title="PainX research" source="GET /monitoring/offline · separate research status" state={monitoring.data?.research_status ? 'LIVE' : 'UNAVAILABLE'}>
         {monitoring.data?.research_status
-          ? <><p><strong>{monitoring.data.research_status.status.replace(/_/g, ' ')}</strong></p><p>{monitoring.data.research_status.presentation_rule}</p><small>Execution authority: {monitoring.data.research_status.execution_authority ?? 'NONE_RESEARCH_ONLY'}</small></>
+          ? <><p><strong>{monitoring.data.research_status.status.replace(/_/g, ' ')}</strong></p><p>{monitoring.data.research_status.presentation_rule}</p><p>September 27 research validation pending timestamp and partition audit. Batch job activity is not reported by this API.</p><small>Execution authority: {monitoring.data.research_status.execution_authority ?? 'NONE_RESEARCH_ONLY'}</small></>
           : <p>Research status unavailable.</p>}
       </Panel>
       <Panel title="Daily digest" source="GET /notifications/status · digest telemetry" state={notificationData ? notificationState : 'UNAVAILABLE'} observed={notificationData?.observed_at}>

@@ -13,6 +13,7 @@ from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import _DEFAULT_TICK_POLL_INTERVAL_SECONDS
 from core.exceptions import BrokerConnectionError
 from core.logger import logger
+from broker.weltrade_symbols import is_weltrade_synthetic
 
 
 _WELTRADE_SYNTHETIC_ALIASES: dict[str, tuple[str, ...]] = {
@@ -96,7 +97,10 @@ class WeltradeGateway(MT5DemoGateway):
             )
 
     def _resolve_symbol(self, symbol: str) -> str | None:
-        aliases = _WELTRADE_SYNTHETIC_ALIASES.get(symbol.strip().upper(), (symbol,))
+        if not is_weltrade_synthetic(symbol):
+            logger.error("Outside Weltrade synthetic scope: {}", symbol)
+            return None
+        aliases = (symbol.strip(),)
         for candidate in aliases:
             info = mt5.symbol_info(candidate)
             if info is not None:
@@ -116,3 +120,42 @@ class WeltradeGateway(MT5DemoGateway):
                 return name
         logger.error("No Weltrade symbol found for {}", symbol)
         return None
+
+    async def get_candles_range(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start: datetime,
+        end: datetime,
+        count: int | None = None,
+    ) -> list[Candle]:
+        self._require_connected()
+        import asyncio
+        from broker.mt5_gateway import _mt5_timeframe, _mt5_ts_to_utc
+        from broker.types import Candle
+        from core.exceptions import MarketDataError
+
+        real_symbol = self._resolve_symbol(symbol)
+        if not real_symbol:
+            raise MarketDataError("Unknown Weltrade MT5 symbol", symbol=symbol)
+        raw_rates = await asyncio.to_thread(
+            mt5.copy_rates_range, real_symbol, _mt5_timeframe(timeframe), start, end
+        )
+        if raw_rates is None or len(raw_rates) == 0:
+            raise MarketDataError("No candle data returned from MT5", symbol=symbol)
+        return [
+            Candle(
+                time=_mt5_ts_to_utc(rate["time"]),
+                open=float(rate["open"]),
+                high=float(rate["high"]),
+                low=float(rate["low"]),
+                close=float(rate["close"]),
+                volume=(
+                    float(rate["tick_volume"])
+                    if not isinstance(rate, dict) or "tick_volume" in rate
+                    else None
+                ),
+                source="weltrade",
+            )
+            for rate in raw_rates
+        ]

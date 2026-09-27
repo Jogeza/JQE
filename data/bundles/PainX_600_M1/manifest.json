@@ -1,0 +1,15 @@
+{
+  "candle_count": 500,
+  "canonical_symbol": "PainX 600",
+  "content_hash": "sha256:814d3f2cd99dbb73faddfad7e54470088ab15516336d2ae97060691111fecec8",
+  "first_candle": "2026-09-27T14:06:00.000000+00:00",
+  "granularity_seconds": 60,
+  "last_candle": "2026-09-27T22:25:00.000000+00:00",
+  "provider": "weltrade",
+  "provider_symbol": "PainX 600",
+  "retrieved_at": "2026-09-27T19:48:40.363547+00:00",
+  "schema_version": 1,
+  "source": "Weltrade MT5 terminal",
+  "timeframe": "M1",
+  "volume_available": true
+}

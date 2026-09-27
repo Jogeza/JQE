@@ -43,10 +43,10 @@ const timeframeSeconds: Record<string, number> = {
 
 function defaultHistoryRange(timeframe: string) {
   const step = timeframeSeconds[timeframe] ?? 900;
-  const endSeconds = Math.floor(Date.now() / 1000 / step) * step;
+  const closedSeconds = Math.floor(Date.now() / 1000 / step) * step - step;
   return {
-    start: new Date((endSeconds - step * 299) * 1000).toISOString(),
-    end: new Date(endSeconds * 1000).toISOString(),
+    start: new Date((closedSeconds - step * 299) * 1000).toISOString(),
+    end: new Date(closedSeconds * 1000).toISOString(),
   };
 }
 
@@ -171,7 +171,9 @@ export function ResearchChartWorkspace({
         setAcquisition(next);
         if (isTerminalAcquisition(next)) {
           window.clearInterval(poll);
-          if (next.state === 'COMPLETED') onMarketsChanged(await read('/api/v1/research/markets'));
+          if (next.state === 'COMPLETED' || (next.outcome && next.outcome.stored_after > 0)) {
+            onMarketsChanged(await read('/api/v1/research/markets'));
+          }
         }
       } catch (reason) {
         if (!cancelled) setError(String(reason));
@@ -245,7 +247,9 @@ export function ResearchChartWorkspace({
       });
       if (request === generation.current) {
         setAcquisition(result);
-        if (result.state === 'COMPLETED') onMarketsChanged(await read('/api/v1/research/markets'));
+        if (result.state === 'COMPLETED' || (result.outcome && result.outcome.stored_after > 0)) {
+          onMarketsChanged(await read('/api/v1/research/markets'));
+        }
       }
     } catch (reason) {
       if (request === generation.current) setError(String(reason));
@@ -361,7 +365,7 @@ export function ResearchChartWorkspace({
         </summary>
         <div className="quant-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <p className="research-acquisition-target">
-            <strong>Manual public-data request</strong> · {instrument.display_name} ·{' '}
+            <strong>Weltrade terminal history request</strong> · {instrument.display_name} ·{' '}
             {instrument.provider_symbol} · {timeframe}
             <br />
             Range: {historyStart} → {historyEnd}
@@ -427,7 +431,7 @@ export function ResearchChartWorkspace({
             <p>
               {selectedCache
                 ? `${selectedCache.candle_count} cached candles are available. Run the research-only backtest to open the chart and replay controls.`
-                : 'This dataset is not cached yet. Use Historical acquisition above to request public market data.'}
+                : 'This dataset is not cached yet. Use Historical acquisition above to request Weltrade terminal history.'}
             </p>
           </div>
         </div>

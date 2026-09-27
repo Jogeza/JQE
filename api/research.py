@@ -23,7 +23,8 @@ from data.storage import CandleStore
 from data.watchlist import WatchlistStore
 from data.provenance import DatasetProvenance, VolumeType
 from data.historical import HistoricalDataService
-from broker.deriv_public_data import DerivPublicMarketData
+from broker.factory import get_gateway
+from broker.weltrade_symbols import require_weltrade_synthetic, is_weltrade_synthetic
 from research.markets import MarketCatalogueService, catalogue_from_watchlist
 from config.settings import settings
 from core.exceptions import MarketDataError
@@ -282,7 +283,7 @@ class ExperimentApiRequest(BaseModel):
 
 class AcquireHistoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider_symbol: str = Field(min_length=2, max_length=30, pattern=r"^\w{2,30}$")
+    provider_symbol: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9 ._-]+$")
     timeframe: Timeframe
     requested_start: datetime
     requested_end: datetime
@@ -372,13 +373,6 @@ _sessions: OrderedDict[str, ResearchSession] = OrderedDict()
 _lock = Lock()
 
 
-async def _load_deriv_catalogue():
-    source = DerivPublicMarketData(settings.deriv_app_id, endpoint=settings.deriv_public_endpoint)
-    async with source:
-        return await source.get_active_symbols()
-
-
-_market_catalogue = MarketCatalogueService(_load_deriv_catalogue)
 _acquisition_jobs = AcquisitionJobRegistry()
 _experiment_catalog = ExperimentCatalog(settings.research_experiment_path)
 
@@ -512,8 +506,8 @@ def _acquisition_outcome(store: CandleStore, spec: AcquisitionSpec, cached_befor
         first_timestamp=candles[0].time if candles else None,
         last_timestamp=candles[-1].time if candles else None,
         dataset_hash=candle_content_hash(candles) if candles else None,
-        volume_type=VolumeType.UNAVAILABLE.value,
-        volume_source="Deriv public historical WebSocket",
+        volume_type=VolumeType.TICK_VOLUME.value,
+        volume_source="Weltrade MT5 terminal",
         provider_received=provider_received, provider_request_count=provider_request_count,
     )
 
@@ -523,7 +517,10 @@ async def _run_acquisition(spec: AcquisitionSpec) -> AcquisitionOutcome:
     timeframe = Timeframe(spec.timeframe)
     before = len(store.load_candles(spec.canonical_symbol, timeframe, spec.requested_start,
                                     spec.requested_end, provider=spec.provider))
-    source = DerivPublicMarketData(settings.deriv_app_id, endpoint=settings.deriv_public_endpoint)
+    if spec.provider != "weltrade":
+        raise MarketDataError("Only Weltrade history acquisition is supported")
+    require_weltrade_synthetic(spec.provider_symbol)
+    source = get_gateway(settings)
     try:
         async with source:
             service = HistoricalDataService(source, store=store)
@@ -533,6 +530,10 @@ async def _run_acquisition(spec: AcquisitionSpec) -> AcquisitionOutcome:
                 source_symbol=spec.provider_symbol,
             )
     except Exception as exc:
+        store.save_provenance(DatasetProvenance(
+            spec.provider, spec.canonical_symbol, spec.timeframe,
+            "Weltrade MT5 terminal", spec.provider_symbol,
+            VolumeType.TICK_VOLUME, datetime.now(timezone.utc)))
         outcome = _acquisition_outcome(store, spec, before, provider_request_count=1)
         message = str(exc).lower()
         code = (AcquisitionErrorCode.PROVIDER_TIMEOUT if "timed out" in message
@@ -543,16 +544,16 @@ async def _run_acquisition(spec: AcquisitionSpec) -> AcquisitionOutcome:
                                  outcome) from exc
     store.save_provenance(DatasetProvenance(
         spec.provider, spec.canonical_symbol, spec.timeframe,
-        "Deriv public historical WebSocket", spec.provider_symbol,
-        VolumeType.UNAVAILABLE, datetime.now(timezone.utc)))
+        "Weltrade MT5 terminal", spec.provider_symbol,
+        VolumeType.TICK_VOLUME, datetime.now(timezone.utc)))
     return _acquisition_outcome(store, spec, before, provider_request_count=1,
-                                provider_received=spec.requested_max_candles)
+                                provider_received=None)
 
 
 @router.get("/markets", response_model=None)
 async def get_research_markets(refresh: bool = False):
     watchlist_store = WatchlistStore(settings.watchlist_store_path)
-    watchlist_items = watchlist_store.get_items()
+    watchlist_items = [item for item in watchlist_store.get_items() if is_weltrade_synthetic(item.symbol)]
     catalogue = catalogue_from_watchlist(
         watchlist_items,
         provider=settings.effective_broker,
@@ -561,7 +562,7 @@ async def get_research_markets(refresh: bool = False):
     try:
         cached = tuple(
             item for item in CandleStore(settings.historical_data_path, read_only=True).list_cached_datasets()
-            if item.symbol.casefold() in watched_symbols
+            if item.provider == "weltrade" and item.symbol.casefold() in watched_symbols
         )
     except Exception:
         cached = ()
@@ -575,16 +576,22 @@ async def get_research_markets(refresh: bool = False):
 
 @router.post("/history/acquisitions", response_model=None, status_code=202)
 async def acquire_research_history(request: AcquireHistoryRequest):
-    instrument = await _market_catalogue.require_instrument(request.provider_symbol)
-    if instrument.is_trading_suspended:
-        raise HTTPException(422, "Selected Deriv instrument is trading suspended")
+    try:
+        require_weltrade_synthetic(request.provider_symbol)
+    except MarketDataError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    catalogue = catalogue_from_watchlist(WatchlistStore(settings.watchlist_store_path).get_items(), provider="weltrade")
+    instrument = next((item for item in catalogue.instruments
+                       if item.provider_symbol.casefold() == request.provider_symbol.casefold()), None)
+    if instrument is None:
+        raise HTTPException(422, "Select a Weltrade synthetic index from the watchlist first")
     start = request.requested_start.astimezone(timezone.utc)
     end = request.requested_end.astimezone(timezone.utc)
     count = int((end - start).total_seconds() // TIMEFRAME_SECONDS[request.timeframe]) + 1
-    spec = AcquisitionSpec("deriv", instrument.canonical_symbol, instrument.provider_symbol,
+    spec = AcquisitionSpec("weltrade", instrument.canonical_symbol, instrument.provider_symbol,
                            request.timeframe.value, start, end, count)
     store = CandleStore(settings.historical_data_path)
-    before = len(store.load_candles(spec.canonical_symbol, request.timeframe, start, end, provider="deriv"))
+    before = len(store.load_candles(spec.canonical_symbol, request.timeframe, start, end, provider="weltrade"))
     cached = _acquisition_outcome(store, spec, before, provider_request_count=0,
                                   provider_received=0)
     try:

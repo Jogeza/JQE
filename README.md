@@ -1,205 +1,100 @@
-# JQE Trading Platform
+# JQE — Weltrade Synthetic Research & Execution
 
-JQE is a modular quantitative trading platform for MetaTrader 5 and
-Deriv (with more brokers plannable), built in Python. Every broker is
-an interchangeable implementation behind a common `BrokerGateway`
-interface — the Quant Core (market intelligence, strategy, risk,
-execution, analytics) never imports a broker SDK directly. Target
-scope: live execution, multiple trading strategies, portfolio and risk
-management, performance analytics, professional backtesting with
-walk-forward optimization, trade journaling, a REST API, and a
-dashboard.
+JQE is a Python research and controlled execution platform for **Weltrade synthetic indices through a local Windows MetaTrader 5 terminal**. Weltrade is the only supported operator broker. MT5 is the terminal/API transport, not a second broker.
 
-**Status:** early-stage. Milestone 1 (Foundation) and Phase 1 (Broker
-Foundation) are complete. See [`docs/roadmap.md`](docs/roadmap.md) for
-what's done and what's next, and
-[`docs/architecture.md`](docs/architecture.md) for design rationale.
+**Current status:** demo execution only. The previous execution/dashboard phase is committed at `d6d00e1`. The Weltrade migration is in progress. Existing research has not demonstrated positive expectancy; a professional platform is an engineering objective, not a claim of institutional certification or proven profit.
 
-## Architecture
-
-```
-                         Quant Core
-        (market intelligence, strategy, risk, execution,
-                analytics — broker-agnostic)
-                              |
-                              v
-                    broker.BrokerGateway (ABC)
-                              ^
-         ┌────────────────────┼────────────────────┐
-         |                    |                     |
-  SimulationGateway     DerivGateway            MT5Gateway
-  (in-memory, default)  (async WebSocket)   (wraps core.mt5_*, sync
-                                              SDK via asyncio.to_thread)
-
-config/          Validated runtime settings (Pydantic Settings, .env)
-core/            Shared kernel — logging, exceptions, MT5 connection,
-                 market data, indicators, regime detection, engine
-broker/          Broker-agnostic gateway interface + implementations
-strategy/        Signal generation
-risk/            Position sizing and trade approval
-execution/       Order/trade simulation
-analytics/       Performance measurement
-backtesting/     Historical replay
-```
-
-Full details, including the async design rationale and each
-implementation's trade-offs, are in
-[`docs/architecture.md`](docs/architecture.md).
-
-## Installation
-
-Requires Python 3.13+ (developed/tested against 3.12; 3.13 not yet
-verified in this environment).
-
-```bash
-git clone https://github.com/Jogeza/JQE.git
-cd JQE
-python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env            # then fill in real values
-```
-
-**Note on `MetaTrader5`:** it's a Windows-only package. On Linux/macOS,
-`pip install -r requirements.txt` will skip it automatically (see the
-platform marker in `requirements.txt`), and the test suite stubs it via
-`tests/conftest.py` so the rest of the codebase remains testable
-cross-platform. Live trading against a real MT5 terminal still requires
-Windows.
-
-## Configuration
-
-All configuration lives in `config/settings.py` (a `pydantic-settings`
-`Settings` model) and can be overridden via environment variables
-(prefixed `JQE_`) or a `.env` file. See
-[`.env.example`](.env.example) for the full list of supported
-variables and their defaults.
-
-```python
-from config import settings
-
-settings.default_symbol   # "XAUUSD"
-settings.risk_percent     # 1.0
-settings.broker           # "simulation" (default) | "mt5" | "deriv"
-```
-
-Broker selection is one setting (`JQE_BROKER`). `simulation` requires
-nothing further; `mt5` needs a running MT5 terminal; `deriv` needs
-`JQE_DERIV_API_TOKEN` (get one at
-https://app.deriv.com/account/api-token — never commit a real token).
-See `broker/` and `docs/architecture.md`, "Broker layer".
-
-## Running
-
-```bash
-python main.py                  # one market-analysis cycle
-python -m backtesting.backtest  # historical data load + indicators
-```
-
-The default CLI run uses the `simulation` broker — no credentials or live
-connection required. Broker execution is available only through an explicitly
-armed DEMO configuration described below.
-
-### Explicit DEMO broker execution
-
-The dashboard can run one confirmed cycle through the canonical durable
-execution path. Broker execution remains disabled by default. To arm a demo
-terminal locally, set:
+## Integration
 
 ```text
-JQE_BROKER=weltrade_demo
-JQE_BROKER_EXECUTION_ENABLED=true
-JQE_MARKET_DATA_SOURCE=broker
-JQE_DEFAULT_SYMBOL=FX Vol 20
-JQE_WELTRADE_TERMINAL_PATH=C:\Program Files\Weltrade MT5 Terminal\terminal64.exe
-JQE_WELTRADE_DEMO_LOGIN=<your-demo-login>
-JQE_WELTRADE_DEMO_SERVER=Weltrade-Demo
+Dashboard → JQE FastAPI → strategy / risk / durable executor
+                                      ↓ BrokerGateway
+                              WeltradeGateway
+                                      ↓ MetaTrader5 Python API
+                              Local Weltrade MT5 terminal
 ```
 
-Log the Weltrade MT5 terminal into the DEMO account, restart the API, and wait
-for broker status and DemoOnlyGuard evidence to become fresh. The Workspace
-then shows **Execute demo cycle**. One click with confirmation evaluates fresh
-market data, risk, recovery, idempotency, and execution policy before any order
-can be submitted; a `NO_TRADE` result remains a valid no-order outcome. With
-`JQE_MARKET_DATA_SOURCE=broker`, candles are read from the verified Weltrade
-terminal, which is required for broker-native SyntX symbols. Select a symbol
-that exists in that terminal; `R_75` is a Deriv symbol and is not available in
-the Weltrade SyntX catalogue.
+Use the official `MetaTrader5` Python package and your exact terminal executable, account and server. There is no invented Weltrade REST trading API or API key in this integration. The terminal supplies candles, ticks, account state, symbol specifications, positions and trade history. Orders remain behind the durable execution boundary and demo verification.
 
-### Read-only live-paper dashboard
+References: [MetaTrader Python integration](https://www.mql5.com/en/docs/python_metatrader5), [terminal initialization](https://www.mql5.com/en/docs/python_metatrader5/mt5initialize_py), [Weltrade synthetic indices](https://help.weltrade.com/en/articles/13435121-what-are-synthetic-indices).
 
-Monitor a running or completed live-paper session locally with the evidence
-database and its instance-scoped position ledger:
+## Local setup
+
+Use the existing Windows environment at `D:\JQE\venv`. Install dependencies with its Python if required. Copy `.env.example` to `.env` only for a new installation; preserve existing local credentials. Never commit secrets.
+
+```dotenv
+JQE_BROKER=weltrade_demo
+JQE_MARKET_DATA_SOURCE=broker
+JQE_BROKER_EXECUTION_ENABLED=false
+JQE_WELTRADE_TERMINAL_PATH=C:\path\to\Weltrade\terminal64.exe
+JQE_WELTRADE_DEMO_LOGIN=<your demo account number>
+JQE_WELTRADE_DEMO_PASSWORD=<your demo password>
+JQE_WELTRADE_DEMO_SERVER=<exact server shown in your terminal>
+JQE_DEFAULT_SYMBOL=FX Vol 20
+JQE_DEFAULT_TIMEFRAME=M5
+```
+
+The `WELTRADE_DEMO_*` values take precedence over `WELTRADE_*` aliases. Both `.env` and `.env.ai` are loaded; check for stale overrides locally without printing credentials. Real accounts remain rejected. Changing the broker alias to `weltrade` does not enable real-money trading.
+
+A stored unsupported broker is rejected rather than silently replaced. Resolve outstanding intents before changing selection; never clear safety databases to get past a block.
 
 ```powershell
-& D:\JQE\venv\Scripts\python.exe -m monitoring.dashboard `
-  --evidence state\live-paper.evidence.sqlite3 `
-  --ledger state\live-paper.positions.sqlite3
+# Backend and API reference: http://127.0.0.1:8000/docs
+& D:\JQE\venv\Scripts\python.exe -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+
+# Frontend, in D:\JQE\frontend
+npm run dev
+
+# Read-only terminal smoke check (explicit opt-in, no orders)
+$env:JQE_RUN_LIVE_WELTRADE_TESTS='1'
+& D:\JQE\venv\Scripts\python.exe -m tools.weltrade_demo_smoke
 ```
 
-Then open `http://127.0.0.1:8765`. The browser refreshes every three seconds;
-use `--refresh-seconds`, `--host`, or `--port` to override those defaults. The
-monitor opens both SQLite files with `mode=ro` and `query_only`, and contains no
-broker imports or execution controls.
+`main.py` is the execution cycle, **not an unconditional dry-run command**. Inspect effective settings before running it. Keep execution disabled while configuring or researching.
 
-## Development workflow
+## Synthetic research
 
-1. Read `docs/architecture.md` and `docs/roadmap.md` before starting —
-   know what already exists and what's next.
-2. Check `docs/coding-standards.md` for type hints, docstrings,
-   logging, exceptions, and test conventions.
-3. Format and lint before committing:
-   ```bash
-   black --line-length 100 .
-   ruff check .
-   ```
-4. Run the test suite:
-   ```bash
-   pytest -q
-   ```
-   Some pre-existing test files fail independent of your change — see
-   "Known test debt" below. New/modified code should always have a
-   fully passing, isolated test file.
-5. Commit in small, logical units using conventional prefixes (`feat:`,
-   `fix:`, `refactor:`, `docs:`, `test:`, `perf:`, `ci:`, `build:`).
+Use native terminal names such as `FX Vol 20`, `SFX Vol 20`, `PainX 400`, and `MAX PainX 1000`. Forex, metals and Deriv aliases such as `R_75` are outside deployment scope. Availability must be checked against the connected terminal; a name alone does not prove a tradable contract.
 
-### Known test debt
+Research history requests use Weltrade MT5 and provider-partitioned storage. Tick volume is labelled tick volume, not exchange volume. Missing bars remain gaps; no synthetic fills or cross-broker substitution are allowed.
 
-Nine pre-existing test files fail independent of the Foundation
-milestone (tracked as Milestone 4 in `docs/roadmap.md`):
-
-* `tests/test_data_manager.py`, `tests/test_indicators.py`,
-  `tests/test_market_loader.py`, `tests/test_market_regime.py`,
-  `tests/test_signal_engine.py`, `tests/test_signal_scorer.py` import a
-  `data` package that doesn't exist in the repository.
-* `tests/test_core_engine.py` and `tests/test_autonomous_scanner.py`
-  are manual debug scripts (no `test_*` functions, module-level
-  `print()`s) that fail at runtime without a real MT5 connection.
-
-## Repository structure
-
-```
-JQE/
-├── analytics/            Performance & scoring metrics
-├── backtesting/           Historical replay engine
-├── broker/                 Broker-agnostic gateway (BrokerGateway,
-│                          SimulationGateway, DerivGateway, MT5Gateway)
-├── config/                  Settings (Pydantic Settings + .env)
-├── core/                     Shared kernel (logging, exceptions, engine,
-│                            MT5 connection, market data, indicators,
-│                            regime detection, decision pipeline)
-├── docs/                      architecture.md, roadmap.md,
-│                            coding-standards.md
-├── execution/               Order/trade simulation
-├── risk/                     Position sizing & trade approval
-├── strategy/                  Signal generation & scoring
-├── tests/                   Test suite (pytest)
-├── .env.example
-├── main.py                   Entry point
-├── pyproject.toml             pytest-asyncio config
-└── requirements.txt
+```powershell
+# Cached historical replay; dates must be within your recorded dataset
+& D:\JQE\venv\Scripts\python.exe -m backtesting.run --symbol 'FX Vol 20' --timeframe M5 --start '2026-09-01T00:00:00Z' --end '2026-09-02T00:00:00Z' --cached-only
+# Replace --cached-only with --fetch-missing to request missing history via MT5.
 ```
 
-## License
+Research simulation is retained as offline mathematics. It is not a selectable execution broker. Existing specialized research tools include `tools/weltrade_scope_backtest.py` and `tools/weltrade_mtf_backtest.py`; their candidate strategies are experimental and are not automatically the live pipeline.
 
-Not yet specified.
+See [research standards and roadmap](docs/weltrade-roadmap.md) before interpreting results or changing a strategy.
+
+## Safety and tests
+
+The mandatory signal bridge is `strategy.pipeline.generate_trading_signal`. `RiskEngine` approves account-currency risk; Weltrade sizing uses terminal contract economics and MT5 lots. `execution.policy.ExecutionPolicy` is pure and fail-closed. `AsyncTradeExecutor` owns durable intents, duplicate prevention and reconciliation. Broker positions/history remain authoritative.
+
+```powershell
+& D:\JQE\venv\Scripts\python.exe -m pytest -q
+# In D:\JQE\frontend
+npm test
+npm run build
+```
+
+Tests must use isolated fake terminal/gateway state, never a live order connection. [AGENTS.md](AGENTS.md) is the current implementation guide. Older multi-broker documents and adapters are historical migration material, not supported deployment instructions.
+
+For bounded offline validation on Windows, run
+`D:\JQE\venv\Scripts\python.exe tools/check_backend_groups.py`.
+It isolates configured stores, blocks real MT5 mutation/session calls, and runs
+every backend module in groups with a 120-second deadline. Each run saves verbose
+tracebacks, JUnit XML, and aggregate results in a new `reports/backend-*` directory.
+Use positional test paths and `--size` for focused reruns; existing evidence is
+not overwritten. See [the latest validation handoff](docs/weltrade-validation-2026-09-27.md).
+
+The three archived paper-forensics tests are opt-in with
+`JQE_ARCHIVED_FORENSICS_ROOT` pointing to an immutable fixture directory containing
+`xauusd_m15_5000_final.json`, `paper_diagnostics.sqlite3`, and `historical.sqlite3`.
+They retain their original hash and outcome assertions. Live MT5 diagnostics
+remain separately opt-in. Neither is required to open the read-only dashboard.
+
+## Future access model
+
+Planned access: verified registration through the owner's Weltrade partner link **or** a paid JQE licence. This is roadmap work, not an implemented entitlement system. The partner URL, verification mechanism, payment provider and pricing still need owner input. Do not invent affiliate APIs, promise returns, or unlock trading from a client-side flag.

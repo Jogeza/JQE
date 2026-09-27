@@ -29,7 +29,7 @@ from api.routes import (
     get_system_status,
 )
 from api.service import ApplicationService, _maximum_realized_drawdown
-from broker.simulation_gateway import SimulationGateway
+from tests.weltrade_stubs import WeltradeStubGateway
 from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
 from config.settings import Settings, settings
 from core.exceptions import BrokerConnectionError, MarketDataError
@@ -49,17 +49,17 @@ from execution.safety import (
 def _risk_snapshot(
     observed_at: datetime,
     *,
-    broker: str = "simulation",
+    broker: str = "weltrade",
     state: RiskEvaluationState = RiskEvaluationState.AUTHORIZED,
     quantity_available: bool = True,
-    reason: str = "Simulation assumes one account-currency unit per price-unit move",
+    reason: str = "Offline fixture contract economics",
     account_id: str | None = None,
 ) -> RiskAuthorizationSnapshot:
     authorized = state is RiskEvaluationState.AUTHORIZED
     if account_id is None and state in (
         RiskEvaluationState.AUTHORIZED, RiskEvaluationState.BLOCKED
     ):
-        account_id = "SIMULATED" if broker == "simulation" else "CR-DEMO"
+        account_id = "4242"
     return RiskAuthorizationSnapshot(
         observed_at=observed_at,
         broker=broker,
@@ -80,16 +80,26 @@ def _risk_snapshot(
         authorized_risk_percent=0.5 if authorized else None,
         execution_quantity_available=quantity_available,
         execution_quantity_value=0.5 if quantity_available else None,
-        execution_quantity_unit="SIMULATION_UNITS" if quantity_available else None,
+        execution_quantity_unit="MT5_LOTS" if quantity_available else None,
         execution_quantity_reason=reason,
     )
+
+
+@pytest.fixture(autouse=True)
+def weltrade_context(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "broker", "weltrade")
+    monkeypatch.setattr(settings, "market_data_source", "broker")
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "weltrade_demo_login", 4242)
+    monkeypatch.setattr(settings, "historical_data_path", tmp_path / "history.sqlite3")
+    monkeypatch.setattr(settings, "execution_safety_store_path", tmp_path / "safety.sqlite3")
 
 
 @pytest.fixture
 def test_settings() -> Settings:
     return Settings(
         environment="development",
-        broker="simulation",
+        broker="weltrade",
         default_symbol="XAUUSD",
         default_timeframe="H1",
         default_candle_count=50,
@@ -97,13 +107,13 @@ def test_settings() -> Settings:
 
 
 @pytest.fixture
-def sim_service(test_settings: Settings, tmp_path, monkeypatch) -> ApplicationService:
-    monkeypatch.setattr(settings, "broker", "simulation")
+def offline_service(test_settings: Settings, tmp_path, monkeypatch) -> ApplicationService:
+    monkeypatch.setattr(settings, "broker", "weltrade")
     monkeypatch.setattr(settings, "environment", "development")
     monkeypatch.setattr(
         settings, "execution_safety_store_path", tmp_path / "execution-safety.sqlite3"
     )
-    gateway = SimulationGateway(starting_balance=100.0)
+    gateway = WeltradeStubGateway(starting_balance=100.0)
     return ApplicationService(gateway=gateway, market_data_source=FakePublicMarketData())
 
 
@@ -156,7 +166,7 @@ class TestApplicationService:
         def snapshot(observed_at):
             return ExecutionSafetySnapshot(
                 observed_at=observed_at, emergency_stop_state=EmergencyStopState.CLEAR,
-                execution_mode=ExecutionMode.DURABLE, broker="simulation",
+                execution_mode=ExecutionMode.DURABLE, broker="weltrade",
                 environment="development", durable_executor_enabled=True,
                 daily_state_authority=DailyStateAuthority.AUTHORITATIVE,
                 unresolved_intent_count=0, unresolved_intent_blocked=False,
@@ -179,7 +189,7 @@ class TestApplicationService:
         store = SQLiteExecutionSafetyStore(path, initialize=True)
         store.publish(ExecutionSafetySnapshot(
             observed_at=datetime.now(timezone.utc), emergency_stop_state=EmergencyStopState.ACTIVE,
-            execution_mode=ExecutionMode.DURABLE, broker="simulation", environment="development",
+            execution_mode=ExecutionMode.DURABLE, broker="weltrade", environment="development",
             durable_executor_enabled=True, daily_state_authority=DailyStateAuthority.NOT_EVALUATED,
             unresolved_intent_count=0, unresolved_intent_blocked=False,
             execution_authorization=ExecutionAuthorization.BLOCKED, reason_codes=("EMERGENCY_STOP",),
@@ -191,9 +201,9 @@ class TestApplicationService:
         assert response.observation_state == "UNAVAILABLE"
         assert response.execution_authorization == "UNKNOWN"
     async def test_get_market_summary_returns_valid_dto(
-        self, sim_service: ApplicationService
+        self, offline_service: ApplicationService
     ) -> None:
-        summary = await sim_service.get_market_summary(symbol="XAUUSD", count=30)
+        summary = await offline_service.get_market_summary(symbol="XAUUSD", count=30)
         assert isinstance(summary, MarketSummaryResponse)
         assert summary.symbol == "XAUUSD"
         assert summary.latest_close > 0
@@ -202,9 +212,9 @@ class TestApplicationService:
         assert summary.price_decimals == 2
 
     async def test_get_market_candles_returns_valid_series(
-        self, sim_service: ApplicationService
+        self, offline_service: ApplicationService
     ) -> None:
-        candles_resp = await sim_service.get_market_candles(symbol="XAUUSD", count=25)
+        candles_resp = await offline_service.get_market_candles(symbol="XAUUSD", count=25)
         assert isinstance(candles_resp, CandlesResponse)
         assert candles_resp.count == 25
         assert len(candles_resp.candles) == 25
@@ -214,9 +224,9 @@ class TestApplicationService:
         assert first.close > 0
 
     async def test_get_strategy_signal_includes_confidence_and_plan(
-        self, sim_service: ApplicationService
+        self, offline_service: ApplicationService
     ) -> None:
-        signal_resp = await sim_service.get_strategy_signal(symbol="XAUUSD", count=40)
+        signal_resp = await offline_service.get_strategy_signal(symbol="XAUUSD", count=40)
         assert isinstance(signal_resp, SignalResponse)
         assert signal_resp.symbol == "XAUUSD"
         assert signal_resp.signal in ("BUY", "SELL", "NO_TRADE")
@@ -229,8 +239,8 @@ class TestApplicationService:
     async def test_public_market_source_is_independent_and_read_only(
         self, monkeypatch
     ) -> None:
-        monkeypatch.setattr(settings, "broker", "simulation")
-        execution_gateway = SimulationGateway(starting_balance=321.0)
+        monkeypatch.setattr(settings, "broker", "weltrade")
+        execution_gateway = WeltradeStubGateway(starting_balance=321.0)
         public_source = FakePublicMarketData()
         service = ApplicationService(
             gateway=execution_gateway, market_data_source=public_source
@@ -249,28 +259,17 @@ class TestApplicationService:
 
         public_source.get_candles = AsyncMock(side_effect=AssertionError("market source used"))
         execution = await service.get_execution_state()
-        assert execution.broker == "simulation"
+        assert execution.broker == "weltrade"
         public_source.get_candles.assert_not_called()
 
-    async def test_configured_deriv_public_maps_canonical_symbol(
-        self, monkeypatch
-    ) -> None:
-        public_source = FakePublicMarketData()
-        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
-        monkeypatch.setattr(settings, "deriv_api_token", None)
-        with patch("api.service.DerivPublicMarketData", return_value=public_source), \
-             patch("api.service.get_gateway", side_effect=AssertionError("execution gateway constructed")) as gateway_factory, \
-             patch("broker.deriv_gateway.DerivGateway") as authenticated_deriv, \
-             patch("broker.mt5_gateway.MT5Gateway") as mt5_gateway:
-            response = await ApplicationService().get_market_candles(
-                "XAUUSD", "M15", 5
-            )
-        assert public_source.requests[0][0] == "frxXAUUSD"
-        assert response.symbol == "XAUUSD"
-        assert response.market_data_source == "DERIV_PUBLIC"
-        gateway_factory.assert_not_called()
-        authenticated_deriv.assert_not_called()
-        mt5_gateway.assert_not_called()
+    async def test_configured_weltrade_uses_native_symbol(self, monkeypatch) -> None:
+        source = FakePublicMarketData()
+        with patch("api.service.get_gateway", return_value=source) as factory:
+            response = await ApplicationService().get_market_candles("FX VOL 20", "M15", 5)
+        assert source.requests[0][0] == "FX VOL 20"
+        assert response.symbol == "FX VOL 20"
+        assert response.market_data_source == "BROKER"
+        factory.assert_called_once()
 
     async def test_public_market_failure_does_not_fall_back_to_execution(self) -> None:
         public_source = FakePublicMarketData()
@@ -281,30 +280,30 @@ class TestApplicationService:
                 await service.get_market_candles("XAUUSD", "M15", 5)
         gateway_factory.assert_not_called()
 
-    async def test_deriv_market_failure_returns_truthful_cached_candles(
+    async def test_weltrade_market_failure_returns_truthful_cached_candles(
         self, tmp_path, monkeypatch
     ) -> None:
         cache_path = tmp_path / "historical.sqlite3"
         monkeypatch.setattr(settings, "historical_data_path", cache_path)
-        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
+        monkeypatch.setattr(settings, "market_data_source", "broker")
         cached = await FakePublicMarketData().get_candles(
             "frxXAUUSD", Timeframe.M5, 20
         )
         CandleStore(cache_path).save_candles(
-            "XAUUSD", Timeframe.M5, cached, provider="deriv"
+            "XAUUSD", Timeframe.M5, cached, provider="weltrade"
         )
         failed_source = FakePublicMarketData()
         failed_source.get_candles = AsyncMock(
             side_effect=MarketDataError("public provider unavailable")
         )
 
-        with patch("api.service.DerivPublicMarketData", return_value=failed_source):
+        with patch("api.service.get_gateway", return_value=failed_source):
             response = await ApplicationService().get_market_candles(
                 "XAUUSD", "M5", 20
             )
 
         assert response.count == 20
-        assert response.market_data_source == "DERIV_PUBLIC"
+        assert response.market_data_source == "BROKER"
         assert response.market_data_status == "CACHED"
         assert response.stale is True
         assert response.degraded is True
@@ -318,7 +317,7 @@ class TestApplicationService:
         cache_path = tmp_path / "historical.sqlite3"
         monkeypatch.setattr(settings, "historical_data_path", cache_path)
         monkeypatch.setattr(settings, "market_data_source", "broker")
-        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "broker", "weltrade")
         monkeypatch.setattr("api.service._uses_mt5_session", lambda: False)
         now = datetime.now(timezone.utc)
 
@@ -340,12 +339,12 @@ class TestApplicationService:
         store.save_candles(
             "FX VOL 20", Timeframe.M5,
             candles("FX VOL 20", 111.0, now - timedelta(hours=2)),
-            provider="broker",
+            provider="weltrade",
         )
         store.save_candles(
             "FX Vol 20", Timeframe.M5,
             candles("FX Vol 20", 222.0, now - timedelta(minutes=6)),
-            provider="broker",
+            provider="weltrade",
         )
 
         source = FakePublicMarketData()
@@ -358,7 +357,7 @@ class TestApplicationService:
         assert response.stale is False
         assert response.candles[-1].close == 226.0
         assert store.resolve_symbol_partition(
-            "FX VOL 20", Timeframe.M5, provider="broker"
+            "FX VOL 20", Timeframe.M5, provider="weltrade"
         ) == "FX Vol 20"
         source.get_candles.assert_not_called()
 
@@ -368,7 +367,7 @@ class TestApplicationService:
         cache_path = tmp_path / "historical.sqlite3"
         monkeypatch.setattr(settings, "historical_data_path", cache_path)
         monkeypatch.setattr(settings, "market_data_source", "broker")
-        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "broker", "weltrade")
         monkeypatch.setattr("api.service._uses_mt5_session", lambda: False)
         old = datetime.now(timezone.utc) - timedelta(hours=2)
         cached = [
@@ -384,7 +383,7 @@ class TestApplicationService:
             for index in range(5)
         ]
         CandleStore(cache_path).save_candles(
-            "FX Vol 20", Timeframe.M5, cached, provider="broker"
+            "FX Vol 20", Timeframe.M5, cached, provider="weltrade"
         )
         source = FakePublicMarketData()
         source.get_candles = AsyncMock(
@@ -399,17 +398,17 @@ class TestApplicationService:
         log_exception.assert_called_once()
         assert log_exception.call_args.args[2] == "FX Vol 20"
 
-    async def test_deriv_market_failure_without_cache_is_typed_unavailable(
+    async def test_weltrade_market_failure_without_cache_is_typed_unavailable(
         self, tmp_path, monkeypatch
     ) -> None:
         monkeypatch.setattr(settings, "historical_data_path", tmp_path / "empty.sqlite3")
-        monkeypatch.setattr(settings, "market_data_source", "deriv_public")
+        monkeypatch.setattr(settings, "market_data_source", "broker")
         failed_source = FakePublicMarketData()
         failed_source.get_candles = AsyncMock(
             side_effect=BrokerConnectionError("public provider timed out")
         )
 
-        with patch("api.service.DerivPublicMarketData", return_value=failed_source):
+        with patch("api.service.get_gateway", return_value=failed_source):
             response = await ApplicationService().get_market_candles(
                 "XAUUSD", "M5", 20
             )
@@ -421,22 +420,18 @@ class TestApplicationService:
         assert response.stale is False
         assert response.degraded is True
 
-    async def test_simulation_market_default_never_constructs_deriv_execution(
-        self, monkeypatch
-    ) -> None:
-        monkeypatch.setattr(settings, "broker", "deriv")
+    async def test_obsolete_market_source_rejects_without_gateway(self, monkeypatch) -> None:
+        from core.exceptions import ConfigurationError
         monkeypatch.setattr(settings, "market_data_source", "simulation")
-        with patch("api.service.get_gateway") as get_execution_gateway:
-            response = await ApplicationService().get_market_candles(
-                "XAUUSD", "M15", 5
-            )
-        assert response.market_data_source == "SIMULATION"
-        get_execution_gateway.assert_not_called()
+        with patch("api.service.get_gateway") as factory:
+            with pytest.raises(ConfigurationError, match="broker market data"):
+                await ApplicationService().get_market_candles("FX VOL 20", "M15", 5)
+        factory.assert_not_called()
 
-    async def test_fresh_simulation_risk_observation_exposes_typed_quantity(
+    async def test_fresh_weltrade_risk_observation_exposes_typed_quantity(
         self, tmp_path, monkeypatch
     ) -> None:
-        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "broker", "weltrade")
         monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
@@ -462,7 +457,7 @@ class TestApplicationService:
         assert response.authorized_risk_amount == 0.5
         assert response.execution_quantity_available is True
         assert response.execution_quantity_value == 0.5
-        assert response.execution_quantity_unit == "SIMULATION_UNITS"
+        assert response.execution_quantity_unit == "MT5_LOTS"
         gateway.assert_not_called()
         approve.assert_not_called()
         authorize.assert_not_called()
@@ -471,7 +466,7 @@ class TestApplicationService:
     async def test_stale_observation_cannot_leak_previously_authorized_quantity(
         self, tmp_path, monkeypatch
     ) -> None:
-        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "broker", "weltrade")
         monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
@@ -493,7 +488,7 @@ class TestApplicationService:
         assert response.execution_quantity_reason == "Risk observation is stale"
 
     async def test_exact_freshness_boundary_is_fresh(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setattr(settings, "broker", "simulation")
+        monkeypatch.setattr(settings, "broker", "weltrade")
         monkeypatch.setattr(settings, "environment", "development")
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
@@ -544,9 +539,9 @@ class TestApplicationService:
     @pytest.mark.parametrize(
         ("broker", "state", "reason", "expected_status", "risk_authorized"),
         [
-            ("simulation", RiskEvaluationState.BLOCKED, "No trade signal", "FRESH", False),
-            ("deriv", RiskEvaluationState.AUTHORIZED, "Broker stop-risk conversion is not proven", "FRESH", True),
-            ("mt5", RiskEvaluationState.NOT_EVALUATED, "MT5 execution is disabled", "UNAVAILABLE", False),
+            ("weltrade", RiskEvaluationState.BLOCKED, "No trade signal", "FRESH", False),
+            ("weltrade", RiskEvaluationState.AUTHORIZED, "Broker stop-risk conversion is not proven", "FRESH", True),
+            ("weltrade", RiskEvaluationState.NOT_EVALUATED, "MT5 execution is disabled", "UNAVAILABLE", False),
         ],
     )
     async def test_broker_specific_unavailable_quantity_observations(
@@ -572,27 +567,22 @@ class TestApplicationService:
         assert reason in (response.execution_quantity_reason or "")
 
     @pytest.mark.parametrize(
-        ("configured_broker", "configured_environment", "configured_account"),
-        [
-            ("deriv", "development", "CR-DEMO"),
-            ("simulation", "production", None),
-            ("deriv", "development", "CR-OTHER"),
-        ],
+        ("snapshot_broker", "configured_environment", "configured_account"),
+        [("deriv", "development", 4242), ("weltrade", "production", 4242),
+         ("weltrade", "development", 4343)],
         ids=["broker", "environment", "account"],
     )
     async def test_context_mismatch_is_non_authoritative_and_redacts_quantity(
-        self, tmp_path, monkeypatch,
-        configured_broker, configured_environment, configured_account,
+        self, tmp_path, monkeypatch, snapshot_broker, configured_environment, configured_account,
     ) -> None:
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
         monkeypatch.setattr(settings, "execution_safety_store_path", path)
         SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
-            _risk_snapshot(now)
+            _risk_snapshot(now, broker=snapshot_broker, account_id="4242")
         )
-        monkeypatch.setattr(settings, "broker", configured_broker)
         monkeypatch.setattr(settings, "environment", configured_environment)
-        monkeypatch.setattr(settings, "deriv_options_account_id", configured_account)
+        monkeypatch.setattr(settings, "weltrade_demo_login", configured_account)
         with patch("api.service.utc_now", return_value=now):
             response = await ApplicationService().get_risk_status()
         assert response.observation_status == "CONTEXT_MISMATCH"
@@ -603,21 +593,13 @@ class TestApplicationService:
         assert response.execution_quantity_value is None
         assert response.execution_quantity_unit is None
 
-    async def test_deriv_account_switch_cannot_reuse_fresh_observation(
-        self, tmp_path, monkeypatch
-    ) -> None:
+    async def test_weltrade_account_switch_cannot_reuse_fresh_observation(self, tmp_path, monkeypatch) -> None:
         now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         path = tmp_path / "safety.sqlite3"
         monkeypatch.setattr(settings, "execution_safety_store_path", path)
-        monkeypatch.setattr(settings, "broker", "deriv")
-        monkeypatch.setattr(settings, "environment", "development")
-        monkeypatch.setattr(settings, "deriv_options_account_id", "CR-NEW")
+        monkeypatch.setattr(settings, "weltrade_demo_login", 4343)
         SQLiteExecutionSafetyStore(path, initialize=True).publish_risk(
-            _risk_snapshot(
-                now, broker="deriv", quantity_available=False,
-                reason="Broker stop-risk conversion is not proven",
-                account_id="CR-OLD",
-            )
+            _risk_snapshot(now, account_id="4242")
         )
         with patch("api.service.utc_now", return_value=now):
             response = await ApplicationService().get_risk_status()
@@ -720,19 +702,19 @@ class TestApplicationService:
         assert response.execution_quantity_value is None
         assert response.observation_status == "NOT_OBSERVED"
 
-    async def test_get_execution_state_returns_simulation_state(
-        self, sim_service: ApplicationService
+    async def test_get_execution_state_returns_offline_weltrade_state(
+        self, offline_service: ApplicationService
     ) -> None:
-        exec_resp = await sim_service.get_execution_state()
+        exec_resp = await offline_service.get_execution_state()
         assert isinstance(exec_resp, ExecutionStateResponse)
         assert exec_resp.open_positions_count == 0
         assert exec_resp.recent_trades_count == 0
         assert exec_resp.currency == "USD"
 
     async def test_get_performance_summary_empty_history(
-        self, sim_service: ApplicationService
+        self, offline_service: ApplicationService
     ) -> None:
-        perf_resp = await sim_service.get_performance_summary()
+        perf_resp = await offline_service.get_performance_summary()
         assert isinstance(perf_resp, PerformanceSummaryResponse)
         assert perf_resp.total_trades == 0
         assert perf_resp.win_rate_percent == 0.0
@@ -746,12 +728,12 @@ class TestApplicationService:
         assert _maximum_realized_drawdown([10.0, -4.0, -9.0, 3.0]) == 13.0
 
     async def test_get_system_status_returns_online(
-        self, sim_service: ApplicationService
+        self, offline_service: ApplicationService
     ) -> None:
-        sys_resp = await sim_service.get_system_status()
+        sys_resp = await offline_service.get_system_status()
         assert isinstance(sys_resp, SystemStatusResponse)
         assert sys_resp.status == "ONLINE"
-        assert sys_resp.broker == "simulation"
+        assert sys_resp.broker == "weltrade"
 
 
 @pytest.mark.asyncio
@@ -761,12 +743,12 @@ class TestApiEndpointsDirect:
         response = get_execution_safety(service=ApplicationService())
         assert isinstance(response, ExecutionSafetyResponse)
         assert response.observation_state == "NOT_OBSERVED"
-    async def test_market_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_market_summary(symbol="XAUUSD", timeframe="H1", count=30, service=sim_service)
+    async def test_market_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_market_summary(symbol="XAUUSD", timeframe="H1", count=30, service=offline_service)
         assert resp.symbol == "XAUUSD"
 
-    async def test_candles_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_market_candles(symbol="XAUUSD", timeframe="H1", count=20, service=sim_service)
+    async def test_candles_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_market_candles(symbol="XAUUSD", timeframe="H1", count=20, service=offline_service)
         assert resp.count == 20
         assert resp.symbol == "XAUUSD"
         assert resp.timeframe == "H1"
@@ -776,30 +758,30 @@ class TestApiEndpointsDirect:
             "time", "open", "high", "low", "close", "volume", "EMA50", "EMA200", "RSI", "ATR"
         }
 
-    async def test_signal_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_strategy_signal(symbol="XAUUSD", service=sim_service)
+    async def test_signal_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_strategy_signal(symbol="XAUUSD", service=offline_service)
         assert resp.symbol == "XAUUSD"
 
-    async def test_risk_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_risk_status(symbol="XAUUSD", service=sim_service)
+    async def test_risk_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_risk_status(symbol="XAUUSD", service=offline_service)
         assert resp.observation_status == "NOT_OBSERVED"
         assert resp.execution_quantity_available is False
 
-    async def test_execution_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_execution_state(service=sim_service)
+    async def test_execution_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_execution_state(service=offline_service)
         assert resp.positions == []
 
-    async def test_performance_endpoint(self, sim_service: ApplicationService) -> None:
-        resp = await get_performance_summary(service=sim_service)
+    async def test_performance_endpoint(self, offline_service: ApplicationService) -> None:
+        resp = await get_performance_summary(service=offline_service)
         assert resp.total_trades == 0
 
-    async def test_system_endpoint(self, sim_service: ApplicationService, monkeypatch) -> None:
+    async def test_system_endpoint(self, offline_service: ApplicationService, monkeypatch) -> None:
         monkeypatch.setattr(settings, "telegram_enabled", False)
         monkeypatch.setattr(settings, "telegram_bot_token", None)
         monkeypatch.setattr(settings, "telegram_allowed_chat_id", None)
-        resp = await get_system_status(service=sim_service)
+        resp = await get_system_status(service=offline_service)
         assert resp.status == "ONLINE"
-        assert resp.broker_identity_state == "NOT_APPLICABLE"
+        assert resp.broker_identity_state == "NOT_APPLICABLE"  # Injected offline gateway.
         assert resp.telegram_status == "DISABLED"
         assert resp.telegram_configured is False
 

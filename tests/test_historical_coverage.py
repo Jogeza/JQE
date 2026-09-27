@@ -327,15 +327,15 @@ class TestCompleteCoverageValidationDST:
 async def test_cached_only_uses_no_transport_and_active_gap_fails(tmp_path, monkeypatch) -> None:
     start, end = _dt("2026-08-24T00:00:00Z"), _dt("2026-08-26T12:00:00Z")
     store = CandleStore(tmp_path / "cached.sqlite3")
-    candles = _fixture(start, end)
-    store.save_candles("XAUUSD", Timeframe.M15, candles, provider="deriv")
+    candles = [Candle(time=start + timedelta(minutes=15*i), open=100, high=102, low=99, close=101, volume=10, source="weltrade") for i in range(int((end-start).total_seconds()//900)+1)]
+    store.save_candles("FX VOL 20", Timeframe.M15, candles, provider="weltrade")
 
     class ForbiddenTransport:
         def __init__(self, *args, **kwargs):
             raise AssertionError("cached-only must not construct public transport")
 
-    monkeypatch.setattr(research_cli, "DerivPublicMarketData", ForbiddenTransport)
-    args = Namespace(symbol="XAUUSD", timeframe="M15", start=start.isoformat(),
+    monkeypatch.setattr(research_cli, "get_gateway", ForbiddenTransport)
+    args = Namespace(symbol="FX VOL 20", timeframe="M15", start=start.isoformat(),
                      end=end.isoformat(), initial_capital=10000.0,
                      cache=store.db_path, cached_only=True, fetch_missing=False)
     assert await research_cli._run(args) == 0
@@ -344,7 +344,7 @@ async def test_cached_only_uses_no_transport_and_active_gap_fails(tmp_path, monk
     with store._connect() as connection:
         connection.execute(
             "DELETE FROM candles WHERE provider=? AND symbol=? AND timeframe=? AND time=?",
-            ("deriv", "XAUUSD", "M15", int(gap_time.timestamp())),
+            ("weltrade", "FX VOL 20", "M15", int(gap_time.timestamp())),
         )
         connection.commit()
     with pytest.raises(MarketDataError, match="not complete in cache"):

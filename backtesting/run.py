@@ -1,4 +1,4 @@
-"""Explicit research CLI for cached or Deriv-public historical backtests."""
+"""Explicit research CLI for cached or Weltrade MT5 historical backtests."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backtesting.backtest import run_backtest
-from broker.deriv_public_data import DerivPublicMarketData
+from broker.factory import get_gateway
+from broker.weltrade_symbols import require_weltrade_synthetic
 from broker.types import TIMEFRAME_SECONDS, Timeframe
 from config.settings import settings
 from core.exceptions import MarketDataError
@@ -35,7 +36,8 @@ async def _run(args: argparse.Namespace) -> int:
     if requested > MAX_ACQUISITION_CANDLES:
         raise MarketDataError(f"Requested range exceeds safe limit of {MAX_ACQUISITION_CANDLES} candles")
     store = CandleStore(args.cache)
-    provider, provider_symbol = "deriv", "frxXAUUSD" if args.symbol.upper() == "XAUUSD" else args.symbol
+    require_weltrade_synthetic(args.symbol)
+    provider, provider_symbol = "weltrade", args.symbol
     candles = store.load_candles(args.symbol, timeframe, start, end, provider=provider)
     coverage = validate_historical_coverage(
         candles, provider=provider, canonical_symbol=args.symbol,
@@ -55,7 +57,7 @@ async def _run(args: argparse.Namespace) -> int:
                 first_missing=coverage.first_missing.isoformat() if coverage.first_missing else None,
                 missing_count=coverage.missing_count,
             )
-        source = DerivPublicMarketData(settings.deriv_app_id, endpoint=settings.deriv_public_endpoint)
+        source = get_gateway(settings)
         async with source:
             service = HistoricalDataService(source, store=store)
             try:
@@ -70,8 +72,8 @@ async def _run(args: argparse.Namespace) -> int:
                     raise
         store.save_provenance(DatasetProvenance(
             provider=provider, symbol=args.symbol, timeframe=timeframe.value,
-            source="Deriv public historical WebSocket", provider_symbol=provider_symbol,
-            volume_type=VolumeType.UNAVAILABLE, retrieved_at=datetime.now(timezone.utc),
+            source="Weltrade MT5 terminal", provider_symbol=provider_symbol,
+            volume_type=VolumeType.TICK_VOLUME, retrieved_at=datetime.now(timezone.utc),
         ))
         candles = store.load_candles(args.symbol, timeframe, start, end, provider=provider)
         coverage = validate_historical_coverage(
@@ -85,28 +87,28 @@ async def _run(args: argparse.Namespace) -> int:
                 first_missing=coverage.first_missing.isoformat() if coverage.first_missing else None,
                 missing_count=coverage.missing_count,
             )
-        provenance = "CACHE_PLUS_DERIV_PUBLIC" if candles else "DERIV_PUBLIC"
+        provenance = "CACHE_PLUS_WELTRADE_MT5" if candles else "WELTRADE_MT5"
     if not candles:
         raise MarketDataError("No historical candles available")
     if store.load_provenance(provider, args.symbol, timeframe) is None:
         store.save_provenance(DatasetProvenance(
             provider=provider, symbol=args.symbol, timeframe=timeframe.value,
-            source="Deriv public historical WebSocket", provider_symbol=provider_symbol,
-            volume_type=VolumeType.UNAVAILABLE, retrieved_at=datetime.now(timezone.utc),
+            source="Weltrade MT5 terminal", provider_symbol=provider_symbol,
+            volume_type=VolumeType.TICK_VOLUME, retrieved_at=datetime.now(timezone.utc),
         ))
     engine = await run_backtest(symbol=args.symbol, timeframe=timeframe, starting_balance=args.initial_capital, dataset=candles, provider=provider)
     result = engine.result
     print(f"DATA_SOURCE={provenance}")
     print(f"DATASET={args.symbol} {timeframe.value} {result.dataset_start.isoformat()}..{result.dataset_end.isoformat()} candles={result.candle_count}")
     gaps = find_gaps(candles, TIMEFRAME_SECONDS[timeframe])
-    print(f"INTEGRITY=ordered:true unique:true gaps:{len(gaps)} volume:{VolumeType.UNAVAILABLE.value}")
+    print(f"INTEGRITY=ordered:true unique:true gaps:{len(gaps)} volume:{VolumeType.TICK_VOLUME.value}")
     print(f"TRADES={result.total_trades} ENDING_CAPITAL={result.ending_capital:.8f} RETURN_PERCENT={result.return_percent:.8f} MAX_DRAWDOWN={result.maximum_drawdown:.8f}")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a deterministic JQE historical backtest")
-    parser.add_argument("--symbol", default="XAUUSD")
+    parser.add_argument("--symbol", default="FX Vol 20")
     parser.add_argument("--timeframe", choices=[item.value for item in Timeframe], default="M15")
     parser.add_argument("--start", required=True, help="ISO-8601 timestamp with UTC offset")
     parser.add_argument("--end", required=True, help="ISO-8601 timestamp with UTC offset")

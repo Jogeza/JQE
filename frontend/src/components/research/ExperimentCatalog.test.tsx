@@ -75,6 +75,8 @@ describe('ExperimentCatalog discovery warnings', () => {
     );
 
     expect(host.textContent).toContain('XAUUSD \u00b7 M15');
+    expect(host.textContent).toContain('Returns here are unverified simulations');
+    expect(host.textContent).toContain('Identity complete \u00b7 audit pending');
 
     vi.spyOn(jqeApi, 'compareExperiments').mockResolvedValue({
       left_experiment_id: 'experiment-one',

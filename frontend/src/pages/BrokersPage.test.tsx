@@ -86,15 +86,15 @@ describe('BrokersPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders every configured broker with its own identity', async () => {
+  it('shows only Weltrade from a legacy multi-broker response', async () => {
     await render(status());
     const text = host.textContent ?? '';
-    expect(text).toContain('MT5 Demo');
+    expect(text).not.toContain('MT5 Demo');
     expect(text).toContain('Weltrade Demo');
-    expect(text).toContain('Deriv Demo');
-    expect(text).toContain('Simulation (Test Only)');
+    expect(text).not.toContain('Deriv Demo');
+    expect(text).not.toContain('Simulation (Test Only)');
     expect(text).toContain('id: weltrade');
-    expect(text).toContain('id: mt5');
+    expect(text).not.toContain('id: mt5');
   });
 
   it('labels Weltrade demo-guard evidence as Weltrade, never MT5', async () => {
@@ -123,13 +123,13 @@ describe('BrokersPage', () => {
     );
 
     const weltrade = cardFor(host, 'weltrade');
-    const mt5 = cardFor(host, 'mt5');
+
     expect(weltrade.textContent).toContain('PASSED');
     expect(weltrade.textContent).toContain('Weltrade-Demo');
     expect(weltrade.textContent).toContain('****8111');
-    expect(mt5.textContent).not.toContain('PASSED');
-    expect(mt5.textContent).toContain('UNVERIFIED');
-    expect(mt5.textContent).toContain('not attributable');
+
+
+    expect(host.textContent).not.toContain('id: mt5');
   });
 
   it('shows a clear reason when a broker is unavailable', async () => {
@@ -199,3 +199,4 @@ describe('BrokersPage', () => {
     expect(text).toContain('CONNECTED · DEMO VERIFIED');
   });
 });
+

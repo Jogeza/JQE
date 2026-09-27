@@ -11,9 +11,9 @@ from config.settings import EmergencyStopState, Settings, get_settings
 class TestSettingsDefaults:
     """Default values should match JQE's documented institutional defaults."""
 
-    def test_default_symbol_is_volatility_75(self) -> None:
+    def test_default_symbol_is_weltrade_synthetic(self) -> None:
         settings = Settings(_env_file=None)
-        assert settings.default_symbol == "R_75"
+        assert settings.default_symbol == "FX Vol 20"
 
     def test_default_risk_percent(self) -> None:
         settings = Settings(_env_file=None)
@@ -175,17 +175,12 @@ class TestObsoleteDerivSelectors:
         settings = Settings(_env_file=None)
         assert not hasattr(settings, "deriv_approved_symbols")
 
-    def test_execution_boundary_is_simulation_only_regardless_of_deriv_env(
+    def test_deriv_environment_cannot_enable_weltrade_execution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The broker guard in main.py is independent of Deriv configuration.
-
-        Even with a Deriv API token and options account configured, the
-        settings framework alone cannot enable live execution — that is
-        enforced unconditionally by the ``settings.broker != 'simulation'``
-        check at the top of ``main.run()``.
-        """
-        monkeypatch.setenv("JQE_BROKER", "simulation")
+        """Obsolete Deriv options cannot enable Weltrade execution."""
+        monkeypatch.setenv("JQE_BROKER", "weltrade")
+        monkeypatch.delenv("JQE_BROKER_EXECUTION_ENABLED", raising=False)
         monkeypatch.setenv("JQE_DERIV_API_TOKEN", "fake-token")
         monkeypatch.setenv("JQE_DERIV_OPTIONS_ACCOUNT_ID", "DOT12345")
         monkeypatch.setenv("JQE_DERIV_EXPECTED_ENVIRONMENT", "demo")
@@ -193,5 +188,6 @@ class TestObsoleteDerivSelectors:
         monkeypatch.setenv("JQE_DERIV_DEMO_EXECUTION_ENABLED", "true")
         monkeypatch.setenv("JQE_DERIV_APPROVED_SYMBOLS", "XAUUSD")
         settings = Settings(_env_file=None)
-        # Broker is still simulation — execution boundary holds.
-        assert settings.broker == "simulation"
+        assert settings.broker == "weltrade"
+        assert settings.broker_execution_enabled is False
+

@@ -53,7 +53,7 @@ DERIV_ACTIVE_SYMBOLS = {
 
 @dataclass
 class StubSettings:
-    broker: str = "mt5"
+    broker: str = "weltrade"
     broker_execution_enabled: bool = False
     broker_selection_store_path: Path = field(
         default_factory=lambda: Path("state/broker_selection.sqlite3")
@@ -286,7 +286,6 @@ async def test_weltrade_discovery_filters_terminal_synthetic_symbols(
     assert [entry["symbol"] for entry in discovered] == [
         "FX Vol 20",
         "MAX PainX 1000",
-        "Vol 75 Index",
     ]
 
 
@@ -300,152 +299,88 @@ async def test_weltrade_discovery_returns_empty_when_no_synthetic_symbols(
 # --- Deriv demo verification ---------------------------------------------
 
 
-async def test_verify_deriv_completes_read_only_flow(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gateway = FakeGateway(
-        candles=_candles(),
-        account=AccountInfo(
-            account_id="VRTC00008175", balance=9_998.0, currency="USD", equity=9_998.0
-        ),
-    )
+async def test_verify_deriv_completes_read_only_flow(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
     constructed = _install_gateway(monkeypatch, gateway)
-
     report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-    report = verification._finalize(report)
-
-    assert report.outcome == "VERIFIED_READ_ONLY"
-    assert report.blocker is None
-    steps = _steps(report)
-    assert steps["1-2-selection"].status == "PASSED"
-    assert steps["1-2-selection"].detail["persisted_selection"] == "deriv"
-    assert steps["1-2-selection"].detail["effective_broker"] == "deriv"
-    assert steps["4-demo-identity"].status == "PASSED"
-    assert steps["4-demo-identity"].detail["account_id_masked"] == "******8175"
-    assert steps["6-symbol-discovery"].detail["selected_symbol"] == "1HZ100V"
-    assert gateway.candle_requests[0][0] == "1HZ100V"
-    assert steps["7-candles"].status == "PASSED"
-    assert steps["8-10-pipeline"].detail["market_data_valid"] is True
-    assert steps["11-no-submission"].status == "PASSED"
-    assert steps["11-no-submission"].detail["submission_attempts"] == 0
-    assert steps["12-session-closed"].status == "PASSED"
-    assert gateway.connect_count == 1
+    assert report.outcome == "BLOCKED"
+    assert "Unsupported broker" in report.blocker
+    assert constructed == []
+    assert gateway.connect_count == 0
     assert gateway.inner_submit_calls == 0
-    assert gateway.connected is False
-    assert BrokerSelectionStore(stub_settings.broker_selection_store_path).get_selected_broker() == "deriv"
-    assert constructed and constructed[0] is stub_settings
 
 
-async def test_verify_deriv_uses_explicit_symbol_override(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gateway = FakeGateway(
-        candles=_candles(),
-        account=AccountInfo(account_id="VRTC00008175", balance=100.0, currency="USD"),
-    )
-    _install_gateway(monkeypatch, gateway)
-
-    report = await _verify_deriv(stub_settings, _args(broker="deriv", symbol="R_75"))
-
-    assert gateway.candle_requests[0][0] == "R_75"
-    assert _steps(report)["6-symbol-discovery"].detail["selected_symbol"] == "R_75"
-
-
-async def test_verify_deriv_blocks_when_environment_is_not_demo(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stub_settings.deriv_expected_environment = "live"
-    constructed = _install_gateway(
-        monkeypatch,
-        FakeGateway(
-            candles=_candles(),
-            account=AccountInfo(account_id="VRTC1", balance=1.0, currency="USD"),
-        ),
-    )
-
+async def test_verify_deriv_uses_explicit_symbol_override(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
     report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-
     assert report.outcome == "BLOCKED"
-    assert "not 'demo'" in (report.blocker or "")
+    assert "Unsupported broker" in report.blocker
     assert constructed == []
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
 
 
-async def test_verify_deriv_blocks_without_credentials_and_never_uses_simulation(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stub_settings.deriv_api_token = ""
-    constructed = _install_gateway(
-        monkeypatch,
-        FakeGateway(
-            candles=_candles(),
-            account=AccountInfo(account_id="VRTC1", balance=1.0, currency="USD"),
-        ),
-    )
-
+async def test_verify_deriv_blocks_when_environment_is_not_demo(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
     report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-
     assert report.outcome == "BLOCKED"
+    assert "Unsupported broker" in report.blocker
     assert constructed == []
-    assert stub_settings.effective_broker == "mt5"
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
 
 
-async def test_verify_deriv_blocks_when_no_synthetic_symbols_returned(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gateway = FakeGateway(
-        candles=_candles(),
-        account=AccountInfo(account_id="VRTC00008175", balance=100.0, currency="USD"),
-    )
-    _install_gateway(monkeypatch, gateway)
-    FakePublicMarketData.payload = {
-        "active_symbols": [{"symbol": "EURUSD", "market": "forex", "exchange_is_open": 1}]
-    }
-    try:
-        report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-    finally:
-        FakePublicMarketData.payload = DERIV_ACTIVE_SYMBOLS
-
-    assert report.outcome == "BLOCKED"
-    assert "no synthetic_index symbols" in (report.blocker or "")
-    assert gateway.candle_requests == []
-
-
-async def test_verify_deriv_reports_demo_identity_rejection(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gateway = FakeGateway(
-        candles=_candles(),
-        account=AccountInfo(account_id="CR00001234", balance=100.0, currency="USD"),
-        connect_error=BrokerAuthenticationError(
-            "Deriv account is not authoritatively verified as DEMO"
-        ),
-    )
-    _install_gateway(monkeypatch, gateway)
-
+async def test_verify_deriv_blocks_without_credentials_and_never_uses_simulation(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
     report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-
     assert report.outcome == "BLOCKED"
-    assert "not authoritatively verified as DEMO" in (report.blocker or "")
-    assert _steps(report)["3-connect"].status == "FAILED"
-    assert "12-session-closed" not in _steps(report)
-    assert gateway.connect_count == 1
+    assert "Unsupported broker" in report.blocker
+    assert constructed == []
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
 
 
-async def test_verify_deriv_flags_unverified_demo_guard(
-    stub_settings: StubSettings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    gateway = FakeGateway(
-        candles=_candles(),
-        account=AccountInfo(account_id="VRTC00008175", balance=100.0, currency="USD"),
-        demo_verified=False,
-    )
-    _install_gateway(monkeypatch, gateway)
-
+async def test_verify_deriv_blocks_when_no_synthetic_symbols_returned(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
     report = await _verify_deriv(stub_settings, _args(broker="deriv"))
-    report = verification._finalize(report)
+    assert report.outcome == "BLOCKED"
+    assert "Unsupported broker" in report.blocker
+    assert constructed == []
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
 
-    assert report.outcome == "FAILED"
-    assert _steps(report)["4-demo-identity"].status == "FAILED"
+
+async def test_verify_deriv_reports_demo_identity_rejection(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
+    report = await _verify_deriv(stub_settings, _args(broker="deriv"))
+    assert report.outcome == "BLOCKED"
+    assert "Unsupported broker" in report.blocker
+    assert constructed == []
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
+
+
+async def test_verify_deriv_flags_unverified_demo_guard(stub_settings, monkeypatch) -> None:
+    # Legacy verification is no longer a selectable deployment path.
+    gateway = FakeGateway(candles=_candles(), account=AccountInfo(account_id="VRTC1", balance=100, currency="USD"))
+    constructed = _install_gateway(monkeypatch, gateway)
+    report = await _verify_deriv(stub_settings, _args(broker="deriv"))
+    assert report.outcome == "BLOCKED"
+    assert "Unsupported broker" in report.blocker
+    assert constructed == []
+    assert gateway.connect_count == 0
+    assert gateway.inner_submit_calls == 0
 
 
 # --- Weltrade demo verification ------------------------------------------
@@ -680,17 +615,18 @@ async def test_run_persists_then_restores_broker_selection(
         account=AccountInfo(account_id="VRTC00008175", balance=100.0, currency="USD"),
     )
     _install_gateway(monkeypatch, gateway)
+    _install_mt5(monkeypatch, ["FX Vol 20"])
     json_out = tmp_path / "verification.json"
 
-    exit_code = await run(_args(broker="deriv", json_out=str(json_out)))
+    exit_code = await run(_args(broker="weltrade", json_out=str(json_out)))
 
     assert exit_code == 0
     store = BrokerSelectionStore(stub_settings.broker_selection_store_path)
-    assert store.get_selected_broker() == "mt5"
+    assert store.get_selected_broker() == "weltrade"
     payload = json.loads(json_out.read_text(encoding="utf-8"))
     assert payload["execution_enabled"] is False
     assert payload["selection_before_run"] is None
-    assert payload["selection_after_run"] == "mt5"
+    assert payload["selection_after_run"] == "weltrade"
     assert payload["reports"][0]["outcome"] == "VERIFIED_READ_ONLY"
     assert "BLOCKED" not in capsys.readouterr().out
 
@@ -705,7 +641,8 @@ async def test_run_can_keep_the_verified_selection(
         account=AccountInfo(account_id="VRTC00008175", balance=100.0, currency="USD"),
     )
     _install_gateway(monkeypatch, gateway)
+    _install_mt5(monkeypatch, ["FX Vol 20"])
 
-    assert await run(_args(broker="deriv", keep_selection=True)) == 0
+    assert await run(_args(broker="weltrade", keep_selection=True)) == 0
     store = BrokerSelectionStore(stub_settings.broker_selection_store_path)
-    assert store.get_selected_broker() == "deriv"
+    assert store.get_selected_broker() == "weltrade"

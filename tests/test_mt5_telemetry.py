@@ -35,6 +35,7 @@ async def test_observation_connection_uses_configured_portable_profile(tmp_path:
     )
     with (
         patch("broker.mt5_telemetry.mt5.initialize", return_value=True) as initialize,
+        patch("broker.mt5_telemetry.mt5.shutdown"),
         patch("broker.mt5_telemetry.mt5.terminal_info", return_value=terminal),
         patch("broker.mt5_telemetry.mt5.account_info", return_value=account),
         patch("broker.mt5_demo.DemoOnlyGuard.assert_demo_account"),

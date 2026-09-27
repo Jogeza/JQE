@@ -8,20 +8,13 @@ import {
   Search,
 } from 'lucide-react';
 
+// Native names from the existing Weltrade watchlist. Availability is broker-verified.
 const SYMBOL_OPTIONS = [
-  { value: 'R_75', label: 'R_75 (Volatility 75 Index)', search: 'r_75 r75 volatility 75 index synthetic' },
-  { value: 'FX Vol 10', label: 'FX Vol 10 (Weltrade)', search: 'fx vol 10 volatility 10 weltrade synthetic' },
-  { value: 'FX Vol 20', label: 'FX Vol 20 (Weltrade)', search: 'fx vol 20 volatility 20 weltrade synthetic' },
-  { value: 'FX Vol 25', label: 'FX Vol 25 (Weltrade)', search: 'fx vol 25 volatility 25 weltrade synthetic' },
-  { value: 'FX Vol 50', label: 'FX Vol 50 (Weltrade)', search: 'fx vol 50 volatility 50 weltrade synthetic' },
-  { value: 'FX Vol 75', label: 'FX Vol 75 (Weltrade)', search: 'fx vol 75 volatility 75 weltrade synthetic' },
-  { value: 'FX Vol 100', label: 'FX Vol 100 (Weltrade)', search: 'fx vol 100 volatility 100 weltrade synthetic' },
-  { value: 'XAUUSD', label: 'XAUUSD (Gold)', search: 'xauusd gold' },
-  { value: 'EURUSD', label: 'EURUSD', search: 'eurusd euro dollar' },
-  { value: 'GBPUSD', label: 'GBPUSD', search: 'gbpusd pound dollar' },
-  { value: 'USDJPY', label: 'USDJPY', search: 'usdjpy dollar yen' },
-  { value: 'BTCUSD', label: 'BTCUSD', search: 'btcusd bitcoin dollar' },
-];
+  'FX Vol 20', 'FX Vol 40', 'FX Vol 60', 'FX Vol 80', 'FX Vol 99',
+  'SFX Vol 20', 'SFX Vol 40', 'SFX Vol 60', 'SFX Vol 80', 'SFX Vol 99',
+  'PainX 400', 'PainX 600', 'PainX 800', 'PainX 999', 'PainX 1200',
+  'MAX PainX 1000', 'MAX PainX 2000',
+].map(value => ({ value, label: value, search: `${value.toLowerCase()} weltrade synthetic` }));
 import { SystemStatusResponse, BrokerStatusResponse } from '../types/api';
 import { BrokerSelector } from './BrokerSelector';
 

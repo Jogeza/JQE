@@ -50,8 +50,7 @@ async def test_no_trade_is_a_visible_blocked_setup(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr(settings, "dashboard_paper_store_path", tmp_path / "paper.sqlite3")
     monkeypatch.setattr(settings, "dashboard_paper_intent_store_path", tmp_path / "intents.sqlite3")
     monkeypatch.setattr(settings, "simulation_daily_submission_store_path", tmp_path / "daily.sqlite3")
-    monkeypatch.setattr(settings, "market_data_source", "simulation")
-    service = ApplicationService(gateway=SimulationGateway(seed=41))
+    service = ApplicationService(market_data_source=SimulationGateway(seed=41))
     setup = await service.get_market_setup("XAUUSD", "M5", 80)
 
     assert setup.direction in {"BUY", "SELL", "NO_TRADE"}
@@ -72,7 +71,6 @@ async def test_ready_setup_executes_once_through_offline_paper_boundary(
     monkeypatch.setattr(settings, "dashboard_paper_store_path", tmp_path / "paper.sqlite3")
     monkeypatch.setattr(settings, "dashboard_paper_intent_store_path", tmp_path / "intents.sqlite3")
     monkeypatch.setattr(settings, "simulation_daily_submission_store_path", tmp_path / "daily.sqlite3")
-    monkeypatch.setattr(settings, "market_data_source", "simulation")
     monkeypatch.setattr(settings, "emergency_stop", EmergencyStopState.CLEAR)
     breakdown = ConfidenceBreakdown(
         trend_score=25, structure_score=20, liquidity_score=20,
@@ -93,7 +91,7 @@ async def test_ready_setup_executes_once_through_offline_paper_boundary(
         "confidence_breakdown": breakdown, "trade_plan": plan,
     }
     service = ApplicationService(
-        gateway=SimulationGateway(seed=11),
+        market_data_source=SimulationGateway(seed=11),
         risk_engine=RiskEngine(min_atr=0, min_confidence=75),
     )
     with patch("api.service.generate_trading_signal", return_value=decision):

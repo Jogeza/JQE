@@ -1,0 +1,15 @@
+{
+  "candle_count": 500,
+  "canonical_symbol": "MAX PainX 1000",
+  "content_hash": "sha256:80f0ba003c905e6db154432ff85c446757a7c1fb60003ff9ccfd1039b3c241f6",
+  "first_candle": "2026-09-27T14:06:00.000000+00:00",
+  "granularity_seconds": 60,
+  "last_candle": "2026-09-27T22:25:00.000000+00:00",
+  "provider": "weltrade",
+  "provider_symbol": "MAX PainX 1000",
+  "retrieved_at": "2026-09-27T19:48:43.861897+00:00",
+  "schema_version": 1,
+  "source": "Weltrade MT5 terminal",
+  "timeframe": "M1",
+  "volume_available": true
+}

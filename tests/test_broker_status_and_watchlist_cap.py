@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
@@ -40,13 +41,7 @@ def test_get_broker_status_service_empty(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert status.active_broker == settings.effective_broker
     assert status.observation_state in ("NOT_OBSERVED", "UNAVAILABLE")
-    assert len(status.brokers) == 4
-    # Check that brokers contain mt5, weltrade, deriv, simulation
-    broker_names = [b.broker for b in status.brokers]
-    assert "mt5" in broker_names
-    assert "weltrade" in broker_names
-    assert "deriv" in broker_names
-    assert "simulation" in broker_names
+    assert [b.broker for b in status.brokers] == ["weltrade"]
 
 
 def test_get_broker_status_with_evidence_and_safety(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,7 +58,7 @@ def test_get_broker_status_with_evidence_and_safety(tmp_path: Path, monkeypatch:
             observed_at=datetime.datetime.now(datetime.timezone.utc),
             emergency_stop_state=EmergencyStopState.CLEAR,
             execution_mode=ExecutionMode.DURABLE,
-            broker="deriv",
+            broker="weltrade",
             environment="development",
             durable_executor_enabled=True,
             daily_state_authority=DailyStateAuthority.AUTHORITATIVE,
@@ -74,7 +69,11 @@ def test_get_broker_status_with_evidence_and_safety(tmp_path: Path, monkeypatch:
         )
     )
 
-    # Write broker verification in evidence store
+    monkeypatch.setattr(settings, "weltrade_demo_login", 123456)
+    # Write fresh broker verification in evidence store
+    verified_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    facts = {"broker": "weltrade", "account_id": "123456", "checked_field": "trade_mode",
+             "observed_value": 0, "check": "PASSED", "verified_at": verified_at}
     with sqlite3.connect(fake_evidence_path) as conn:
         conn.execute(
             """
@@ -97,7 +96,7 @@ def test_get_broker_status_with_evidence_and_safety(tmp_path: Path, monkeypatch:
             (session_id, broker, account_id, checked_field, observed_value, status, verified_at, facts_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("sess1", "deriv", "VRTC123456", "is_virtual", 1, "PASSED", "2026-09-17T12:00:00+00:00", "{}"),
+            ("sess1", "weltrade", "123456", "trade_mode", 0, "PASSED", verified_at, json.dumps(facts)),
         )
 
     service = ApplicationService()
@@ -107,14 +106,20 @@ def test_get_broker_status_with_evidence_and_safety(tmp_path: Path, monkeypatch:
     assert status.execution_authorization == "AUTHORIZED"
     assert status.observation_state == "OBSERVED"
 
-    # Find deriv broker
-    deriv_b = next(b for b in status.brokers if b.broker == "deriv")
-    assert deriv_b.demo_guard_status == "PASSED"
-    assert deriv_b.demo_guard_verified_at == "2026-09-17T12:00:00+00:00"
-    assert deriv_b.account_id_masked == "******3456"
+    weltrade_b = next(b for b in status.brokers if b.broker == "weltrade")
+    assert weltrade_b.demo_guard_status == "PASSED"
+    assert weltrade_b.demo_guard_verified_at == verified_at
+    assert weltrade_b.account_id_masked == "**3456"
 
 
-def _seed_evidence(path: Path, broker: str, account_id: str, status: str = "PASSED") -> None:
+def _seed_evidence(path: Path, broker: str, account_id: str, status: str = "PASSED",
+                   *, checked_field: str = "trade_mode", observed_value: int = 0,
+                   verified_at: str | None = None, facts_json: str | None = None) -> None:
+    verified_at = verified_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    facts_json = facts_json if facts_json is not None else json.dumps({
+        "broker": broker, "account_id": account_id, "checked_field": checked_field,
+        "observed_value": observed_value, "check": status, "verified_at": verified_at,
+    })
     with sqlite3.connect(path) as conn:
         conn.execute(
             """
@@ -137,7 +142,7 @@ def _seed_evidence(path: Path, broker: str, account_id: str, status: str = "PASS
             (session_id, broker, account_id, checked_field, observed_value, status, verified_at, facts_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("sess-attr", broker, account_id, "trade_mode", 0, status, "2026-09-18T09:00:00+00:00", "{}"),
+            ("sess-attr", broker, account_id, checked_field, observed_value, status, verified_at, facts_json),
         )
 
 
@@ -176,15 +181,44 @@ def test_get_broker_status_attributes_weltrade_evidence_to_weltrade(
     status = ApplicationService().get_broker_status()
 
     weltrade_b = next(b for b in status.brokers if b.broker == "weltrade")
-    mt5_b = next(b for b in status.brokers if b.broker == "mt5")
+    assert [b.broker for b in status.brokers] == ["weltrade"]
     assert weltrade_b.demo_guard_status == "PASSED"
-    assert weltrade_b.demo_guard_verified_at == "2026-09-18T09:00:00+00:00"
+    assert weltrade_b.demo_guard_verified_at is not None
     assert weltrade_b.notes is None
-    assert mt5_b.demo_guard_status == "UNVERIFIED"
-    assert mt5_b.demo_guard_verified_at is None
 
 
-def test_mt5_card_does_not_claim_weltrade_account_evidence(
+@pytest.mark.parametrize("account_id,checked_field,observed_value,status,age_seconds,facts_json", [
+    ("", "trade_mode", 0, "PASSED", 0, None),
+    ("UNKNOWN_WELTRADE", "trade_mode", 0, "PASSED", 0, None),
+    ("5550001", "is_virtual", 0, "PASSED", 0, None),
+    ("5550001", "trade_mode", 2, "PASSED", 0, None),
+    ("5550001", "trade_mode", 0, "FAILED", 0, None),
+    ("5550001", "trade_mode", 0, "PASSED", 60, None),
+    ("5550001", "trade_mode", 0, "PASSED", 0, "not-json"),
+])
+def test_weltrade_status_rejects_invalid_or_stale_demo_evidence(
+    tmp_path, monkeypatch, account_id, checked_field, observed_value, status, age_seconds, facts_json,
+) -> None:
+    evidence_path = tmp_path / "evidence.sqlite3"
+    monkeypatch.setattr(settings, "execution_safety_store_path", tmp_path / "safety.sqlite3")
+    monkeypatch.setattr("api.service.DEFAULT_BROKER_EVIDENCE_PATH", evidence_path)
+    monkeypatch.setattr(settings, "weltrade_demo_login", 5550001)
+    verified_at = (datetime.datetime.now(datetime.timezone.utc)
+                   - datetime.timedelta(seconds=age_seconds)).isoformat()
+    _seed_evidence(evidence_path, "weltrade", account_id, status, checked_field=checked_field,
+                   observed_value=observed_value, verified_at=verified_at, facts_json=facts_json)
+
+    result = ApplicationService().get_broker_status()
+    item = result.brokers[0]
+    assert item.demo_guard_status == "UNVERIFIED"
+    assert item.demo_guard_verified_at is None
+    assert item.account_trade_mode is None
+    assert result.active_broker_identity is not None
+    assert result.active_broker_identity.demo_guard_passed is False
+    assert result.active_broker_identity.trade_mode == "UNKNOWN"
+
+
+def test_legacy_mt5_evidence_is_not_relabelled_weltrade(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_evidence_path = tmp_path / "evidence.sqlite3"
@@ -197,16 +231,13 @@ def test_mt5_card_does_not_claim_weltrade_account_evidence(
     monkeypatch.setattr(settings, "weltrade_demo_login", None)
     monkeypatch.setattr("api.service.DEFAULT_BROKER_EVIDENCE_PATH", fake_evidence_path)
 
-    _seed_evidence(fake_evidence_path, "weltrade", "8111")
+    _seed_evidence(fake_evidence_path, "mt5", "8111")
 
     status = ApplicationService().get_broker_status()
-    mt5_b = next(b for b in status.brokers if b.broker == "mt5")
+    assert [b.broker for b in status.brokers] == ["weltrade"]
     weltrade_b = next(b for b in status.brokers if b.broker == "weltrade")
 
-    assert mt5_b.demo_guard_status == "UNVERIFIED"
-    assert mt5_b.account_id_masked is None
-    assert mt5_b.notes is None
-    assert weltrade_b.demo_guard_status == "PASSED"
+    assert weltrade_b.demo_guard_status == "UNVERIFIED"
     assert weltrade_b.account_id_masked == "8111"
 
 
@@ -235,6 +266,27 @@ async def test_live_broker_status_reconciles_active_connection_with_execution(
     assert status.snapshot_observation_state in {"NOT_OBSERVED", "UNAVAILABLE"}
     assert status.snapshot_observed_at is None
     assert next(item for item in status.brokers if item.is_active).connected is True
+
+
+@pytest.mark.asyncio
+async def test_live_status_uses_demo_evidence_recorded_by_current_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence_path = tmp_path / "evidence.sqlite3"
+    monkeypatch.setattr(settings, "execution_safety_store_path", tmp_path / "safety.sqlite3")
+    monkeypatch.setattr("api.service.DEFAULT_BROKER_EVIDENCE_PATH", evidence_path)
+    monkeypatch.setattr(settings, "weltrade_demo_login", 5550001)
+    service = ApplicationService()
+
+    async def fake_execution():
+        _seed_evidence(evidence_path, "weltrade", "5550001")
+        return SimpleNamespace(connected=True)
+
+    monkeypatch.setattr(service, "get_execution_state", fake_execution)
+    result = await service.get_live_broker_status()
+    assert result.identity_state == "PASSED"
+    assert result.active_broker_identity is not None
+    assert result.active_broker_identity.demo_guard_passed is True
 
 
 def test_get_watchlist_cap_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

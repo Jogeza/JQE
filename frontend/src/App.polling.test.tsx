@@ -24,6 +24,9 @@ vi.mock('./components/MarketChart', () => ({ MarketChart: () => <div>Rendered ch
 vi.mock('./components/Header', () => ({ Header: () => <header>Legacy header</header> }));
 
 const bodyFor = (path: string): unknown => {
+  if (path === '/brokers/status') return {
+    active_broker: 'weltrade', observation_state: 'LIVE', broker_execution_enabled: false,
+  };
   if (path === '/monitoring/offline') return {
     schema_version: 1, mode: 'OFFLINE_SIMULATION', observed_at: '2026-09-20T12:00:00Z',
     broker_execution_enabled: false, backend: {}, assessment: null,
@@ -86,6 +89,8 @@ describe('App polling profiles', () => {
     await mount();
     expect(paths()).toEqual(allowed);
     expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Active market analysis is unavailable.');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('WELTRADE DEMO — BROKER EXECUTION DISABLED');
+    expect(host.querySelector('[role="status"]')?.textContent).not.toContain('OFFLINE SIMULATION');
   });
 
   it('renders four sidebar groups with every existing destination', async () => {

@@ -50,14 +50,14 @@ def _restore_execution_settings(tmp_path):
         settings.execution_lifetime_store_path,
         settings.daily_instrument_trade_store_path,
     )
-    settings.broker = "simulation"
+    settings.broker = "weltrade"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.environment = "development"
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
-    settings.market_data_source = "simulation"
-    settings.default_symbol = "XAUUSD"
-    settings.broker_execution_enabled = False
+    settings.market_data_source = "broker"
+    settings.default_symbol = "FX VOL 20"
+    settings.broker_execution_enabled = True
     settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
     settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
@@ -93,7 +93,7 @@ def _gateway() -> MagicMock:
     }
     gateway.get_candles = AsyncMock(return_value=[candle])
     gateway.get_account_info = AsyncMock(
-        return_value=AccountInfo(account_id="SIMULATED", balance=10_000.0, currency="USD")
+        return_value=AccountInfo(account_id="4242", balance=10_000.0, currency="USD", server="Weltrade-Demo", trade_mode="demo")
     )
     gateway.get_trade_history = AsyncMock(return_value=[])
 
@@ -107,9 +107,13 @@ def _gateway() -> MagicMock:
 
     gateway.get_trade_history_snapshot = AsyncMock(side_effect=complete_history)
     gateway.get_positions = AsyncMock(return_value=[])
+    gateway.authorize_account_currency_risk = AsyncMock(return_value=(
+        ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.MT5_LOTS),
+        {"authorized_risk_amount": 2.0, "expected_loss_at_stop": 2.0},
+    ))
     gateway.submit_order = AsyncMock(
         return_value=OrderResult(
-            order_id="SIM-1", status=OrderStatus.FILLED, symbol="XAUUSD",
+            order_id="SIM-1", status=OrderStatus.FILLED, symbol="FX VOL 20",
             side=OrderSide.BUY, volume=1.0,
         )
     )
@@ -121,7 +125,7 @@ def _gateway() -> MagicMock:
 
 def _plan() -> SimpleNamespace:
     return SimpleNamespace(
-        symbol="XAUUSD", signal="BUY", position_size=1.0, stop_loss=99.0,
+        symbol="FX VOL 20", signal="BUY", position_size=1.0, stop_loss=99.0,
         take_profit=105.0, warnings=[], invalidation=None, is_valid=lambda: True,
     )
 
@@ -144,9 +148,9 @@ def _pipeline_patches(gateway: MagicMock):
 
 def _expected_key() -> str:
     return build_execution_idempotency_key(
-        symbol="XAUUSD",
+        symbol="FX VOL 20",
         side="BUY",
-        quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS),
+        quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.MT5_LOTS),
         entry=101.0,
         stop_loss=99.0,
         take_profit=105.0,
@@ -155,7 +159,7 @@ def _expected_key() -> str:
 
 
 @asynccontextmanager
-async def _empty_market_source(_settings):
+async def _empty_market_source(_settings, broker_gateway=None):
     class Source:
         async def get_candles(self, **_kwargs):
             return []
@@ -203,14 +207,14 @@ async def test_obsolete_durable_switch_cannot_restore_direct_submission_path() -
 
 @pytest.mark.asyncio
 async def test_execution_disabled_mt5_refreshes_demo_risk_without_submission(tmp_path) -> None:
-    settings.broker = "mt5"
+    settings.broker = "weltrade"
     settings.broker_execution_enabled = False
     settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
     settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
     gateway = _gateway()
     gateway.get_account_info.return_value = AccountInfo(
         account_id="41163130", balance=10_000.0, equity=9_950.0,
-        currency="USD", server="Deriv-Demo", trade_mode="demo",
+        currency="USD", server="Weltrade-Demo", trade_mode="demo",
     )
     gateway.authorize_account_currency_risk = AsyncMock(return_value=(
         ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS),
@@ -257,13 +261,13 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     assert intent.idempotency_key == store.get.call_args.args[0]
     assert context.execution_enabled is True
     assert context.dry_run is False
-    assert context.broker == "simulation"
+    assert context.broker == "weltrade"
     assert context.environment == "development"
-    assert context.account_id == "SIMULATED"
-    assert context.approved_brokers == frozenset({"simulation"})
+    assert context.account_id == "4242"
+    assert context.approved_brokers == frozenset({"weltrade"})
     assert context.approved_environments == frozenset({"development"})
-    assert context.approved_accounts == frozenset({"SIMULATED"})
-    assert context.approved_symbols == frozenset({"XAUUSD"})
+    assert context.approved_accounts == frozenset({"4242"})
+    assert context.approved_symbols == frozenset({"FX VOL 20"})
     assert context.daily_state_authoritative is True
     assert context.emergency_stop is False
     gateway.submit_order.assert_not_awaited()
@@ -272,11 +276,11 @@ async def test_enabled_simulation_uses_durable_executor_with_explicit_authorizat
     ).read_risk()
     assert risk is not None
     assert risk.evaluation_state is RiskEvaluationState.AUTHORIZED
-    assert risk.account_id == "SIMULATED"
+    assert risk.account_id == "4242"
     assert risk.authorized_risk_amount == 2.0
     assert risk.execution_quantity_available is True
     assert risk.execution_quantity_value == 1.0
-    assert risk.execution_quantity_unit == "SIMULATION_UNITS"
+    assert risk.execution_quantity_unit == "MT5_LOTS"
 
 
 @pytest.mark.asyncio
@@ -298,7 +302,7 @@ async def test_durable_blocked_risk_publishes_fresh_no_quantity_observation() ->
     ).read_risk()
     assert risk is not None
     assert risk.evaluation_state is RiskEvaluationState.BLOCKED
-    assert risk.account_id == "SIMULATED"
+    assert risk.account_id == "4242"
     assert risk.execution_quantity_available is False
     assert risk.execution_quantity_value is None
     gateway.submit_order.assert_not_awaited()
@@ -465,12 +469,12 @@ async def test_store_initialization_failure_prevents_broker_submission() -> None
 
 def test_idempotency_key_is_deterministic_and_sensitive_to_intent() -> None:
     values = dict(
-        symbol=" xauusd ", side="buy", quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS), entry=101.0, stop_loss=99.0,
+        symbol=" xauusd ", side="buy", quantity=ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.MT5_LOTS), entry=101.0, stop_loss=99.0,
         take_profit=105.0, signal_time=pd.Timestamp("2026-08-29T12:00:00Z"),
     )
     first = build_execution_idempotency_key(**values)
     assert first == build_execution_idempotency_key(**values)
-    assert first != build_execution_idempotency_key(**{**values, "quantity": ExecutionQuantity(value=2.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS)})
+    assert first != build_execution_idempotency_key(**{**values, "quantity": ExecutionQuantity(value=2.0, unit=ExecutionQuantityUnit.MT5_LOTS)})
     assert first != build_execution_idempotency_key(**{**values, "quantity": ExecutionQuantity(value=1.0, unit=ExecutionQuantityUnit.DERIV_STAKE)})
 
 
@@ -510,7 +514,7 @@ async def test_allowed_policy_is_published_before_durable_submission() -> None:
 async def test_held_execution_reservation_is_published_as_blocked() -> None:
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     assert store.acquire_reservation(
-        "SIMULATED", "other-process", 120, "other-key"
+        "4242", "other-process", 120, "other-key"
     ) is ReservationState.ACQUIRED
     gateway = _gateway()
     patches = _pipeline_patches(gateway)
@@ -585,7 +589,7 @@ async def test_durable_claim_failure_after_pre_submit_publishes_unknown() -> Non
     [
         (
             OrderResult(
-                order_id="", status=OrderStatus.REJECTED, symbol="XAUUSD",
+                order_id="", status=OrderStatus.REJECTED, symbol="FX VOL 20",
                 side=OrderSide.BUY, volume=1.0,
             ),
             ExecutionAuthorization.BLOCKED,
@@ -672,7 +676,7 @@ async def test_broker_open_same_symbol_position_blocks_durable_submission() -> N
     gateway = _gateway()
     gateway.get_positions.return_value = [
         Position(
-            position_id="SIM-existing", symbol="XAUUSD", side=OrderSide.SELL,
+            position_id="SIM-existing", symbol="FX VOL 20", side=OrderSide.SELL,
             volume=1.0, open_price=100.0,
         )
     ]
@@ -716,7 +720,7 @@ async def test_unresolved_record_blocks_startup_without_reconciliation(
     gateway = _gateway()
     gateway.get_positions.return_value = [
         Position(
-            position_id="SIM-prior", symbol="XAUUSD", side=OrderSide.BUY,
+            position_id="SIM-prior", symbol="FX VOL 20", side=OrderSide.BUY,
             volume=1.0, open_price=101.0,
         )
     ]
@@ -750,7 +754,7 @@ async def test_unresolved_record_without_evidence_remains_unchanged(
     gateway = _gateway()
     gateway.get_positions.return_value = [
         Position(
-            position_id="SIM-unrelated", symbol="XAUUSD", side=OrderSide.BUY,
+            position_id="SIM-unrelated", symbol="FX VOL 20", side=OrderSide.BUY,
             volume=1.0, open_price=101.0,
         )
     ]
@@ -838,30 +842,36 @@ async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order
 
 @pytest.mark.asyncio
 async def test_startup_continues_after_all_unresolved_intents_are_proven_accepted() -> None:
+    from execution.persistence import SQLitePositionLedger
+    from datetime import datetime, timezone
+    SQLitePositionLedger(settings.execution_position_ledger_path).record_open(
+        broker="weltrade", symbol="FX VOL 20", position_id="SIM-prior",
+        order_id="SIM-prior", opened_at=datetime.now(timezone.utc),
+    )
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     record = IntentRecord(
         idempotency_key=_expected_key(),
         status=IntentRecordStatus.UNKNOWN,
         order_id="SIM-prior",
-        symbol="XAUUSD",
+        symbol="FX VOL 20",
         side=OrderSide.BUY,
         quantity=ExecutionQuantity(
-            value=1.0, unit=ExecutionQuantityUnit.SIMULATION_UNITS
+            value=1.0, unit=ExecutionQuantityUnit.MT5_LOTS
         ),
         entry=101.0,
         stop_loss=99.0,
         take_profit=105.0,
         authorized_risk_amount=2.0,
         expected_loss_at_stop=2.0,
-        broker="simulation",
-        account_id="SIMULATED",
+        broker="weltrade",
+        account_id="4242",
     )
     assert store.try_claim(record) is ClaimState.CLAIMED
     gateway = _gateway()
     gateway.get_positions.return_value = [
         Position(
             position_id="SIM-prior",
-            symbol="XAUUSD",
+            symbol="FX VOL 20",
             side=OrderSide.BUY,
             volume=1.0,
             open_price=101.0,
@@ -875,3 +885,4 @@ async def test_startup_continues_after_all_unresolved_intents_are_proven_accepte
     assert store.get(_expected_key()).status is IntentRecordStatus.ACCEPTED
     gateway.get_candles.assert_not_awaited()
     gateway.submit_order.assert_not_awaited()
+

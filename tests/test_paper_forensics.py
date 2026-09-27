@@ -1,12 +1,36 @@
 """Forensic invariants for the committed paper campaign baseline."""
 
 from pathlib import Path
+import os
+
+import pytest
 
 from config import EmergencyStopState, settings
 from tools.paper_forensics import BASELINE_SHA256, analyze
 
 
 ARTIFACT = Path("state/paper_campaigns/xauusd_m15_5000_final.json")
+
+
+@pytest.fixture(autouse=True)
+def archived_baseline(monkeypatch):
+    """Forensics needs the immutable campaign AND its two archived databases.
+
+    Do not silently read the operator's current mutable research/safety stores.
+    The default suite has no bundled 5,000-observation baseline database.
+    """
+    root = os.environ.get("JQE_ARCHIVED_FORENSICS_ROOT")
+    if not root:
+        pytest.skip("Requires explicit archived campaign + diagnostics/history databases (JQE_ARCHIVED_FORENSICS_ROOT)")
+    root = Path(root)
+    artifact = root / "xauusd_m15_5000_final.json"
+    diagnostics = root / "paper_diagnostics.sqlite3"
+    history = root / "historical.sqlite3"
+    for path in (artifact, diagnostics, history):
+        assert path.is_file(), f"Archived fixture missing: {path}"
+    monkeypatch.setattr(__import__(__name__, fromlist=["ARTIFACT"]), "ARTIFACT", artifact)
+    monkeypatch.setattr(settings, "paper_diagnostics_path", diagnostics)
+    monkeypatch.setattr(settings, "historical_data_path", history)
 
 
 def test_baseline_hash_and_emergency_stop_provenance(monkeypatch) -> None:

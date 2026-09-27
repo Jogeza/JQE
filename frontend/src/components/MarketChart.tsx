@@ -16,7 +16,7 @@ interface MarketChartProps {
   priceDecimals?: number;
   loading?: boolean;
   error?: string | null;
-  dataStatus?: 'CURRENT' | 'CACHED' | 'UNAVAILABLE';
+  dataStatus?: 'CURRENT' | 'CACHED' | 'UNAVAILABLE' | 'UNKNOWN';
   markers?: SeriesMarker<Time>[];
   volumeProfile?: VolumeProfileSnapshotDTO | null;
   indicators?: IndicatorVisibility;
@@ -38,6 +38,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
         </span>
       </div>
       {dataStatus === 'CACHED' && <span className="badge badge-neutral">CACHED · STALE · DEGRADED</span>}
+      {dataStatus === 'UNKNOWN' && <span className="badge badge-neutral">FRESHNESS UNKNOWN</span>}
       {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
     </div>
     {loading && candles.length === 0 ? (

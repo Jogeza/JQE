@@ -9,21 +9,16 @@ from typing import Any
 
 from core.exceptions import ConfigurationError
 
-SUPPORTED_BROKERS: tuple[str, ...] = ("mt5", "weltrade", "deriv", "simulation")
+SUPPORTED_BROKERS: tuple[str, ...] = ("weltrade",)
 
 _BROKER_NORMALIZATION: dict[str, str] = {
-    "mt5": "mt5",
-    "mt5_demo": "mt5",
     "weltrade": "weltrade",
     "weltrade_demo": "weltrade",
-    "deriv": "deriv",
-    "deriv_demo": "deriv",
-    "simulation": "simulation",
 }
 
 
 def normalize_broker_name(broker: str) -> str:
-    """Normalize broker identifiers to canonical forms ('mt5', 'weltrade', 'deriv', 'simulation')."""
+    """Normalize broker identifiers to the canonical Weltrade form ('weltrade')."""
     clean = str(broker).strip().lower()
     if clean in _BROKER_NORMALIZATION:
         return _BROKER_NORMALIZATION[clean]
@@ -62,10 +57,7 @@ class BrokerSelectionStore:
                 "SELECT selected_broker FROM broker_selection WHERE id = 1"
             ).fetchone()
         if row and row[0]:
-            try:
-                return normalize_broker_name(row[0])
-            except ConfigurationError:
-                return None
+            return normalize_broker_name(row[0])
         return None
 
     def set_selected_broker(self, broker: str, reason: str = "") -> str:
@@ -96,10 +88,10 @@ def get_effective_broker(active_settings: Any = None) -> str:
 
     Resolution order:
       1. Persisted operator selection in ``BrokerSelectionStore`` (authoritative).
-      2. ``settings.broker`` configured via environment/.env (default ``mt5``).
+      2. ``settings.broker`` configured via environment/.env (default ``weltrade``).
 
-    Simulation is only returned when it is the persisted selection or an
-    explicit configuration; this resolver never silently falls back to it.
+    Only Weltrade is a supported broker; this resolver never silently falls
+    back to another broker and raises on any unsupported configuration.
 
     Raises:
         ConfigurationError: If the configured broker name is unsupported.
@@ -110,13 +102,17 @@ def get_effective_broker(active_settings: Any = None) -> str:
     store_path = Path(
         getattr(active, "broker_selection_store_path", Path("state/broker_selection.sqlite3"))
     ).expanduser()
+    if store_path.exists() and not store_path.is_file():
+        raise ConfigurationError("Persisted broker selection path is not a file")
     if store_path.is_file():
         try:
             persisted = BrokerSelectionStore(store_path).get_selected_broker()
-        except Exception:
-            persisted = None
+        except ConfigurationError:
+            raise
+        except Exception as exc:
+            raise ConfigurationError("Persisted broker selection could not be read") from exc
         if persisted is not None:
             return persisted
 
-    configured = getattr(active, "broker", "mt5")
+    configured = getattr(active, "broker", "weltrade")
     return normalize_broker_name(configured)

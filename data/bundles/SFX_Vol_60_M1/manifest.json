@@ -1,0 +1,15 @@
+{
+  "candle_count": 500,
+  "canonical_symbol": "SFX Vol 60",
+  "content_hash": "sha256:9a338507851879652b1f006549031234af292150450a4449168f7f89241b63c3",
+  "first_candle": "2026-09-27T11:59:00.000000+00:00",
+  "granularity_seconds": 60,
+  "last_candle": "2026-09-27T20:18:00.000000+00:00",
+  "provider": "weltrade",
+  "provider_symbol": "SFX Vol 60",
+  "retrieved_at": "2026-09-27T21:53:45.717388+00:00",
+  "schema_version": 1,
+  "source": "Weltrade MT5 terminal",
+  "timeframe": "M1",
+  "volume_available": true
+}

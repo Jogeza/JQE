@@ -318,6 +318,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
             trades={recentTrades}
             loading={loading && !executionData}
             currency={executionData?.currency}
+            broker={executionData?.broker}
           />
         </div>
 

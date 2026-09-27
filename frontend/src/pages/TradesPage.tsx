@@ -15,6 +15,7 @@ export const TradesPage: React.FC<TradesPageProps> = ({ execution, loading, curr
         trades={execution?.recent_trades || []}
         loading={loading}
         currency={currency}
+        broker={execution?.broker}
       />
     </div>
   );

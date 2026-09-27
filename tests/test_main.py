@@ -29,7 +29,7 @@ from core.exceptions import MarketDataError
 
 
 @pytest.fixture(autouse=True)
-def _durable_simulation_settings(tmp_path):
+def _durable_weltrade_settings(tmp_path, monkeypatch):
     original = (
         settings.broker,
         settings.intent_store_path,
@@ -40,14 +40,16 @@ def _durable_simulation_settings(tmp_path):
         settings.max_daily_trades_per_instrument,
         settings.default_symbol,
     )
-    settings.broker = "simulation"
+    settings.broker = "weltrade"
+    monkeypatch.setattr(settings, "broker_execution_enabled", True)
+    monkeypatch.setattr(settings, "execution_position_ledger_path", tmp_path / "positions.sqlite3")
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "safety.sqlite3"
     settings.emergency_stop = EmergencyStopState.CLEAR
-    settings.market_data_source = "simulation"
+    settings.market_data_source = "broker"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     settings.max_daily_trades_per_instrument = 20
-    settings.default_symbol = "R_75"
+    settings.default_symbol = "FX VOL 20"
     yield
     (
         settings.broker,
@@ -68,7 +70,7 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
     gateway.__aexit__ = AsyncMock(return_value=None)
     gateway.get_candles = AsyncMock(return_value=candles)
     gateway.get_account_info = AsyncMock(
-        return_value=AccountInfo(account_id="SIMULATED", balance=balance, currency="USD")
+        return_value=AccountInfo(account_id="4242", balance=balance, currency="USD", server="Weltrade-Demo", trade_mode="demo")
     )
     gateway.get_trade_history = AsyncMock(return_value=[])
     async def complete_history(*, start, end, count):
@@ -80,11 +82,13 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
         )
     gateway.get_trade_history_snapshot = AsyncMock(side_effect=complete_history)
     gateway.get_positions = AsyncMock(return_value=[])
+    from tests.weltrade_stubs import WeltradeStubGateway
+    gateway.authorize_account_currency_risk = AsyncMock(side_effect=WeltradeStubGateway().authorize_account_currency_risk)
     gateway.submit_order = AsyncMock(
         return_value=OrderResult(
             order_id="TEST-1",
             status=OrderStatus.FILLED,
-            symbol="XAUUSD",
+            symbol="FX VOL 20",
             side=OrderSide.BUY,
             volume=0.01,
             filled_price=100.0,
@@ -111,7 +115,7 @@ def _valid_candle() -> MagicMock:
 
 
 @asynccontextmanager
-async def _empty_market_source(_settings):
+async def _empty_market_source(_settings, broker_gateway=None):
     class Source:
         async def get_candles(self, **_kwargs):
             return []
@@ -191,7 +195,7 @@ class TestRunSignalRiskExecution:
         assert gateway.get_account_info.await_count == 2
         gateway.submit_order.assert_awaited_once()
         submitted_order = gateway.submit_order.call_args[0][0]
-        assert submitted_order.symbol == settings.default_symbol == "R_75"
+        assert submitted_order.symbol == settings.default_symbol == "FX VOL 20"
         assert submitted_order.side is OrderSide.BUY
         assert submitted_order.volume == 2.5
 
@@ -274,3 +278,4 @@ class TestRunSignalRiskExecution:
     def test_non_jqe_error_still_propagates(self, mock_run: MagicMock) -> None:
         with pytest.raises(ValueError):
             main.main()
+

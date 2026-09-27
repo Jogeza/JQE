@@ -8,8 +8,6 @@ from typing import AsyncIterator
 
 from broker.base import BrokerGateway
 from broker.scope import enforce_weltrade_only
-from broker.deriv_public_data import DerivPublicMarketData
-from broker.simulation_gateway import SimulationGateway
 from broker.types import Candle, ClosedMarketObservation, Timeframe, TIMEFRAME_SECONDS
 from config.settings import Settings
 from core.exceptions import MarketDataError
@@ -31,46 +29,13 @@ async def resolved_market_source(
     *,
     broker_gateway: BrokerGateway | None = None,
 ) -> AsyncIterator[tuple[CandleDataSource, str]]:
-    """Yield a source independent of the execution gateway.
-
-    ``deriv_public`` is unauthenticated and exposes no execution methods.
-    The simulation fallback is a separate source instance, never the gateway
-    that can receive an order in the same cycle.
-
-    ``broker`` is the explicit exception for broker-native instruments such as
-    Weltrade SyntX.  The caller supplies the already-connected gateway and
-    this context only consumes its read-only ``get_candles`` capability; it
-    does not manage the gateway lifecycle or submit orders.
-    """
-    if getattr(settings, "broker_execution_enabled", False):
-        enforce_weltrade_only(
-            broker=settings.effective_broker,
-            market_data_source=settings.market_data_source,
-        )
-    if settings.market_data_source == "broker":
-        if broker_gateway is None:
-            raise MarketDataError("Broker market data requires the active broker gateway")
-        yield broker_gateway, "broker"
-        return
-
-    if settings.market_data_source == "deriv_public":
-        source: CandleDataSource = DerivPublicMarketData(
-            app_id=settings.deriv_app_id, endpoint=settings.deriv_public_endpoint
-        )
-        source_name = "deriv_public"
-    else:
-        source = SimulationGateway(starting_balance=settings.account_balance)
-        source_name = "simulation"
-    connect = getattr(source, "connect", None)
-    disconnect = getattr(source, "disconnect", None)
-    if connect is not None:
-        await connect()
-    try:
-        yield source, source_name
-    finally:
-        if disconnect is not None:
-            await disconnect()
-
+    """Read native candles from the already-connected Weltrade gateway."""
+    enforce_weltrade_only(
+        broker=settings.effective_broker, market_data_source=settings.market_data_source,
+    )
+    if broker_gateway is None:
+        raise MarketDataError("Broker market data requires the active broker gateway")
+    yield broker_gateway, "broker"
 
 def closed_observations_from_candles(
     *,
@@ -114,3 +79,4 @@ def closed_observations_from_candles(
     if not observations:
         raise MarketDataError("No provider candles are provably closed", symbol=canonical_symbol)
     return observations
+

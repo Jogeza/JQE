@@ -22,18 +22,18 @@ def _record(key: str, status: IntentRecordStatus, **changes) -> IntentRecord:
         status=status,
         order_id="SIM-1",
         transaction_id="TX-1",
-        symbol="XAUUSD",
+        symbol="FX VOL 20",
         side=OrderSide.BUY,
         quantity=ExecutionQuantity(
-            value=1.25, unit=ExecutionQuantityUnit.SIMULATION_UNITS
+            value=1.25, unit=ExecutionQuantityUnit.MT5_LOTS
         ),
         entry=100.0,
         stop_loss=99.0,
         take_profit=102.0,
         authorized_risk_amount=10.0,
         expected_loss_at_stop=9.5,
-        broker="simulation",
-        account_id="SIMULATED",
+        broker="weltrade",
+        account_id="4242",
     )
     values.update(changes)
     return IntentRecord(**values)
@@ -43,7 +43,8 @@ def _record(key: str, status: IntentRecordStatus, **changes) -> IntentRecord:
 def diagnostic_store(tmp_path, monkeypatch):
     path = tmp_path / "intents.sqlite3"
     monkeypatch.setattr(settings, "intent_store_path", path)
-    monkeypatch.setattr(settings, "broker", "simulation")
+    monkeypatch.setattr(settings, "broker", "weltrade")
+    monkeypatch.setattr(settings, "weltrade_demo_login", 4242)
     return SQLiteIntentRecordStore(path)
 
 
@@ -67,9 +68,9 @@ def test_unresolved_intent_preserves_typed_operator_fields(
     assert item.intent_state == status.value
     assert item.quantity is not None
     assert item.quantity.value == 1.25
-    assert item.quantity.unit == "SIMULATION_UNITS"
+    assert item.quantity.unit == "MT5_LOTS"
     assert (item.broker, item.account_id, item.symbol, item.side) == (
-        "simulation", "SIMULATED", "XAUUSD", "BUY"
+        "weltrade", "4242", "FX VOL 20", "BUY"
     )
     assert item.created_at and item.updated_at
     assert item.order_id == "SIM-1"

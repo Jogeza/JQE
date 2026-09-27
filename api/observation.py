@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import os
+from core.processes import is_process_alive
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -177,13 +178,7 @@ def get_observation_health() -> ObservationHealthResponse:
         fresh = _fresh(updated_at)
         pid = payload.get("pid")
         pid_value = int(pid) if pid is not None else None
-        pid_alive = False
-        if pid_value is not None:
-            try:
-                os.kill(pid_value, 0)
-                pid_alive = True
-            except (OSError, ValueError):
-                pid_alive = False
+        pid_alive = is_process_alive(pid_value) if pid_value is not None else False
         error = payload.get("error") or None
         execution_enabled = payload.get("execution_enabled")
         collector = ObservationComponentResponse(

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from config.settings import settings
 from data.watchlist import WatchlistItem, WatchlistStore
+from broker.weltrade_symbols import is_weltrade_synthetic
 
 
 class WatchlistItemDTO(BaseModel):
@@ -31,7 +32,7 @@ class WatchlistResponse(BaseModel):
 
 
 class WatchlistAddRequest(BaseModel):
-    symbol: str = Field(min_length=1, description="Instrument symbol (e.g. 'FX Vol 20' or 'R_75')")
+    symbol: str = Field(min_length=1, description="Native Weltrade synthetic index (e.g. 'FX Vol 20')")
     timeframe: str = Field(default="H1", description="Observation timeframe (e.g. 'H1')")
 
 
@@ -67,6 +68,8 @@ def add_to_watchlist(
 ) -> WatchlistItemDTO:
     """Add a new instrument to the persisted watchlist."""
     try:
+        if not is_weltrade_synthetic(request.symbol):
+            raise ValueError("Only native Weltrade synthetic indices may be added")
         item = store.add_item(request.symbol, request.timeframe)
         return WatchlistItemDTO.from_item(item)
     except ValueError as exc:

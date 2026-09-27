@@ -23,10 +23,10 @@ from execution.reconciliation import BrokerReconciliationState, MT5Reconciliatio
 async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_daily_instrument_cap(tmp_path) -> None:
     settings = Settings(
         _env_file=None,
-        broker="mt5",
+        broker="weltrade",
         broker_execution_enabled=False,
         mt5_expected_environment="demo",
-        default_symbol="EURUSD",
+        default_symbol="FX VOL 20",
         intent_store_path=tmp_path / "intents.sqlite3",
         execution_position_ledger_path=tmp_path / "positions.sqlite3",
         daily_instrument_trade_store_path=tmp_path / "daily.sqlite3",
@@ -34,10 +34,10 @@ async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_dail
     gateway = MagicMock()
     gateway.get_account_info = AsyncMock(return_value=AccountInfo(
         account_id="41163130", balance=10_000.0, equity=10_000.0,
-        currency="USD", server="Deriv-Demo", trade_mode="demo",
+        currency="USD", server="Weltrade-Demo", trade_mode="demo",
     ))
     position = Position(
-        position_id="9001", symbol="EURUSD", side=OrderSide.BUY,
+        position_id="9001", symbol="FX VOL 20", side=OrderSide.BUY,
         volume=0.01, open_price=1.1,
     )
     gateway.get_positions = AsyncMock(return_value=[position])
@@ -48,46 +48,46 @@ async def test_mt5_composition_uses_real_identity_ledger_gateway_sizing_and_dail
     ))
 
     composition = await main.build_execution_composition(
-        gateway, broker="mt5", active_settings=settings
+        gateway, broker="weltrade", active_settings=settings
     )
 
     assert settings.broker_execution_enabled is False
     assert composition.identity.account_id == "41163130"
-    assert composition.identity.account_id != "SIMULATED"
-    assert composition.identity.server == "Deriv-Demo"
+    assert composition.identity.account_id != "4242"
+    assert composition.identity.server == "Weltrade-Demo"
     assert composition.identity.currency == "USD"
     assert composition.identity.trade_mode == "demo"
     assert isinstance(composition.reconciler, MT5ReconciliationAdapter)
 
     composition.position_ledger.record_open(
-        broker="mt5", symbol="EURUSD", position_id="9001", order_id="8001",
+        broker="weltrade", symbol="FX VOL 20", position_id="9001", order_id="8001",
         opened_at=datetime.now(timezone.utc),
     )
-    reconciled = await composition.reconciler.reconcile(order_id="8001", symbol="EURUSD")
+    reconciled = await composition.reconciler.reconcile(order_id="8001", symbol="FX VOL 20")
     assert reconciled.state is BrokerReconciliationState.CONFIRMED_MATCH
     gateway.get_positions.assert_awaited()
     gateway.get_trade_history.assert_awaited()
 
     sizing = await main.authorize_broker_execution_quantity(
-        gateway, broker="mt5", symbol="EURUSD", side=OrderSide.BUY, balance=10_000.0,
+        gateway, broker="weltrade", symbol="FX VOL 20", side=OrderSide.BUY, balance=10_000.0,
         risk_percent=0.05, entry=1.1, stop_loss=1.095,
     )
     assert sizing.quantity == ExecutionQuantity(value=0.01, unit=ExecutionQuantityUnit.MT5_LOTS)
     assert sizing.expected_loss_at_stop == 4.8
     gateway.authorize_account_currency_risk.assert_awaited_once()
 
-    composition.daily_instrument_guard.consume(composition.identity.scope, "EURUSD")
+    composition.daily_instrument_guard.consume(composition.identity.scope, "FX VOL 20")
     # A consumed submission slot must not block read-only startup composition.
     second = await main.build_execution_composition(
-        gateway, broker="mt5", active_settings=settings
+        gateway, broker="weltrade", active_settings=settings
     )
-    assert second.daily_instrument_guard.usage(second.identity.scope, "EURUSD").count == 1
+    assert second.daily_instrument_guard.usage(second.identity.scope, "FX VOL 20").count == 1
 
 
 @pytest.mark.asyncio
 async def test_mt5_composition_rejects_simulated_identity(tmp_path) -> None:
     settings = Settings(
-        _env_file=None, broker="mt5", broker_execution_enabled=False,
+        _env_file=None, broker="weltrade", broker_execution_enabled=False,
         mt5_expected_environment="demo",
         intent_store_path=tmp_path / "intents.sqlite3",
         execution_position_ledger_path=tmp_path / "positions.sqlite3",
@@ -96,7 +96,7 @@ async def test_mt5_composition_rejects_simulated_identity(tmp_path) -> None:
     gateway = MagicMock()
     gateway.get_account_info = AsyncMock(return_value=AccountInfo(
         account_id="SIMULATED", balance=10_000.0, currency="USD",
-        server="Deriv-Demo", trade_mode="demo",
+        server="Weltrade-Demo", trade_mode="demo",
     ))
     with pytest.raises(Exception, match="legacy SIMULATED"):
-        await main.build_execution_composition(gateway, broker="mt5", active_settings=settings)
+        await main.build_execution_composition(gateway, broker="weltrade", active_settings=settings)

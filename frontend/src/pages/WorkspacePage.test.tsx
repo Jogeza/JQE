@@ -12,7 +12,7 @@ import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
 import { formatAge, panelState, validAssessment, validBroker, WORKSPACE_FRESHNESS_THRESHOLDS_MS } from './workspaceEvidence';
 
-vi.mock('../components/MarketChart', () => ({ MarketChart: () => <div data-testid="market-chart">Chart</div> }));
+vi.mock('../components/MarketChart', () => ({ MarketChart: ({ dataStatus }: { dataStatus?: string }) => <div data-testid="market-chart" data-status={dataStatus}>Chart</div> }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const observed = '2026-09-20T12:00:00Z';
@@ -74,6 +74,27 @@ describe('WorkspacePage', () => {
   it('renders LIVE state', async () => {
     await render();
     expect(panel('Watchlist').dataset.state).toBe('LIVE');
+  });
+  it('shows uncertain candle freshness and disabled execution independently of a live demo connection', async () => {
+    await render({
+      broker: resource({ ...broker, active_broker: 'weltrade', active_broker_identity: {
+        ...broker.active_broker_identity!, broker: 'weltrade', trade_mode: 'DEMO',
+      }, live_connection_state: 'CONNECTED', broker_execution_enabled: false }),
+      safety: resource({ observed_at: observed, observation_state: 'STALE',
+        execution_authorization: 'UNKNOWN', emergency_stop_state: 'UNKNOWN',
+        reason_codes: ['SNAPSHOT_STALE'] } as ExecutionSafetyResponse),
+      activeAnalysis: resource({ context: { freshness_state: 'UNKNOWN',
+        freshness_reason_codes: ['MARKET_CLOCK_AHEAD'], latest_closed_candle_at: observed },
+        candles: { symbol: 'FX Vol 20', timeframe: 'M5', candles: [{ time: observed, open: 1, high: 2, low: 1, close: 2, volume: 1 }],
+          market_data_status: 'CURRENT' } } as unknown as NonNullable<Props['activeAnalysis']>['data']),
+    });
+    const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
+    expect(facts.textContent).toContain('Market data freshnessunknown · MARKET_CLOCK_AHEAD');
+    expect(facts.textContent).toContain('Broker executiondisabled');
+    expect(facts.textContent).toContain('Research batch jobunknown · no live job telemetry');
+    expect(facts.textContent).toContain('Execution snapshotstale · fail closed');
+    expect(panel('Market chart').textContent).toContain('freshness unknown · MARKET_CLOCK_AHEAD');
+    expect(host.querySelector('[data-testid="market-chart"]')?.getAttribute('data-status')).toBe('UNKNOWN');
   });
   it('renders STALE state', async () => {
     await render({ watchlist: resource(watchlist, { stale: true }) });
@@ -222,7 +243,7 @@ describe('WorkspacePage', () => {
     const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
     expect(facts.textContent).toContain('Live broker connectionunavailable');
     expect(facts.textContent).toContain('Demo verifiedYes');
-    expect(facts.querySelectorAll(':scope > div')).toHaveLength(7);
+    expect(facts.querySelectorAll(':scope > div')).toHaveLength(11);
   });
   it('renders the connected execution status when supplied', async () => {
     await render({ execution: resource({ connected: true, open_positions_count: 2 } as ExecutionStateResponse) });

@@ -45,6 +45,27 @@ from core.mt5_session import mt5_session
 _TRADE_HISTORY_LOOKBACK_DAYS = 30
 _DEFAULT_TICK_POLL_INTERVAL_SECONDS = 1.0
 
+# Weltrade's MT5 server reports bar/tick timestamps in server-local time
+# (UTC+3, confirmed empirically: stored max timestamp exceeds current UTC
+# by ~3 h).  The MetaTrader5 Python package does NOT apply timezone
+# conversion; it returns the raw server integer.  Subtract this offset
+# before treating the value as a POSIX epoch so all stored datetimes are UTC.
+_MT5_SERVER_UTC_OFFSET_SECONDS: int = 3 * 3600  # 10 800 s
+
+
+def _mt5_ts_to_utc(raw_server_ts: int) -> datetime:
+    """Convert a raw MT5 server timestamp to a UTC-aware datetime.
+
+    Weltrade MT5 server time is UTC+3.  The Python MetaTrader5 library
+    returns the timestamp as-is without normalising to UTC, so we subtract
+    the server offset before constructing the datetime.
+    """
+    return datetime.fromtimestamp(
+        raw_server_ts - _MT5_SERVER_UTC_OFFSET_SECONDS,
+        tz=timezone.utc,
+    )
+
+
 _MT5_SYMBOL_ALIASES: dict[str, list[str]] = {
     "GOLD": [
         "GOLD",
@@ -331,7 +352,7 @@ class MT5Gateway(BrokerGateway):
                 raise MarketDataError("No candle data returned from MT5", symbol=symbol)
             return [
                 Candle(
-                    time=datetime.fromtimestamp(rate["time"], tz=timezone.utc),
+                    time=_mt5_ts_to_utc(rate["time"]),
                     open=float(rate["open"]),
                     high=float(rate["high"]),
                     low=float(rate["low"]),
@@ -362,7 +383,7 @@ class MT5Gateway(BrokerGateway):
 
         return [
             Candle(
-                time=datetime.fromtimestamp(rate["time"], tz=timezone.utc),
+                time=_mt5_ts_to_utc(rate["time"]),
                 open=float(rate["open"]),
                 high=float(rate["high"]),
                 low=float(rate["low"]),
@@ -672,10 +693,7 @@ class MT5Gateway(BrokerGateway):
                 profit=float(p.profit),
                 stop_loss=float(p.sl) or None,
                 take_profit=float(p.tp) or None,
-                opened_at=datetime.fromtimestamp(
-                    p.time,
-                    tz=timezone.utc,
-                ),
+                opened_at=_mt5_ts_to_utc(p.time),
                 magic=(
                     int(p.magic)
                     if getattr(p, "magic", None) is not None
@@ -764,14 +782,8 @@ class MT5Gateway(BrokerGateway):
                 open_price=float(deal.price),
                 close_price=float(deal.price),
                 profit=float(deal.profit),
-                opened_at=datetime.fromtimestamp(
-                    deal.time,
-                    tz=timezone.utc,
-                ),
-                closed_at=datetime.fromtimestamp(
-                    deal.time,
-                    tz=timezone.utc,
-                ),
+                opened_at=_mt5_ts_to_utc(deal.time),
+                closed_at=_mt5_ts_to_utc(deal.time),
             )
             for deal in closing_deals[-count:]
         ]
@@ -800,10 +812,7 @@ class MT5Gateway(BrokerGateway):
 
             if tick:
                 yield Tick(
-                    time=datetime.fromtimestamp(
-                        tick.time,
-                        tz=timezone.utc,
-                    ),
+                    time=_mt5_ts_to_utc(tick.time),
                     symbol=symbol,
                     bid=float(tick.bid),
                     ask=float(tick.ask),

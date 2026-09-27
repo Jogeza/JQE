@@ -114,9 +114,9 @@ class Settings(BaseSettings):
 
     environment: Environment = "development"
 
-    broker: Literal["simulation", "mt5", "deriv", "weltrade", "mt5_demo", "deriv_demo", "weltrade_demo"] = "mt5"
+    broker: Literal["weltrade", "weltrade_demo"] = "weltrade"
     broker_execution_enabled: bool = False
-    market_data_source: Literal["simulation", "deriv_public", "broker"] = "simulation"
+    market_data_source: Literal["broker"] = "broker"
 
     @property
     def effective_broker(self) -> str:
@@ -168,6 +168,9 @@ class Settings(BaseSettings):
     slack_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
     anthropic_api_key: str | None = Field(default=None, repr=False, exclude=True)
+    ai_assistant_provider: Literal["anthropic", "meta", "openai_compatible"] = "anthropic"
+    meta_api_key: str | None = Field(default=None, repr=False, exclude=True)
+    meta_api_base: str = "https://api.llama.com/v1"
     ai_assistant_enabled: bool = False
     ai_assistant_kill_switch: bool = True
     ai_assistant_model: str = "claude-haiku-4-5-20251001"
@@ -178,7 +181,7 @@ class Settings(BaseSettings):
     ai_assistant_requests_per_minute: int = Field(default=6, ge=1, le=60)
     ai_assistant_daily_request_limit: int = Field(default=100, ge=1, le=10000)
 
-    default_symbol: str = "R_75"
+    default_symbol: str = "FX Vol 20"
     default_timeframe: str = "M5"
     default_candle_count: int = Field(default=500, gt=0)
 
@@ -264,9 +267,9 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "live_paper campaign mode requires broker_execution_enabled=True"
                 )
-            if self.broker not in {"mt5_demo", "deriv_demo", "weltrade_demo"}:
+            if self.broker not in {"weltrade_demo"}:
                 raise ValueError(
-                    f"live_paper campaign mode requires a demo broker ('mt5_demo' or 'deriv_demo'), got '{self.broker}'"
+                    f"live_paper campaign mode requires the Weltrade demo broker ('weltrade_demo'), got '{self.broker}'"
                 )
             if self.live_paper_max_candles is None and self.live_paper_max_duration_seconds is None:
                 raise ValueError(

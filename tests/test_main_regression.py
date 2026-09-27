@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 
 import main
-from broker.simulation_gateway import SimulationGateway
+from tests.weltrade_stubs import WeltradeStubGateway
 from broker.types import Candle, OrderSide, OrderStatus, Timeframe
 from config import EmergencyStopState, settings
 
@@ -70,18 +70,23 @@ def _generate_uptrend_candles(count: int) -> list[Candle]:
 
 class TestMainRegression:
     @pytest.mark.asyncio
-    async def test_end_to_end_buy_cycle(self) -> None:
+    async def test_end_to_end_buy_cycle(self, tmp_path, monkeypatch) -> None:
         """
         Executes the current main.run() live-cycle pipeline end-to-end.
         Uses the existing SimulationGateway but injects deterministic market data
         to guarantee a BUY signal and verify the resulting OrderRequest invariants.
         """
         # Ensure configuration points to simulation
-        settings.broker = "simulation"
+        monkeypatch.setattr(settings, "broker", "weltrade")
+        monkeypatch.setattr(settings, "market_data_source", "broker")
+        monkeypatch.setattr(settings, "broker_execution_enabled", True)
+        monkeypatch.setattr(settings, "default_symbol", "FX VOL 20")
+        for field in ("intent_store_path", "execution_safety_store_path", "execution_position_ledger_path", "daily_instrument_trade_store_path", "execution_lifetime_store_path"):
+            monkeypatch.setattr(settings, field, tmp_path / (field + ".sqlite3"))
         settings.default_candle_count = 250  # Enough to populate EMA200
 
         # Construct actual gateway
-        gateway = SimulationGateway(starting_balance=10000.0, seed=42)
+        gateway = WeltradeStubGateway(starting_balance=10000.0, seed=42)
 
         # Inject deterministic market data through the independent source.
         deterministic_candles = _generate_uptrend_candles(settings.default_candle_count)
@@ -96,8 +101,8 @@ class TestMainRegression:
         # Spy on the gateway to verify submission
         with patch.object(
             gateway,
-            "submit_order_from_market_observation",
-            wraps=gateway.submit_order_from_market_observation,
+            "submit_order",
+            wraps=gateway.submit_order,
         ) as spy_submit_order:
             with patch("main.get_gateway", return_value=gateway), patch(
                 "main.resolved_market_source", market_source
@@ -135,3 +140,4 @@ class TestMainRegression:
         risk = last_close - order.stop_loss
         reward = order.take_profit - last_close
         assert reward / risk == pytest.approx(2.0), "Expected exact target_rr of 2.0"
+

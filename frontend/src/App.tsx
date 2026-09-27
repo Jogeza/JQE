@@ -256,7 +256,7 @@ export const App: React.FC = () => {
   useInterval(() => setLifecycleNow(new Date()), 1000);
 
   const systemStatus = resources.system.data;
-  const displaySymbol = selectedSymbol || systemStatus?.default_symbol || 'R_75';
+  const displaySymbol = selectedSymbol || systemStatus?.default_symbol || 'FX Vol 20';
   const displayTimeframe = selectedTimeframe || systemStatus?.default_timeframe || 'M5';
   const marketSummary = resources.market.data;
   const candlesData = resources.candles.data;
@@ -438,12 +438,14 @@ export const App: React.FC = () => {
         />}
 
         <div className="offline-simulation-banner" role="status">
-          {resources.brokerStatus.data?.broker_execution_enabled === true && resources.brokerStatus.data.active_broker !== 'simulation'
+          {resources.brokerStatus.data?.broker_execution_enabled === true
             ? 'DEMO EXECUTION — BROKER ORDERS ENABLED'
-            : 'OFFLINE SIMULATION — NO BROKER ORDERS'}
-          <span>{resources.brokerStatus.data?.active_broker && resources.brokerStatus.data.active_broker !== 'simulation'
+            : resources.brokerStatus.data?.broker_execution_enabled === false
+              ? 'WELTRADE DEMO — BROKER EXECUTION DISABLED'
+              : 'BROKER EXECUTION STATUS UNAVAILABLE'}
+          <span>{resources.brokerStatus.data?.active_broker
             ? ` ${resources.brokerStatus.data.active_broker} · ${resources.brokerStatus.data.observation_state}`
-            : telemetryLifecycle.snapshot ? ` ${telemetryLifecycle.snapshot.environment} · ${telemetryLifecycle.snapshot.simulation_submissions.account_scope}` : ` ${telemetryLifecycle.state}`}</span>
+            : ` ${telemetryLifecycle.state}`}</span>
         </div>
 
         {/* API Error Notification Banner */}

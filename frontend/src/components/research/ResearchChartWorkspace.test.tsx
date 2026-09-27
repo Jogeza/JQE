@@ -26,7 +26,7 @@ const jsonResponse = (value: unknown) => Promise.resolve({ ok: true, json: () =>
 describe('ResearchChartWorkspace request and cleanup boundary', () => {
   let host: HTMLDivElement; let root: Root; let state: ResearchWorkspaceState;
   const dispatch = vi.fn(); const onMarketsChanged = vi.fn();
-  const render = async (next = state) => act(async () => { root.render(<ResearchChartWorkspace state={next} markets={markets} active
+  const render = async (next = state, catalogue = markets) => act(async () => { root.render(<ResearchChartWorkspace state={next} markets={catalogue} active
     dispatch={dispatch} onActivate={() => undefined} onMarketsChanged={onMarketsChanged} />); });
   beforeEach(() => { host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     state = createResearchWorkspace('primary', gold, 'M15'); dispatch.mockReset(); onMarketsChanged.mockReset(); vi.restoreAllMocks(); });
@@ -39,6 +39,15 @@ describe('ResearchChartWorkspace request and cleanup boundary', () => {
     await render(updateResearchWorkspace(state, { type: 'toggle-overlay', overlay: 'ema50' })); expect(fetchMock).not.toHaveBeenCalled();
     await render(updateResearchWorkspace(state, { type: 'toggle-pane', pane: 'rsi' })); expect(fetchMock).not.toHaveBeenCalled();
     await render(updateResearchWorkspace(state, { type: 'select-timeframe', timeframe: 'H1' })); expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('identifies uncached acquisition as Weltrade terminal history', async () => {
+    const native = { ...gold, provider: 'weltrade', provider_symbol: 'FX VOL 20', canonical_symbol: 'FX VOL 20', display_name: 'FX VOL 20', timeframes: ['M1'] };
+    const nativeMarkets = { ...markets, catalogue: { ...markets.catalogue, provider: 'weltrade', instruments: [native] }, cached_datasets: [] } as ResearchMarketsDTO;
+    await render(createResearchWorkspace('primary', native, 'M1'), nativeMarkets);
+    expect(host.textContent).toContain('Weltrade terminal history request');
+    expect(host.textContent).toContain('request Weltrade terminal history');
+    expect(host.textContent).not.toContain('public market data');
   });
 
   it('uses one session request, one initial replay request, and one request per replay step', async () => {

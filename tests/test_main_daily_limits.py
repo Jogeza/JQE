@@ -13,14 +13,15 @@ from risk.risk_controller import _default_engine
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
-def _reset_risk_engine(tmp_path):
+def _reset_risk_engine(tmp_path, monkeypatch):
     """Ensure tests start with clean limits."""
     original_paths = (
         settings.intent_store_path,
         settings.execution_safety_store_path,
     )
+    monkeypatch.setattr(settings, "execution_position_ledger_path", tmp_path / "positions.sqlite3")
     original_broker = settings.broker
-    settings.broker = "simulation"
+    settings.broker = "weltrade"
     settings.intent_store_path = tmp_path / "intents.sqlite3"
     settings.execution_safety_store_path = tmp_path / "execution-safety.sqlite3"
     _default_engine.reset_daily_stats()
@@ -38,9 +39,9 @@ def _reset_risk_engine(tmp_path):
 @pytest.fixture
 def mock_gateway():
     """Provides access to the SimulationGateway for injecting trades."""
-    from broker.factory import get_gateway
+    from tests.weltrade_stubs import WeltradeStubGateway
     settings.account_balance = 10000.0
-    gw = get_gateway(settings)
+    gw = WeltradeStubGateway(starting_balance=settings.account_balance)
 
     # Empty out trade history before each test
     gw._trade_history = []
@@ -145,3 +146,4 @@ async def test_new_day(mock_gateway):
     # Should only record the 1.0% loss from today's trade
     assert _default_engine._daily_realized_loss_percent == 1.0
     assert _default_engine._daily_trades_count == 1
+

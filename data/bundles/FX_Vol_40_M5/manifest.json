@@ -1,0 +1,15 @@
+{
+  "candle_count": 500,
+  "canonical_symbol": "FX Vol 40",
+  "content_hash": "sha256:c8132ab19f90be9b559783c3e3052eafe6baab6f5116caebf27038499e6d3cda",
+  "first_candle": "2026-09-26T02:30:00.000000+00:00",
+  "granularity_seconds": 300,
+  "last_candle": "2026-09-27T20:15:00.000000+00:00",
+  "provider": "weltrade",
+  "provider_symbol": "FX Vol 40",
+  "retrieved_at": "2026-09-27T21:53:35.131484+00:00",
+  "schema_version": 1,
+  "source": "Weltrade MT5 terminal",
+  "timeframe": "M5",
+  "volume_available": true
+}

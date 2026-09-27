@@ -157,6 +157,11 @@ class CoverageValidationResult:
 def get_coverage_policy(
     provider: str, canonical_symbol: str, provider_symbol: str, timeframe: Timeframe
 ) -> HistoricalCoveragePolicy:
+    if provider.strip().lower() == "weltrade":
+        from broker.weltrade_symbols import require_weltrade_synthetic
+        require_weltrade_synthetic(canonical_symbol)
+        require_weltrade_synthetic(provider_symbol)
+        return WeltradeSyntheticCoveragePolicy()
     identity = (
         provider.strip().lower(), canonical_symbol.strip().upper(),
         provider_symbol.strip(), timeframe,
@@ -168,6 +173,15 @@ def get_coverage_policy(
         provider=provider, symbol=canonical_symbol,
         provider_symbol=provider_symbol, timeframe=timeframe.value,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class WeltradeSyntheticCoveragePolicy:
+    """Expect continuous bars; missing terminal history remains an explicit gap."""
+
+    def is_candle_expected(self, timestamp: datetime) -> bool:
+        _require_utc(timestamp)
+        return True
 
 
 def validate_historical_coverage(

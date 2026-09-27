@@ -120,10 +120,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return <>
     <aside className={`desktop-sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-brand"><div className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={21} aria-hidden="true" /></span><span className="jqe-mark">JQE<span>®</span></span></div><small>Research & perspective</small></div>
+      <div className="sidebar-brand"><div className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={21} aria-hidden="true" /></span><span className="jqe-mark">JQE<span>®</span></span></div><small>Research & perspective</small><img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" /></div>
       {navigation()}
       <footer className="sidebar-footer">
-        <div className="sidebar-metadata"><strong>Independent by design.</strong><span>Broker-agnostic architecture</span><span>Canonical telemetry</span></div>
+        <div className="sidebar-metadata"><strong>SyntX research workspace</strong><span>Weltrade · local MT5 · demo only</span></div>
         <button className="nav-collapse" onClick={() => setCollapsed(value => !value)}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
@@ -147,7 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button autoFocus className="icon-button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)}><X size={22} /></button>
       </div>
       {navigation(true)}
-      <p className="drawer-note">Financial research. Clear perspective.</p>
+      <div className="sidebar-metadata"><img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" /><span>Weltrade · local MT5 · demo only</span></div>
     </dialog>
   </>;
 };

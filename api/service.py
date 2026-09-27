@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import asyncio
+import json
 from decimal import Decimal
 from dataclasses import asdict
 from hashlib import sha256
@@ -183,15 +184,9 @@ class ApplicationService:
             if isinstance(self._market_data_source, SimulationGateway):
                 return self._market_data_source, "SIMULATION"
             return self._market_data_source, "UNAVAILABLE"
-        if settings.market_data_source == "deriv_public":
-            return DerivPublicMarketData(
-                app_id=settings.deriv_app_id, endpoint=settings.deriv_public_endpoint
-            ), "DERIV_PUBLIC"
-        if settings.market_data_source == "broker":
-            return self._get_gateway(), "BROKER"
-        if isinstance(self._gateway, SimulationGateway):
-            return self._gateway, "SIMULATION"
-        return SimulationGateway(starting_balance=settings.account_balance), "SIMULATION"
+        from broker.scope import enforce_weltrade_only
+        enforce_weltrade_only(broker=settings.effective_broker, market_data_source=settings.market_data_source)
+        return self._get_gateway(), "BROKER"
 
     @asynccontextmanager
     async def _market_source(self):
@@ -298,10 +293,9 @@ class ApplicationService:
                 candles = await source.get_candles(symbol, timeframe, count)
             return candles, "SIMULATION", "CURRENT", "REFRESHED"
 
-        provider = {
-            "DERIV_PUBLIC": "deriv",
-            "BROKER": "broker",
-        }.get(configured, "simulation")
+        # New terminal history has an explicit broker identity. Legacy generic
+        # 'broker' partitions cannot prove which terminal produced their rows.
+        provider = "weltrade"
         provider_symbol = self._provider_symbol(symbol, configured)
         cache_symbol = self._candle_store.resolve_symbol_partition(
             symbol, timeframe, provider=provider
@@ -1114,16 +1108,8 @@ class ApplicationService:
                 observation_reason="Observation timestamp is in the future",
                 execution_quantity_reason="Risk observation unavailable",
             )
-        expected_account_id = None
+        expected_account_id = str(settings.effective_weltrade_login or "") or None
         active_broker = settings.effective_broker
-        if active_broker == "simulation":
-            expected_account_id = "SIMULATED"
-        elif active_broker == "deriv" and settings.deriv_options_account_id:
-            expected_account_id = settings.deriv_options_account_id.strip() or None
-        elif active_broker in {"mt5", "weltrade"}:
-            observed_account = (snapshot.account_id or "").strip()
-            if observed_account and observed_account.upper() != "SIMULATED":
-                expected_account_id = observed_account
         context_matches = (
             snapshot.broker == active_broker
             and snapshot.environment == settings.environment
@@ -1255,13 +1241,7 @@ class ApplicationService:
                 reason="Durable recovery state could not be read",
             )
         active_broker = settings.effective_broker
-        expected_account = (
-            "SIMULATED"
-            if active_broker == "simulation"
-            else settings.deriv_options_account_id.strip()
-            if active_broker == "deriv"
-            else ""
-        )
+        expected_account = str(settings.effective_weltrade_login or "")
         diagnostics: list[RecoveryIntentDiagnosticDTO] = []
         for item in inspections:
             scope_matches = (
@@ -1589,12 +1569,7 @@ class ApplicationService:
             return "*" * (len(s) - 4) + s[-4:]
 
         # 3. Known broker catalogue
-        known_brokers = [
-            ("mt5", "MT5 Demo"),
-            ("weltrade", "Weltrade Demo"),
-            ("deriv", "Deriv Demo"),
-            ("simulation", "Simulation (Test Only)"),
-        ]
+        known_brokers = [("weltrade", "Weltrade SyntX · MT5 Demo")]
 
         broker_items: list[BrokerItemStatusDTO] = []
         active_identity_dto: ActiveBrokerIdentityDTO | None = None
@@ -1622,13 +1597,39 @@ class ApplicationService:
                         f"attributable: no configured {b_name} account identity"
                     )
                     verif = None
-                elif observed_account and observed_account != str(configured_account).strip():
+                elif observed_account != str(configured_account).strip():
                     attribution_note = (
                         f"Latest DemoOnlyGuard evidence belongs to account "
                         f"{_mask(observed_account)}, not the configured {b_name} account "
                         f"{_mask(str(configured_account))}"
                     )
                     verif = None
+                elif b_key == "weltrade":
+                    try:
+                        verified_at = datetime.datetime.fromisoformat(str(verif["verified_at"]))
+                        age = (utc_now() - verified_at.astimezone(datetime.timezone.utc)).total_seconds()
+                        facts = json.loads(verif["facts_json"])
+                        valid = (
+                            observed_account.isascii() and observed_account.isdigit()
+                            and verified_at.tzinfo is not None
+                            and 0 <= age <= settings.execution_safety_freshness_seconds
+                            and verif["status"] == "PASSED"
+                            and verif["checked_field"] == "trade_mode"
+                            and type(verif["observed_value"]) is int
+                            and verif["observed_value"] == 0
+                            and isinstance(facts, dict)
+                            and facts.get("broker") == "weltrade"
+                            and facts.get("account_id") == observed_account
+                            and facts.get("checked_field") == "trade_mode"
+                            and facts.get("observed_value") == 0
+                            and facts.get("check") == "PASSED"
+                            and facts.get("verified_at") == verif["verified_at"]
+                        )
+                    except (TypeError, ValueError, KeyError, AttributeError, OverflowError):
+                        valid = False
+                    if not valid:
+                        attribution_note = "Weltrade demo verification evidence is malformed or stale"
+                        verif = None
             demo_guard_status = verif["status"] if verif else "UNVERIFIED"
             demo_guard_verified_at = verif["verified_at"] if verif else None
             is_configured, is_available, error_message = self._broker_configuration_audit(b_key)
@@ -1666,7 +1667,7 @@ class ApplicationService:
                         else str(settings.effective_weltrade_login)
                     )
                 )
-                trade_mode = "demo" if (verif and verif.get("observed_value") == 0) else "demo"
+                trade_mode = "demo" if verif else None
             elif b_key == "deriv":
                 server = getattr(settings, "deriv_server", None)
                 acc_id = verif["account_id"] if verif else getattr(settings, "deriv_options_account_id", None)
@@ -1708,7 +1709,7 @@ class ApplicationService:
                     broker=b_key,
                     account_id_masked=masked,
                     server=server,
-                    trade_mode=(trade_mode or "DEMO").upper(),
+                    trade_mode=(trade_mode or "UNKNOWN").upper(),
                     currency=currency,
                     verified_at=demo_guard_verified_at,
                     demo_guard_passed=(demo_guard_status == "PASSED"),
@@ -1777,6 +1778,9 @@ class ApplicationService:
                 "live_error": type(exc).__name__,
             })
 
+        # Opening the live session records fresh DemoOnlyGuard evidence. Re-read
+        # it so the response cannot retain a stale pre-connection identity.
+        snapshot_status = self.get_broker_status()
         items = [
             item.model_copy(update={"connected": execution.connected})
             if item.is_active else item
@@ -1854,6 +1858,8 @@ class ApplicationService:
                 missing.append("JQE_WELTRADE_TERMINAL_PATH")
             if not settings.effective_weltrade_login:
                 missing.append("JQE_WELTRADE_DEMO_LOGIN")
+            if not settings.effective_weltrade_password:
+                missing.append("JQE_WELTRADE_DEMO_PASSWORD")
             if not settings.effective_weltrade_server:
                 missing.append("JQE_WELTRADE_DEMO_SERVER")
             if missing:

@@ -16,7 +16,7 @@ export const BrokersPage: React.FC<BrokersPageProps> = ({
   onRefresh,
   onSelectBroker,
 }) => {
-  const brokers = brokerStatus?.brokers || [];
+  const brokers = brokerStatus?.brokers.filter(b => b.broker === 'weltrade') || [];
   const [switchingBroker, setSwitchingBroker] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
 
@@ -37,8 +37,8 @@ export const BrokersPage: React.FC<BrokersPageProps> = ({
     <div className="dashboard-page-container brokers-page">
       <div className="editorial-heading">
         <div>
-          <span className="editorial-kicker">Execution Architecture & Gateways</span>
-          <h1>Brokers & Gateways<span>.</span></h1>
+          <span className="editorial-kicker">Synthetic indices · Local MT5 terminal</span>
+          <h1>Weltrade connection<span>.</span></h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {onRefresh && (
@@ -80,9 +80,9 @@ export const BrokersPage: React.FC<BrokersPageProps> = ({
         <div className="quant-panel-header">
           <div className="quant-panel-title">
             <Layers size={14} color="var(--quant-cyan)" />
-            <span>Multi-Broker Gateway Topology</span>
+            <span>Weltrade SyntX terminal</span>
           </div>
-          <span className="badge badge-neutral">4 CONFIGURED</span>
+          <span className="badge badge-neutral">DEMO ONLY</span>
         </div>
 
         <div className="quant-panel-body" style={{ padding: '16px' }}>

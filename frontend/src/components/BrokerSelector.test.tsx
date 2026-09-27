@@ -90,92 +90,36 @@ describe('BrokerSelector', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders all four broker options with demo labels', async () => {
+  it('offers only Weltrade even with a legacy multi-broker response', async () => {
     await render(status(), vi.fn());
-    const labels = options().map(option => option.textContent ?? '');
-    expect(labels.some(label => label.includes('MT5 Demo'))).toBe(true);
-    expect(labels.some(label => label.includes('Weltrade Demo'))).toBe(true);
-    expect(labels.some(label => label.includes('Deriv Demo'))).toBe(true);
-    expect(labels.some(label => label.includes('Simulation (Test Only)'))).toBe(true);
-    expect(options()).toHaveLength(4);
+    expect(options().map(option => option.value)).toEqual(['weltrade']);
+    expect(options()[0].textContent).toContain('Weltrade SyntX');
   });
 
-  it('identifies the active broker as the selected value', async () => {
-    await render(status(), vi.fn());
-    expect(select().value).toBe('mt5');
-    const activeOption = options().find(option => option.value === 'mt5');
-    expect(activeOption?.textContent).toContain('●');
-  });
-
-  it('invokes the selection callback with the chosen broker id', async () => {
-    const onSelectBroker = vi.fn().mockResolvedValue(undefined);
-    await render(status(), onSelectBroker);
+  it('does not send unsupported selections', async () => {
+    const onSelect = vi.fn();
+    await render(status(), onSelect);
     await changeTo('deriv');
-    expect(onSelectBroker).toHaveBeenCalledTimes(1);
-    expect(onSelectBroker).toHaveBeenCalledWith('deriv');
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('does not invoke the callback when re-selecting the active broker', async () => {
-    const onSelectBroker = vi.fn().mockResolvedValue(undefined);
-    await render(status(), onSelectBroker);
-    await changeTo('mt5');
-    expect(onSelectBroker).not.toHaveBeenCalled();
+  it('allows recovery to the sole supported broker', async () => {
+    const onSelect = vi.fn().mockResolvedValue(undefined);
+    await render(status(), onSelect);
+    await changeTo('weltrade');
+    expect(onSelect).toHaveBeenCalledWith('weltrade');
   });
 
-  it('disables options that cannot be switched to and shows the blocked reason', async () => {
-    const blocked = status({
-      can_switch: false,
-      switch_blocked_reason: '2 unresolved durable execution intent(s) (PENDING/UNKNOWN) must be resolved before switching brokers',
-      brokers: [
-        item('mt5', { is_active: true, can_switch: false }),
-        item('weltrade', { can_switch: false, switch_blocked_reason: 'unresolved intents' }),
-        item('deriv', { can_switch: false, switch_blocked_reason: 'unresolved intents' }),
-        item('simulation', { can_switch: false, switch_blocked_reason: 'unresolved intents' }),
-      ],
-    });
-    await render(blocked, vi.fn());
-    for (const option of options()) {
-      if (option.value !== 'mt5') expect(option.disabled).toBe(true);
-    }
-    expect(host.textContent).toContain('unresolved durable execution intent(s)');
+  it('surfaces the safety block and disables unavailable selection', async () => {
+    await render(status({ can_switch: false, switch_blocked_reason: 'Unresolved execution intent',
+      brokers: [item('weltrade', { can_switch: false })] }), vi.fn());
+    expect(options()[0].disabled).toBe(true);
+    expect(host.textContent).toContain('Unresolved execution intent');
   });
 
-  it('disables an unavailable broker option with its configuration error', async () => {
-    const withUnavailable = status({
-      brokers: [
-        item('mt5', { is_active: true, can_switch: false }),
-        item('weltrade', { is_configured: false, is_available: false, can_switch: false, error_message: 'Missing required Weltrade configuration: JQE_WELTRADE_TERMINAL_PATH' }),
-        item('deriv'),
-        item('simulation'),
-      ],
-    });
-    await render(withUnavailable, vi.fn());
-    const weltrade = options().find(option => option.value === 'weltrade');
-    expect(weltrade?.disabled).toBe(true);
-    expect(weltrade?.title).toContain('JQE_WELTRADE_TERMINAL_PATH');
-  });
-
-  it('renders API errors from a failed switch', async () => {
-    const onSelectBroker = vi.fn().mockRejectedValue(new Error('HTTP 409: unresolved durable execution intents'));
-    await render(status(), onSelectBroker);
-    await changeTo('deriv');
-    const alert = host.querySelector('[role="alert"]');
-    expect(alert).not.toBeNull();
-    expect(alert?.textContent).toContain('HTTP 409');
-  });
-
-  it('shows a switching state while the selection is in flight', async () => {
-    let release: () => void = () => undefined;
-    const pending = new Promise<void>(resolve => { release = resolve; });
-    const onSelectBroker = vi.fn().mockReturnValue(pending);
-    await render(status(), onSelectBroker);
-    await act(async () => {
-      select().value = 'simulation';
-      select().dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    expect(host.textContent).toContain('SWITCHING');
-    expect(select().disabled).toBe(true);
-    await act(async () => { release(); });
-    expect(host.textContent).not.toContain('SWITCHING');
+  it('surfaces backend selection errors', async () => {
+    await render(status(), vi.fn().mockRejectedValue(new Error('Terminal unavailable')));
+    await changeTo('weltrade');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Terminal unavailable');
   });
 });

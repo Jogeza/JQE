@@ -214,6 +214,7 @@ class TestMT5DemoGateway:
 
         gateway = MT5DemoGateway(login=12345, server="DemoServer")
         with patch("broker.mt5_gateway.mt5_connect", return_value=True), \
+             patch("broker.mt5_gateway.mt5_disconnect"), \
              patch("broker.mt5_gateway.mt5.account_info", return_value=mock_info), \
              patch("broker.mt5_gateway.mt5.terminal_info", return_value=mock_term), \
              patch("broker.mt5_demo.mt5.account_info", return_value=mock_info):

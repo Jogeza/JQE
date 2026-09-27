@@ -1,93 +1,57 @@
-"""Tests for broker.factory.get_gateway — broker selection by configuration."""
-
-from __future__ import annotations
+"""Production factory and config accept only the Weltrade terminal integration."""
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
-from broker.deriv_gateway import DerivGateway
 from broker.factory import get_gateway
-from broker.mt5_gateway import MT5Gateway
-from broker.simulation_gateway import SimulationGateway
 from broker.weltrade_gateway import WeltradeGateway
 from config.settings import Settings
 from core.exceptions import ConfigurationError
 
 
-def _settings(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)
+@pytest.mark.parametrize('broker', ['simulation', 'deriv', 'deriv_demo', 'mt5', 'mt5_demo', 'unknown'])
+def test_settings_reject_other_brokers(broker):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, broker=broker)
 
 
-class TestGetGateway:
-    def test_defaults_to_mt5_without_persisted_selection(self) -> None:
-        gateway = get_gateway(_settings())
-        assert isinstance(gateway, MT5Gateway)
+@pytest.mark.parametrize('broker', ['simulation', 'deriv', 'mt5', 'unknown'])
+def test_factory_rejects_unvalidated_other_brokers(broker):
+    with pytest.raises(ConfigurationError, match='Weltrade-only'):
+        get_gateway(SimpleNamespace(broker=broker, effective_broker=broker, broker_execution_enabled=False))
 
-    def test_explicit_simulation_returns_simulation_gateway(self) -> None:
-        gateway = get_gateway(_settings(broker="simulation"))
-        assert isinstance(gateway, SimulationGateway)
 
-    def test_simulation_uses_configured_account_balance(self) -> None:
-        gateway = get_gateway(_settings(broker="simulation", account_balance=2500.0))
-        assert isinstance(gateway, SimulationGateway)
-        assert gateway.starting_balance == 2500.0
+def test_default_is_weltrade_and_terminal_market_data(monkeypatch):
+    monkeypatch.delenv('JQE_BROKER', raising=False)
+    monkeypatch.delenv('JQE_MARKET_DATA_SOURCE', raising=False)
+    cfg = Settings(_env_file=None)
+    assert cfg.broker == 'weltrade'
+    assert cfg.market_data_source == 'broker'
 
-    def test_mt5_broker_returns_mt5_gateway(self) -> None:
-        gateway = get_gateway(_settings(broker="mt5"))
-        assert isinstance(gateway, MT5Gateway)
 
-    def test_weltrade_demo_returns_weltrade_gateway(self, tmp_path) -> None:
-        terminal = tmp_path / "terminal64.exe"
-        terminal.touch()
-        gateway = get_gateway(_settings(
-            broker="weltrade_demo", weltrade_terminal_path=terminal,
-            weltrade_login=42, weltrade_server="Weltrade-Demo",
-        ))
-        assert isinstance(gateway, WeltradeGateway)
+@pytest.mark.parametrize('source', ['simulation', 'deriv_public'])
+def test_settings_reject_cross_broker_or_generated_market_data(source):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, market_data_source=source)
 
-    def test_weltrade_requires_exact_terminal_and_account_identity(self) -> None:
-        with pytest.raises(ConfigurationError, match="TERMINAL_PATH"):
-            get_gateway(_settings(broker="weltrade_demo"))
 
-    def test_deriv_broker_returns_deriv_gateway(self) -> None:
-        gateway = get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_options_account_id="CR1", deriv_expected_environment="demo"))
-        assert isinstance(gateway, DerivGateway)
+@pytest.mark.parametrize('broker', ['weltrade', 'weltrade_demo'])
+def test_factory_pins_weltrade_terminal_and_demo_account(tmp_path, broker):
+    terminal = tmp_path / 'terminal64.exe'
+    terminal.touch()
+    cfg = Settings(_env_file=None, broker=broker, weltrade_terminal_path=terminal,
+                   weltrade_login=42, weltrade_password='fixture', weltrade_server='Weltrade-Demo')
+    gateway = get_gateway(cfg)
+    assert isinstance(gateway, WeltradeGateway)
+    assert gateway.login == 42
+    assert gateway.server == 'Weltrade-Demo'
+    assert gateway.expected_environment == 'demo'
+    assert gateway.strict_lifecycle is True
+    assert gateway.is_connected is False
 
-    def test_live_execution_scope_rejects_deriv_before_gateway_construction(self, tmp_path) -> None:
-        with pytest.raises(ConfigurationError, match="Weltrade-only"):
-            get_gateway(_settings(
-                broker="deriv",
-                broker_execution_enabled=True,
-                market_data_source="broker",
-                broker_selection_store_path=tmp_path / "selection.sqlite3",
-                deriv_api_token="test-token",
-                deriv_options_account_id="CR1",
-                deriv_expected_environment="demo",
-            ))
 
-    def test_deriv_broker_without_token_raises(self) -> None:
-        with pytest.raises(ConfigurationError):
-            get_gateway(_settings(broker="deriv", deriv_api_token=None))
-
-    def test_deriv_gateway_uses_configured_app_id_and_endpoint(self) -> None:
-        gateway = get_gateway(
-            _settings(
-                broker="deriv",
-                deriv_api_token="test-token",
-                deriv_app_id="9999",
-                deriv_endpoint="wss://example.test/v3",
-                deriv_options_account_id="CR1",
-                deriv_expected_environment="demo",
-            )
-        )
-        assert isinstance(gateway, DerivGateway)
-        assert gateway.app_id == "9999"
-        assert gateway.endpoint == "wss://example.test/v3"
-
-    @pytest.mark.parametrize("environment", [None, "real"])
-    def test_deriv_requires_explicit_demo_environment(self, environment) -> None:
-        with pytest.raises(ConfigurationError, match="EXPECTED_ENVIRONMENT=demo"):
-            get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_expected_environment=environment))
-
-    def test_deriv_requires_exact_account_identity(self) -> None:
-        with pytest.raises(ConfigurationError, match="OPTIONS_ACCOUNT_ID"):
-            get_gateway(_settings(broker="deriv", deriv_api_token="test-token", deriv_expected_environment="demo"))
+def test_factory_requires_terminal_identity():
+    with pytest.raises(ConfigurationError, match='TERMINAL_PATH'):
+        get_gateway(Settings(_env_file=None, weltrade_terminal_path=None))

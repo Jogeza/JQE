@@ -70,8 +70,8 @@ export function MarketSidebar({
               </button>
               <span
                 className="research-cache-label"
-                title={cached ? 'Dataset cached locally' : 'Public data only (uncached)'}
-              >{cached ? 'Cached' : 'Public'}</span>
+                title={cached ? 'Weltrade dataset cached locally' : 'Weltrade terminal history not cached'}
+              >{cached ? 'Cached' : 'Not cached'}</span>
             </div>
           );
         })}
