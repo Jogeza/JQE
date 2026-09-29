@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timezone
+import math
 import re
 from typing import Any
 
@@ -11,6 +14,7 @@ from pathlib import Path
 
 from broker.mt5_demo import MT5DemoGateway
 from broker.mt5_gateway import _DEFAULT_TICK_POLL_INTERVAL_SECONDS
+from broker.types import Tick
 from core.exceptions import BrokerConnectionError
 from core.logger import logger
 from broker.weltrade_symbols import is_weltrade_synthetic
@@ -37,6 +41,40 @@ class WeltradeGateway(MT5DemoGateway):
     """Weltrade-only identity and symbol policy over shared MT5 mechanics."""
 
     demo_guard_broker = "weltrade"
+
+    async def get_price_point(self, symbol: str) -> float:
+        """Read the connected terminal's price quantum for fill verification."""
+        self._require_connected()
+        if not is_weltrade_synthetic(symbol):
+            raise BrokerConnectionError("Symbol outside Weltrade synthetic scope")
+        info = await asyncio.to_thread(mt5.symbol_info, symbol)
+        point = getattr(info, "point", None)
+        if not isinstance(point, (int, float)) or not math.isfinite(point) or point <= 0:
+            raise BrokerConnectionError("Weltrade symbol price precision unavailable")
+        return float(point)
+
+    async def get_latest_tick(self, symbol: str) -> Tick | None:
+        """Read one terminal tick; return no price when server time is unresolved."""
+        self._require_connected()
+        if not is_weltrade_synthetic(symbol):
+            return None
+        raw = await asyncio.to_thread(mt5.symbol_info_tick, symbol)
+        stamp = getattr(raw, "time", None)
+        if type(stamp) is not int or stamp <= 0:
+            return None
+        now = datetime.now(timezone.utc)
+        offsets = [hours * 3600 for hours in range(-12, 15)
+                   if abs(stamp - hours * 3600 - now.timestamp()) <= 120]
+        if len(offsets) != 1:
+            return None
+        bid = float(getattr(raw, "bid", 0.0))
+        ask = float(getattr(raw, "ask", 0.0))
+        if not all(math.isfinite(value) and value > 0 for value in (bid, ask)):
+            return None
+        return Tick(
+            time=datetime.fromtimestamp(stamp - offsets[0], tz=timezone.utc),
+            symbol=symbol, bid=bid, ask=ask,
+        )
 
     def __init__(
         self,

@@ -5,7 +5,11 @@ from __future__ import annotations
 from notifications.service import NotificationService
 from notifications.chart import ChartSnapshot
 from datetime import datetime
+from datetime import timezone
 from collections.abc import Sequence
+import math
+
+from broker.types import Tick
 
 from notifications.types import DigestSnapshot, Notification, NotificationType
 
@@ -27,6 +31,43 @@ class JQENotificationEvents:
     def service(self) -> NotificationService:
         return self._service
 
+    async def strategy_signal(self, *, symbol: str, timeframe: str, side: str,
+                              confidence: object, bar_time: str,
+                              tick: Tick | None = None,
+                              planned_entry: float | None = None,
+                              planned_stop_loss: float | None = None,
+                              planned_take_profit: float | None = None,
+                              simulated: bool = False) -> bool:
+        """Report a canonical closed-bar decision without implying risk approval."""
+        facts = {
+            "Symbol": symbol, "Timeframe": timeframe, "Signal": side,
+            "Confidence": str(confidence), "Closed bar time": bar_time,
+            "Execution": "PENDING RISK AND BROKER CHECKS" if side in {"BUY", "SELL"}
+                         else "NO TRADE",
+        }
+        now = datetime.now(timezone.utc)
+        if (tick is not None and tick.time.tzinfo is not None
+                and 0 <= (now - tick.time.astimezone(timezone.utc)).total_seconds() <= 15
+                and all(math.isfinite(value) and value > 0 for value in (tick.bid, tick.ask))):
+            facts.update({"Tick bid": str(tick.bid), "Tick ask": str(tick.ask),
+                          "Tick time": tick.time.astimezone(timezone.utc).isoformat()})
+        else:
+            facts["Price"] = "price unavailable"
+        for label, value in (
+            ("Planned entry", planned_entry),
+            ("Planned stop loss", planned_stop_loss),
+            ("TP1", planned_take_profit),
+        ):
+            if isinstance(value, (int, float)) and math.isfinite(value) and value > 0:
+                facts[label] = str(value)
+        if simulated:
+            facts["Source"] = "SIMULATION"
+        return await self._service.publish(Notification(
+            NotificationType.SIGNAL_GENERATED,
+            "JQE SIMULATION STRATEGY SIGNAL" if simulated else "JQE WELTRADE STRATEGY SIGNAL",
+            facts, simulated=simulated,
+        ))
+
     async def deriv_identity_verified(self, *, account_id: str) -> bool:
         return await self._service.publish(Notification(
             NotificationType.DERIV_IDENTITY_VERIFIED,
@@ -47,11 +88,11 @@ class JQENotificationEvents:
             {"Reason": reason},
         ))
 
-    async def trade_blocked(self, *, reason: str) -> bool:
+    async def trade_blocked(self, *, reason: str, facts: dict[str, str] | None = None) -> bool:
         return await self._service.publish(Notification(
             NotificationType.TRADE_BLOCKED,
             "JQE TRADE BLOCKED",
-            {"Reason": reason},
+            {**(facts or {}), "Reason": reason},
         ))
 
     async def emergency_stop(self, *, state: str) -> bool:
@@ -77,6 +118,9 @@ class JQENotificationEvents:
         kind: str,
         facts: dict[str, str],
         chart_snapshot: ChartSnapshot | None = None,
+        event_id: str | None = None,
+        occurred_at: datetime | None = None,
+        simulated: bool = False,
     ) -> bool:
         mapping = {
             "OPENED": (NotificationType.POSITION_OPENED, "JQE DEMO TRADE OPENED"),
@@ -86,8 +130,17 @@ class JQENotificationEvents:
         if kind not in mapping:
             raise ValueError("unknown demo trade notification event")
         notification_type, title = mapping[kind]
+        simulated = simulated or any(
+            str(facts.get(key, "")).strip().upper().startswith("SIM-")
+            for key in ("Order", "Position")
+        )
+        if simulated:
+            title = f"JQE SIMULATION TRADE {kind}"
+            facts = {**facts, "Source": "SIMULATION", "Account mode": "SIMULATION"}
         return await self._service.publish(
-            Notification(notification_type, title, facts, chart_snapshot=chart_snapshot)
+            Notification(notification_type, title, facts, chart_snapshot=chart_snapshot,
+                         event_id=event_id, demo_account=not simulated,
+                         occurred_at=occurred_at, simulated=simulated)
         )
 
     async def pending_order_placed(
@@ -103,13 +156,14 @@ class JQENotificationEvents:
             chart_snapshot=chart_snapshot,
         ))
 
-    async def trade_rejected(self, *, reason: str, facts: dict[str, str] | None = None) -> bool:
+    async def trade_rejected(self, *, reason: str, facts: dict[str, str] | None = None,
+                             event_id: str | None = None, demo_account: bool = False) -> bool:
         payload = dict(facts or {})
         payload["Reason"] = reason
         return await self._service.publish(Notification(
             NotificationType.ORDER_REJECTED,
             "JQE TRADE REJECTED",
-            payload,
+            payload, event_id=event_id, demo_account=demo_account,
         ))
 
     async def runtime_health(self, *, state: str, facts: dict[str, str]) -> bool:

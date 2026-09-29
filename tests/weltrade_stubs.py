@@ -4,10 +4,13 @@ The fixed one-unit price economics are a test assumption, not a contract spec.
 Production factory/configuration is never patched to accept another broker.
 """
 from broker.simulation_gateway import SimulationGateway
-from broker.types import AccountInfo, ExecutionQuantity, ExecutionQuantityUnit
+from broker.types import AccountInfo, ExecutionQuantity, ExecutionQuantityUnit, OrderSide
 
 
 class WeltradeStubGateway(SimulationGateway):
+    async def get_price_point(self, symbol: str) -> float:
+        return 0.01
+
     async def get_account_info(self):
         account = await super().get_account_info()
         return account.model_copy(update={
@@ -26,4 +29,8 @@ class WeltradeStubGateway(SimulationGateway):
         internal_order = order.model_copy(update={"quantity": ExecutionQuantity(
             value=order.quantity.value, unit=ExecutionQuantityUnit.SIMULATION_UNITS,
         )})
-        return self._fill_order(internal_order, order.entry_price or 101.0)
+        price = order.entry_price or (
+            max(101.0, order.stop_loss + 1.0)
+            if order.side is OrderSide.BUY else min(101.0, order.stop_loss - 1.0)
+        )
+        return self._fill_order(internal_order, price)

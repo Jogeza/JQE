@@ -73,7 +73,8 @@ def _settings(tmp_path, monkeypatch):
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.default_symbol = "FX VOL 20"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
-    yield
+    with main._armed_by_supervisor():
+        yield
     (
         settings.broker, settings.market_data_source, settings.default_candle_count,
         settings.intent_store_path, settings.execution_safety_store_path,
@@ -144,7 +145,7 @@ async def test_closed_candle_drives_plan_and_sizing_but_not_broker_fill_price() 
     assert build_plan.call_args.kwargs["price"] == 2_345.67
     assert size.call_args.kwargs["entry"] == 2_345.67
     assert order.entry_price is None  # Market order: the broker owns its fill price.
-    assert result.filled_price == 101.0  # Explicit offline gateway fill fixture.
+    assert result.filled_price == 2_341.0  # Offline fill remains beyond the protective stop.
 
 
 def test_forming_candle_is_excluded_and_fails_closed_when_no_closed_candle() -> None:

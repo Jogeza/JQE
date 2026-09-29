@@ -32,7 +32,8 @@ def _isolated_execution_state(tmp_path):
     settings.emergency_stop = EmergencyStopState.CLEAR
     settings.market_data_source = "simulation"
     settings.default_symbol = "R_75"
-    yield
+    with main._armed_by_supervisor():
+        yield
     (
         settings.broker,
         settings.default_candle_count,

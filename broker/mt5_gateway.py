@@ -30,11 +30,14 @@ from broker.types import (
     Tick,
     Timeframe,
     TradeHistoryEntry,
+    TradeHistoryCompleteness,
+    TradeHistorySnapshot,
 )
 from core.exceptions import (
     BrokerConnectionError,
     ExecutionError,
     MarketDataError,
+    PreSubmitOrderRejected,
 )
 from core.logger import logger
 from core.mt5_connection import connect as mt5_connect
@@ -51,6 +54,110 @@ _DEFAULT_TICK_POLL_INTERVAL_SECONDS = 1.0
 # conversion; it returns the raw server integer.  Subtract this offset
 # before treating the value as a POSIX epoch so all stored datetimes are UTC.
 _MT5_SERVER_UTC_OFFSET_SECONDS: int = 3 * 3600  # 10 800 s
+
+
+def _history_server_offset(terminal: object, now: datetime) -> int | None:
+    """Resolve server clock from a fresh Weltrade synthetic tick, in whole hours.
+
+    MT5 exposes no server timezone setting. A stale or ambiguous tick cannot
+    establish an offset, so history coverage must remain unknown.
+    """
+    tick = terminal.symbol_info_tick("FX Vol 20")
+    raw = getattr(tick, "time", None)
+    if type(raw) is not int or raw <= 0:
+        return None
+    observed = now.timestamp()
+    candidates = [hours * 3600 for hours in range(-12, 15)
+                  if abs(raw - hours * 3600 - observed) <= 120]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def read_mt5_trade_history_snapshot(
+    terminal: object, *, start: datetime, end: datetime, count: int = 100,
+    connected: bool,
+) -> TradeHistorySnapshot:
+    """Read complete closed-deal history without exposing an order path.
+
+    The requested UTC interval and the current broker-server day are both
+    covered. MT5's history query is unbounded; `count` is a completeness
+    limit, never a slice that could silently discard closing deals.
+    """
+    unknown = TradeHistorySnapshot()
+    if not connected or count <= 0 or start.tzinfo is None or end.tzinfo is None or start >= end:
+        return unknown
+    try:
+        now = datetime.now(timezone.utc)
+        if end.astimezone(timezone.utc) > now:
+            return unknown
+        offset = _history_server_offset(terminal, now)
+        if offset is None:
+            return unknown
+        server_day_start = datetime.combine(
+            (now + timedelta(seconds=offset)).date(), datetime.min.time(), tzinfo=timezone.utc
+        ) - timedelta(seconds=offset)
+        query_start = min(start.astimezone(timezone.utc), server_day_start)
+        query_end = max(end.astimezone(timezone.utc), now)
+        deals = terminal.history_deals_get(query_start, query_end)
+        if deals is None:
+            return unknown
+        closing = {terminal.DEAL_ENTRY_OUT, terminal.DEAL_ENTRY_INOUT}
+        non_trade = {
+            terminal.DEAL_TYPE_COMMISSION, terminal.DEAL_TYPE_INTEREST,
+            terminal.DEAL_TYPE_BALANCE, terminal.DEAL_TYPE_CREDIT,
+            terminal.DEAL_TYPE_BONUS,
+        }
+        closed = [deal for deal in deals if deal.entry in closing and deal.type not in non_trade]
+        if len(closed) > count:
+            return TradeHistorySnapshot(completeness=TradeHistoryCompleteness.TRUNCATED)
+        fees: dict[str, float] = {}
+        open_volume: dict[str, float] = {}
+        for deal in deals:
+            position_id = getattr(deal, "position_id", None)
+            if position_id in (None, 0, "", "0"):
+                continue
+            key = str(position_id)
+            charge = float(getattr(deal, "commission", 0.0)) + float(getattr(deal, "swap", 0.0))
+            if not math.isfinite(charge):
+                return unknown
+            fees[key] = fees.get(key, 0.0) + charge
+            if deal.entry == terminal.DEAL_ENTRY_IN and deal.type not in non_trade:
+                opening_volume = float(deal.volume)
+                if not math.isfinite(opening_volume) or opening_volume <= 0:
+                    return unknown
+                open_volume[key] = open_volume.get(key, 0.0) + opening_volume
+
+        def close_reason(deal: object) -> str:
+            reason = getattr(deal, "reason", None)
+            if reason == getattr(terminal, "DEAL_REASON_SL", object()):
+                return "STOP_LOSS"
+            if reason == getattr(terminal, "DEAL_REASON_TP", object()):
+                return "TAKE_PROFIT"
+            if reason in {
+                getattr(terminal, name, object())
+                for name in ("DEAL_REASON_CLIENT", "DEAL_REASON_MOBILE", "DEAL_REASON_WEB")
+            }:
+                return "MANUAL"
+            return "UNKNOWN"
+
+        trades = [TradeHistoryEntry(
+            trade_id=str(deal.ticket), symbol=deal.symbol,
+            side=OrderSide.SELL if deal.type == terminal.DEAL_TYPE_BUY else OrderSide.BUY,
+            volume=float(deal.volume), open_price=float(deal.price),
+            close_price=float(deal.price), profit=float(deal.profit),
+            opened_at=datetime.fromtimestamp(deal.time - offset, tz=timezone.utc),
+            closed_at=datetime.fromtimestamp(deal.time - offset, tz=timezone.utc),
+            position_id=str(getattr(deal, "position_id", "")) or None,
+            close_reason=close_reason(deal),
+        ) for deal in closed]
+        return TradeHistorySnapshot(
+            trades=trades, completeness=TradeHistoryCompleteness.COMPLETE,
+            coverage_start=query_start, coverage_end=query_end,
+            position_fees=fees,
+            position_open_volume=open_volume,
+        )
+    except Exception:
+        logger.warning("MT5 closed-deal history coverage unavailable")
+        return unknown
 
 
 def _mt5_ts_to_utc(raw_server_ts: int) -> datetime:
@@ -107,14 +214,14 @@ def _normalize_volume(requested: float, symbol_info: object) -> float:
     maximum = _numeric_attr(symbol_info, "volume_max")
     step = _numeric_attr(symbol_info, "volume_step")
     if not math.isfinite(requested) or requested <= 0 or minimum <= 0 or maximum < minimum or step <= 0:
-        raise ExecutionError("Invalid MT5 volume specification", requested_volume=requested)
+        raise PreSubmitOrderRejected("Invalid MT5 volume specification", requested_volume=requested)
     if requested + 1e-12 < minimum:
-        raise ExecutionError("MT5 volume is below the symbol minimum", requested_volume=requested, minimum=minimum)
+        raise PreSubmitOrderRejected("MT5 volume is below the symbol minimum", requested_volume=requested, minimum=minimum)
     if requested > maximum + 1e-12:
-        raise ExecutionError("MT5 volume exceeds the symbol maximum", requested_volume=requested, maximum=maximum)
+        raise PreSubmitOrderRejected("MT5 volume exceeds the symbol maximum", requested_volume=requested, maximum=maximum)
     normalized = round(math.floor((requested + 1e-12) / step) * step, 8)
     if normalized + 1e-12 < minimum:
-        raise ExecutionError("MT5 normalized volume is below the symbol minimum", requested_volume=requested)
+        raise PreSubmitOrderRejected("MT5 normalized volume is below the symbol minimum", requested_volume=requested)
     return normalized
 
 
@@ -127,7 +234,7 @@ def _select_filling_mode(symbol_info: object) -> int:
         return mt5.ORDER_FILLING_FOK
     if getattr(symbol_info, "trade_exemode", None) != getattr(mt5, "SYMBOL_TRADE_EXECUTION_MARKET", object()):
         return mt5.ORDER_FILLING_RETURN
-    raise ExecutionError("MT5 symbol has no supported filling mode")
+    raise PreSubmitOrderRejected("MT5 symbol has no supported filling mode")
 
 
 #: Maps the broker-agnostic Timeframe to MT5's native constants. Built
@@ -415,7 +522,7 @@ class MT5Gateway(BrokerGateway):
         self._require_connected()
         from broker.types import ExecutionQuantityUnit
         if order.quantity.unit is not ExecutionQuantityUnit.MT5_LOTS:
-            raise ExecutionError("MT5 requires MT5_LOTS")
+            raise PreSubmitOrderRejected("MT5 requires MT5_LOTS")
         requested_quantity = order.quantity.value
         if self.strict_lifecycle or self.expected_environment or self.login is not None or self.server is not None:
             if await asyncio.to_thread(self._verify_connection_identity, require_trading=True) is not True:
@@ -427,7 +534,7 @@ class MT5Gateway(BrokerGateway):
         )
 
         if not real_symbol:
-            raise ExecutionError(
+            raise PreSubmitOrderRejected(
                 "Unknown MT5 symbol",
                 symbol=order.symbol,
             )
@@ -456,7 +563,7 @@ class MT5Gateway(BrokerGateway):
             )
 
         if getattr(symbol_info, "trade_mode", None) == getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", 0):
-            raise ExecutionError("MT5 symbol is disabled", symbol=order.symbol)
+            raise PreSubmitOrderRejected("MT5 symbol is disabled", symbol=order.symbol)
         quantity = _normalize_volume(requested_quantity, symbol_info)
 
         tick = await asyncio.to_thread(
@@ -486,26 +593,34 @@ class MT5Gateway(BrokerGateway):
                 else round(float(tick.bid), digits) - price
             )
             if trigger_distance < minimum_distance:
-                raise ExecutionError("MT5 pending trigger validation failed", symbol=order.symbol)
+                raise PreSubmitOrderRejected("MT5 pending trigger validation failed", symbol=order.symbol)
 
         stop_limit_price = None
         if order.order_type is OrderType.STOP_LIMIT:
             stop_limit_price = round(float(order.stop_limit_price), digits)
             if order.side is OrderSide.BUY and stop_limit_price > price:
-                raise ExecutionError("MT5 buy stop-limit price must not exceed its trigger", symbol=order.symbol)
+                raise PreSubmitOrderRejected("MT5 buy stop-limit price must not exceed its trigger", symbol=order.symbol)
             if order.side is OrderSide.SELL and stop_limit_price < price:
-                raise ExecutionError("MT5 sell stop-limit price must not be below its trigger", symbol=order.symbol)
+                raise PreSubmitOrderRejected("MT5 sell stop-limit price must not be below its trigger", symbol=order.symbol)
 
         if order.side is OrderSide.BUY:
             if price - stop_loss < minimum_distance:
-                raise ExecutionError("MT5 stop-loss validation failed", symbol=order.symbol)
+                raise PreSubmitOrderRejected(
+                    "MT5 stop-loss is closer than the symbol minimum",
+                    symbol=order.symbol, actual_points=round((price - stop_loss) / point, 6),
+                    required_points=symbol_info.trade_stops_level,
+                )
             if take_profit is not None and take_profit - price < minimum_distance:
-                raise ExecutionError("MT5 take-profit validation failed", symbol=order.symbol)
+                raise PreSubmitOrderRejected("MT5 take-profit validation failed", symbol=order.symbol)
         else:
             if stop_loss - price < minimum_distance:
-                raise ExecutionError("MT5 stop-loss validation failed", symbol=order.symbol)
+                raise PreSubmitOrderRejected(
+                    "MT5 stop-loss is closer than the symbol minimum",
+                    symbol=order.symbol, actual_points=round((stop_loss - price) / point, 6),
+                    required_points=symbol_info.trade_stops_level,
+                )
             if take_profit is not None and price - take_profit < minimum_distance:
-                raise ExecutionError("MT5 take-profit validation failed", symbol=order.symbol)
+                raise PreSubmitOrderRejected("MT5 take-profit validation failed", symbol=order.symbol)
 
         native_type = {
             OrderType.MARKET: mt5.ORDER_TYPE_BUY if order.side is OrderSide.BUY else mt5.ORDER_TYPE_SELL,
@@ -537,7 +652,7 @@ class MT5Gateway(BrokerGateway):
 
         check = await asyncio.to_thread(mt5.order_check, request)
         if check is None or getattr(check, "retcode", None) != 0:
-            raise ExecutionError(
+            raise PreSubmitOrderRejected(
                 "MT5 order_check rejected request", symbol=order.symbol,
                 retcode=getattr(check, "retcode", None),
                 comment=getattr(check, "comment", ""), request=request,
@@ -555,7 +670,11 @@ class MT5Gateway(BrokerGateway):
                 request=request,
             )
 
+        partial_retcode = getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None)
+        partial_fill = order.order_type is OrderType.MARKET and result.retcode == partial_retcode
         accepted_retcodes = {mt5.TRADE_RETCODE_DONE}
+        if partial_retcode is not None and order.order_type is OrderType.MARKET:
+            accepted_retcodes.add(partial_retcode)
         if order.order_type is not OrderType.MARKET:
             accepted_retcodes.add(mt5.TRADE_RETCODE_PLACED)
         if result.retcode not in accepted_retcodes:
@@ -585,6 +704,11 @@ class MT5Gateway(BrokerGateway):
 
         result_order = getattr(result, "order", None) or getattr(result, "deal", None)
         result_price = getattr(result, "price", None)
+        filled_volume = _numeric_attr(result, "volume", quantity)
+        if partial_fill and (
+            not math.isfinite(filled_volume) or filled_volume <= 0 or filled_volume > quantity
+        ):
+            raise ExecutionError("MT5 partial fill volume is unverifiable", symbol=order.symbol)
         if result_order in (None, "") or (
             order.order_type is OrderType.MARKET
             and (not isinstance(result_price, (int, float)) or isinstance(result_price, bool))
@@ -596,7 +720,7 @@ class MT5Gateway(BrokerGateway):
             status=OrderStatus.FILLED if order.order_type is OrderType.MARKET else OrderStatus.SUBMITTED,
             symbol=order.symbol,
             side=order.side,
-            volume=quantity,
+            volume=filled_volume if partial_fill else quantity,
             filled_price=float(result_price) if order.order_type is OrderType.MARKET else None,
             raw={
                 "retcode": result.retcode,
@@ -605,6 +729,7 @@ class MT5Gateway(BrokerGateway):
                 "position": getattr(result, "position", None),
                 "requested_volume": requested_quantity,
                 "filled_volume": _numeric_attr(result, "volume", quantity),
+                "partial_fill": partial_fill,
                 "requested_price": price,
                 "order_type": order.order_type.value,
                 "stop_loss": stop_loss,
@@ -707,6 +832,19 @@ class MT5Gateway(BrokerGateway):
             )
             for p in positions
         ]
+
+    async def get_trade_history_snapshot(
+        self, *, start: datetime, end: datetime, count: int = 100,
+    ) -> TradeHistorySnapshot:
+        """Return authoritative history only for a complete MT5 deal window."""
+        try:
+            self._require_connected()
+        except BrokerConnectionError:
+            return TradeHistorySnapshot()
+        return await asyncio.to_thread(
+            read_mt5_trade_history_snapshot, mt5,
+            start=start, end=end, count=count, connected=True,
+        )
 
     async def get_trade_history(
         self,

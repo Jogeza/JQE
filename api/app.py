@@ -6,6 +6,13 @@ and dashboard API routes.
 
 from __future__ import annotations
 
+import os
+
+# The API is an observation surface. Never let a shared dotenv file or an
+# inherited process variable arm its order endpoint. Execution belongs to a
+# separately launched, explicitly armed Weltrade supervisor process.
+os.environ["JQE_BROKER_EXECUTION_ENABLED"] = "false"
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,6 +25,9 @@ from api.assistant import router as assistant_router
 from api.notifications import router as notifications_router
 from config.settings import settings
 from core.exceptions import JQEError
+
+if settings.broker_execution_enabled:
+    raise RuntimeError("API refuses execution-enabled settings; launch a separate supervisor")
 
 
 def create_app() -> FastAPI:

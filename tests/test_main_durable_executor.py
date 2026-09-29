@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,7 +23,7 @@ from broker.types import (
     TradeHistorySnapshot,
 )
 from config import EmergencyStopState, Settings, settings
-from core.exceptions import ConfigurationError, ExecutionError
+from core.exceptions import ConfigurationError, ExecutionError, PreSubmitOrderRejected
 from execution.idempotency import build_execution_idempotency_key
 from execution.models import ClaimState, IntentRecord, IntentRecordStatus, ReservationState
 from execution.persistence import SQLiteIntentRecordStore
@@ -33,6 +34,11 @@ from execution.safety import (
     RiskEvaluationState,
     SQLiteExecutionSafetyStore,
 )
+from data.watchlist import WatchPair
+from broker.types import Timeframe
+from notifications.types import NotificationType
+from execution.persistence import SQLitePositionLedger
+from execution.daily_instrument_guard import DailyInstrumentTradeGuard
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +67,8 @@ def _restore_execution_settings(tmp_path):
     settings.execution_position_ledger_path = tmp_path / "positions.sqlite3"
     settings.execution_lifetime_store_path = tmp_path / "lifetime.sqlite3"
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
-    yield
+    with main._armed_by_supervisor():
+        yield
     (
         settings.broker,
         settings.intent_store_path,
@@ -79,6 +86,7 @@ def _restore_execution_settings(tmp_path):
 
 def _gateway() -> MagicMock:
     gateway = MagicMock()
+    gateway.get_price_point = AsyncMock(return_value=0.01)
     gateway.__aenter__ = AsyncMock(return_value=gateway)
     gateway.__aexit__ = AsyncMock(return_value=None)
     candle = MagicMock()
@@ -117,6 +125,22 @@ def _gateway() -> MagicMock:
             side=OrderSide.BUY, volume=1.0,
         )
     )
+    async def broker_positions():
+        explicit = gateway.get_positions.return_value
+        if explicit:
+            return explicit
+        if gateway.submit_order.await_count:
+            outcome = gateway.submit_order.return_value
+            if isinstance(outcome, OrderResult) and outcome.status is OrderStatus.FILLED:
+                submitted = gateway.submit_order.await_args.args[0]
+                return [Position(
+                    position_id=outcome.order_id, symbol=submitted.symbol,
+                    side=submitted.side, volume=outcome.volume,
+                    open_price=101.0, stop_loss=submitted.stop_loss,
+                    opened_at=datetime.now(timezone.utc),
+                )]
+        return []
+    gateway.get_positions.side_effect = broker_positions
     async def submit_from_observation(order, observation):
         return await gateway.submit_order(order)
     gateway.submit_order_from_market_observation = AsyncMock(side_effect=submit_from_observation)
@@ -672,6 +696,76 @@ async def test_unknown_submission_is_persisted_and_not_blindly_retried() -> None
 
 
 @pytest.mark.asyncio
+async def test_pre_submit_stop_rejection_notifies_counts_and_continues_watchlist() -> None:
+    gateway = _gateway()
+    gateway.submit_order.side_effect = PreSubmitOrderRejected(
+        "MT5 stop-loss is closer than the symbol minimum",
+        symbol="FX VOL 20", actual_points=845, required_points=1716,
+    )
+    service = MagicMock()
+    service.publish = AsyncMock(return_value=True)
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4] as signal_mock, \
+         patches[5] as risk_mock, patches[6], \
+         patch("main.notification_service_from_settings", return_value=service), \
+         patch("main._emit_weltrade_signal_alert", new_callable=AsyncMock), \
+         patch("data.watchlist.WatchlistStore.get_watch_pairs", return_value=(
+             WatchPair("FX VOL 20", Timeframe.M1),
+             WatchPair("FX VOL 40", Timeframe.M1),
+         )):
+        signal_mock.side_effect = [
+            {"signal": "BUY", "confidence": 90, "intelligence": {"atr": 1.0}},
+            {"signal": "NO_TRADE", "confidence": 70},
+        ]
+        risk_mock.side_effect = [
+            {"approved": True, "reason": "ok", "risk_percent": 0.02,
+             "authorized_risk_amount": 2.0},
+            {"approved": False, "reason": "No trade signal",
+             "reason_code": "NO_TRADE_SIGNAL", "risk_percent": 0.0,
+             "authorized_risk_amount": 0.0},
+        ]
+        results = await main.run_watchlist()
+
+    assert [result.status for result in results] == [
+        "PRE_SUBMIT_VALIDATION_REJECTED", "NO_TRADE",
+    ]
+    assert "required_points=1716" in results[0].reason
+    assert gateway.submit_order.await_count == 1
+    notifications = [call.args[0] for call in service.publish.await_args_list]
+    rejects = [item for item in notifications if item.kind is NotificationType.ORDER_REJECTED]
+    assert len(rejects) == 2  # stop rejection and the second pair's no-signal rejection
+    assert rejects[0].facts["Reason"] == "PRE_SUBMIT_VALIDATION_REJECTED"
+    assert "required_points=1716" in rejects[0].facts["Detail"]
+    assert SQLiteIntentRecordStore(settings.intent_store_path).get(_expected_key()).status is IntentRecordStatus.REJECTED
+    guard = DailyInstrumentTradeGuard(settings.daily_instrument_trade_store_path)
+    assert guard.usage("weltrade:4242", "FX VOL 20").count == 1
+    assert guard.usage("weltrade:4242", "FX VOL 40").count == 0
+    assert SQLitePositionLedger(settings.execution_position_ledger_path).open_entries(broker="weltrade") == ()
+
+
+@pytest.mark.asyncio
+async def test_pre_submit_rejection_persistence_failure_remains_unknown() -> None:
+    gateway = _gateway()
+    gateway.submit_order.side_effect = PreSubmitOrderRejected("known pre-submit rejection")
+    store = MagicMock()
+    store.recovery_mode = False
+    store.list_unresolved.return_value = ()
+    store.get.return_value = None
+    store.acquire_reservation.return_value = ReservationState.ACQUIRED
+    store.release_reservation.return_value = True
+    store.try_claim_under_reservation.return_value = ClaimState.CLAIMED
+    store.transition.return_value = False
+    patches = _pipeline_patches(gateway)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
+         patch("main.SQLiteIntentRecordStore", return_value=store):
+        await main.run()
+    safety = SQLiteExecutionSafetyStore(settings.execution_safety_store_path, initialize=False).read()
+    assert safety is not None
+    assert safety.execution_authorization is ExecutionAuthorization.UNKNOWN
+    assert safety.reason_codes == ("SUBMISSION_OUTCOME_UNKNOWN",)
+
+
+@pytest.mark.asyncio
 async def test_broker_open_same_symbol_position_blocks_durable_submission() -> None:
     gateway = _gateway()
     gateway.get_positions.return_value = [
@@ -844,9 +938,11 @@ async def test_multiple_unresolved_records_block_new_intent_in_enumeration_order
 async def test_startup_continues_after_all_unresolved_intents_are_proven_accepted() -> None:
     from execution.persistence import SQLitePositionLedger
     from datetime import datetime, timezone
-    SQLitePositionLedger(settings.execution_position_ledger_path).record_open(
+    opened_at = datetime.now(timezone.utc)
+    SQLitePositionLedger(settings.execution_position_ledger_path).record_confirmed_fill_once(
         broker="weltrade", symbol="FX VOL 20", position_id="SIM-prior",
-        order_id="SIM-prior", opened_at=datetime.now(timezone.utc),
+        order_id="SIM-prior", side=OrderSide.BUY, volume=1.0,
+        entry_price=101.0, stop_loss=99.0, opened_at=opened_at,
     )
     store = SQLiteIntentRecordStore(settings.intent_store_path)
     record = IntentRecord(
@@ -875,6 +971,8 @@ async def test_startup_continues_after_all_unresolved_intents_are_proven_accepte
             side=OrderSide.BUY,
             volume=1.0,
             open_price=101.0,
+            stop_loss=99.0,
+            opened_at=opened_at,
         )
     ]
     patches = _pipeline_patches(gateway)

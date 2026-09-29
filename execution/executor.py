@@ -9,6 +9,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from broker.types import OrderRequest, OrderResult, OrderStatus, Position
+from core.exceptions import PreSubmitOrderRejected
 from execution.policy import ExecutionContext, ExecutionDecision, ExecutionIntent, ExecutionPolicy
 from execution.trade_manager import PositionSnapshotAdapter
 from execution.reconciliation import BrokerReconciliationResult, BrokerReconciliationState
@@ -61,6 +62,8 @@ class ExecutionResult:
     order_id: str | None = None
     reason: str = ""
     order_status: OrderStatus | None = None
+    broker_result: OrderResult | None = None
+    rejection_code: str | None = None
 
 
 class AsyncTradeExecutor:
@@ -259,6 +262,17 @@ class AsyncTradeExecutor:
                 raise ValueError("Gateway returned an indeterminate order status")
             if status_value in {"FILLED", "SUBMITTED"} and not result.order_id.strip():
                 raise ValueError("Gateway accepted an order without broker identity")
+        except PreSubmitOrderRejected as exc:
+            if not self._transition(intent, IntentRecordStatus.REJECTED):
+                return ExecutionResult(
+                    ReconciliationState.UNKNOWN, decision,
+                    reason="Pre-submit rejection could not be persisted",
+                )
+            return ExecutionResult(
+                ReconciliationState.REJECTED, decision, reason=str(exc),
+                order_status=OrderStatus.REJECTED,
+                rejection_code="PRE_SUBMIT_VALIDATION_REJECTED",
+            )
         except Exception as exc:
             self._transition(intent, IntentRecordStatus.UNKNOWN)
             log_unresolved_execution(idempotency_key=intent.idempotency_key, state="UNKNOWN", error_category="SUBMISSION_OUTCOME_UNKNOWN")
@@ -274,6 +288,7 @@ class AsyncTradeExecutor:
             result.order_id if status is IntentRecordStatus.ACCEPTED else None,
             "Order accepted" if status is IntentRecordStatus.ACCEPTED else "Broker rejected order",
             result.status,
+            result,
         )
 
     def _transition(self, intent: ExecutionIntent, status: IntentRecordStatus, order_id: str | None = None, transaction_id: str | None = None) -> bool:

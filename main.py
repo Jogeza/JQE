@@ -20,16 +20,20 @@ Run directly to execute a single cycle:
 from __future__ import annotations
 
 import asyncio
+import math
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 import pandas as pd
 
 from broker.factory import get_gateway
 from broker.scope import enforce_weltrade_only
 from broker.simulation_gateway import ObservedSimulationExecutionGateway
-from broker.types import AccountIdentity, AccountInfo, OrderSide, OrderStatus, Timeframe
+from broker.weltrade_gateway import WeltradeGateway
+from broker.types import AccountIdentity, AccountInfo, OrderResult, OrderSide, OrderStatus, Tick, Timeframe
 from config import EmergencyStopState, settings
 from core.data_validator import validate_market_data
 from core.exceptions import ConfigurationError, ExecutionError, JQEError, MarketDataError
@@ -74,6 +78,26 @@ from notifications.factory import notification_service_from_settings
 
 _TIMEFRAME_BY_NAME: dict[str, Timeframe] = {tf.value: tf for tf in Timeframe}
 _SIDE_BY_SIGNAL: dict[str, OrderSide] = {"BUY": OrderSide.BUY, "SELL": OrderSide.SELL}
+_DURABLE_INTENT_STORE_TYPE = SQLiteIntentRecordStore
+_supervisor_live_scope: ContextVar[bool] = ContextVar("supervisor_live_scope", default=False)
+
+
+@contextmanager
+def _armed_by_supervisor():
+    """Scope a preflight-approved supervisor cycle to its current async context."""
+    token = _supervisor_live_scope.set(True)
+    try:
+        yield
+    finally:
+        _supervisor_live_scope.reset(token)
+
+
+def _require_supervisor_for_live_execution() -> None:
+    if settings.broker_execution_enabled and not _supervisor_live_scope.get():
+        raise ConfigurationError(
+            "Live execution requires the Weltrade execution supervisor; "
+            "run monitoring/weltrade_execution_supervisor.py through its launcher"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +176,135 @@ async def authorize_broker_execution_quantity(
     )
 
 
-async def run() -> CycleExecutionResult:
+async def _emit_weltrade_signal_alert(
+    *, events: JQENotificationEvents, gateway: object, symbol: str,
+    timeframe: str, side: str, confidence: object, bar_time: str,
+    simulated: bool, planned_entry: float | None = None,
+    planned_stop_loss: float | None = None,
+    planned_take_profit: float | None = None,
+) -> None:
+    """Publish observed quote and plan facts without affecting the trading cycle."""
+    tick = None
+    getter = getattr(gateway, "get_latest_tick", None)
+    if asyncio.iscoroutinefunction(getter):
+        try:
+            candidate = await getter(symbol)
+            if isinstance(candidate, Tick):
+                tick = candidate
+        except Exception:
+            logger.warning("Weltrade notification quote unavailable")
+    try:
+        await events.strategy_signal(
+            symbol=symbol, timeframe=timeframe, side=side,
+            confidence=confidence, bar_time=bar_time, tick=tick,
+            planned_entry=planned_entry, planned_stop_loss=planned_stop_loss,
+            planned_take_profit=planned_take_profit, simulated=simulated,
+        )
+    except Exception:
+        logger.warning("Weltrade strategy signal notification failed")
+
+
+async def _observe_confirmed_weltrade_fill(
+    *, gateway, composition: ExecutionComposition, broker_result: OrderResult | None,
+    symbol: str, side: OrderSide, order_id: str, expected_stop_loss: float,
+    notification_events: JQENotificationEvents,
+    require_position: bool,
+    timeframe: str | None = None,
+    take_profit: float | None = None,
+    planned_risk_amount: float | None = None,
+    planned_volume: float | None = None,
+    balance: float | None = None,
+) -> None:
+    """Persist a broker-observed position, then claim one opened alert attempt."""
+    try:
+        positions = tuple(await gateway.get_positions())
+        matches = tuple(
+            position for position in positions
+            if position.symbol.strip().upper() == symbol.strip().upper()
+            and position.side is side
+        )
+        if not matches and not require_position:
+            return  # An accepted pending order has not become a position yet.
+        if len(matches) != 1:
+            raise ValueError("Confirmed Weltrade fill has no unique broker position")
+        position = matches[0]
+        raw_position = None if broker_result is None else broker_result.raw.get("position")
+        if raw_position not in (None, 0, "", "0") and str(raw_position) != position.position_id:
+            raise ValueError("Filled order and broker position tickets disagree")
+        if raw_position in (None, 0, "", "0") and position.position_id != order_id:
+            raise ValueError("Broker position ticket cannot be linked to the filled order")
+        if broker_result is not None and not math.isclose(
+            position.volume, broker_result.volume, rel_tol=1e-8, abs_tol=1e-8,
+        ):
+            raise ValueError("Filled quantity and broker position volume disagree")
+        if position.opened_at is None or position.stop_loss is None:
+            raise ValueError("Broker position lacks opening time or protective stop")
+        # MT5 rounds submitted stops to the symbol's price precision.  Half a
+        # point covers that rounding only; missing precision fails closed.
+        point = await gateway.get_price_point(position.symbol)
+        if not math.isfinite(point) or point <= 0 or not math.isclose(
+            position.stop_loss, expected_stop_loss,
+            rel_tol=0.0, abs_tol=point / 2 + 1e-10,
+        ):
+            raise ValueError("Broker position stop differs from the approved trade plan")
+        composition.position_ledger.record_confirmed_fill_once(
+            broker="weltrade", symbol=position.symbol, position_id=position.position_id,
+            order_id=order_id, side=position.side, volume=position.volume,
+            entry_price=position.open_price, stop_loss=position.stop_loss,
+            opened_at=position.opened_at,
+            expected_lifetime_at=(
+                position.opened_at + timedelta(minutes=settings.weltrade_expected_position_lifetime_minutes)
+                if settings.weltrade_expected_position_lifetime_minutes is not None else None
+            ),
+            timeframe=timeframe,
+        )
+        send_once = composition.position_ledger.claim_open_notification_once(
+            broker="weltrade", position_id=position.position_id,
+        )
+    except Exception as exc:
+        logger.critical("Weltrade post-fill ledger verification failed: {}", type(exc).__name__)
+        try:
+            composition.records.record_post_fill_integrity_halt("CONFIRMED_FILL_LEDGER_UNVERIFIED")
+        except Exception:
+            logger.critical("Weltrade post-fill halt marker could not be persisted")
+        raise RuntimeError("Weltrade post-fill ledger unverified; supervisor must stop") from exc
+    if send_once:
+        try:
+            facts = {
+                "Symbol": position.symbol, "Side": position.side.value,
+                "Order": order_id, "Position": position.position_id,
+                "Entry": str(position.open_price), "Stop loss": str(position.stop_loss),
+                "Quantity": str(position.volume),
+                "Opened at": position.opened_at.isoformat(),
+            }
+            account_mode = getattr(getattr(composition, "account", None), "trade_mode", None)
+            if isinstance(account_mode, str):
+                facts["Account mode"] = account_mode.upper()
+            if timeframe:
+                facts["Timeframe"] = timeframe
+            if take_profit is not None:
+                facts["TP1"] = str(take_profit)
+            if (planned_risk_amount is not None and planned_volume is not None
+                    and balance is not None and planned_volume > 0 and balance > 0):
+                risk_percent = planned_risk_amount * position.volume / planned_volume / balance * 100
+                if math.isfinite(risk_percent):
+                    facts["Risk at stop %"] = f"{risk_percent:.3f}"
+            delivered = await notification_events.demo_trade(
+                kind="OPENED",
+                facts=facts, event_id=f"OPEN:{position.position_id}",
+                occurred_at=position.opened_at,
+                simulated=(
+                    not isinstance(gateway, WeltradeGateway)
+                    or bool(getattr(broker_result, "raw", {}).get("simulated", False))
+                ),
+            )
+            if not delivered:
+                logger.warning("Weltrade opened-trade notification was not delivered")
+        except Exception as exc:
+            logger.warning("Weltrade opened-trade notification failed: {}", type(exc).__name__)
+
+
+async def run(*, symbol: str | None = None, timeframe_name: str | None = None) -> CycleExecutionResult:
     """Runs a single JQE analysis-and-trade cycle end to end.
 
     Connects to the configured broker, retrieves and validates recent
@@ -169,13 +321,21 @@ async def run() -> CycleExecutionResult:
             retrieved or fails validation.
     """
     active_broker = settings.effective_broker
+    cycle_symbol = symbol or settings.default_symbol
+    cycle_timeframe = timeframe_name or settings.default_timeframe
+    if active_broker in {"weltrade", "weltrade_demo"}:
+        from broker.weltrade_symbols import require_weltrade_synthetic
+        require_weltrade_synthetic(cycle_symbol)
+    if cycle_timeframe not in _TIMEFRAME_BY_NAME:
+        raise ConfigurationError(f"Unsupported execution timeframe: {cycle_timeframe}")
+    if active_broker not in ("simulation", "deriv", "mt5", "weltrade"):
+        raise ConfigurationError(f"Unsupported broker: {active_broker}")
+    _require_supervisor_for_live_execution()
     logger.info(
         "JQE engine online (environment={}, broker={})", settings.environment, active_broker
     )
     notification_events = JQENotificationEvents(notification_service_from_settings(settings))
 
-    if active_broker not in ("simulation", "deriv", "mt5", "weltrade"):
-        raise ConfigurationError(f"Unsupported broker: {active_broker}")
     if settings.broker_execution_enabled:
         enforce_weltrade_only(
             broker=active_broker,
@@ -279,7 +439,7 @@ async def run() -> CycleExecutionResult:
     )
     publish_safety(ExecutionAuthorization.NOT_EVALUATED, ("NOT_EVALUATED",))
 
-    timeframe = _TIMEFRAME_BY_NAME.get(settings.default_timeframe, Timeframe.H1)
+    timeframe = _TIMEFRAME_BY_NAME[cycle_timeframe]
 
     gateway = get_gateway(settings)
 
@@ -290,6 +450,12 @@ async def run() -> CycleExecutionResult:
         account_identity = composition.identity
         records = composition.records
         reconciler = composition.reconciler
+        if (
+            active_broker == "weltrade"
+            and isinstance(records, _DURABLE_INTENT_STORE_TYPE)
+            and records.post_fill_integrity_halt() is not None
+        ):
+            raise RuntimeError("Weltrade post-fill integrity halt remains active")
         recovery = await StartupRecoveryService(
             records,
             reconciler,
@@ -317,7 +483,7 @@ async def run() -> CycleExecutionResult:
         # source reads candles from the already verified gateway while the
         # execution policy still controls all order mutation.
         provider_symbol = provider_symbol_for(
-            canonical_symbol=settings.default_symbol,
+            canonical_symbol=cycle_symbol,
             source=settings.market_data_source,
         )
         if settings.market_data_source == "broker":
@@ -339,7 +505,7 @@ async def run() -> CycleExecutionResult:
             )
         observations = closed_observations_from_candles(
             candles=candles,
-            canonical_symbol=settings.default_symbol,
+            canonical_symbol=cycle_symbol,
             provider_symbol=provider_symbol,
             source=source_name,
             timeframe=timeframe,
@@ -347,7 +513,7 @@ async def run() -> CycleExecutionResult:
         if len(observations) < settings.default_candle_count:
             raise MarketDataError(
                 "Insufficient provably closed market candles",
-                symbol=settings.default_symbol,
+                symbol=cycle_symbol,
             )
         observations = observations[-settings.default_candle_count :]
         market_observation = observations[-1]
@@ -367,11 +533,11 @@ async def run() -> CycleExecutionResult:
         )
 
         if not validate_market_data(df):
-            raise MarketDataError("Market data failed validation", symbol=settings.default_symbol)
+            raise MarketDataError("Market data failed validation", symbol=cycle_symbol)
 
         df = calculate_indicators(df)
         regime = detect_regime(df)
-        signal = generate_trading_signal(df, settings.default_symbol, regime=regime)
+        signal = generate_trading_signal(df, cycle_symbol, regime=regime)
 
         logger.info("Market regime: {}", regime)
         logger.info("Trading signal: {}", signal)
@@ -401,6 +567,14 @@ async def run() -> CycleExecutionResult:
         )
 
         if not risk_decision["approved"]:
+            if active_broker in {"weltrade", "weltrade_demo"}:
+                await _emit_weltrade_signal_alert(
+                    events=notification_events, gateway=gateway, symbol=cycle_symbol,
+                    timeframe=timeframe.value, side=str(signal["signal"]),
+                    confidence=signal.get("confidence", 0),
+                    bar_time=market_observation.candle_opened_at.isoformat(),
+                    simulated=source_name != "broker",
+                )
             publish_risk(
                 RiskEvaluationState.BLOCKED,
                 risk_decision["reason"],
@@ -443,14 +617,14 @@ async def run() -> CycleExecutionResult:
                     else "BLOCKED"
                 ),
                 broker=active_broker,
-                symbol=settings.default_symbol,
+                symbol=cycle_symbol,
                 decision_code=str(reason_code),
                 reason=str(risk_decision["reason"]),
             )
 
         latest = df.iloc[-1]
         if (
-            plan_symbol := signal.get("symbol", settings.default_symbol)
+            plan_symbol := signal.get("symbol", cycle_symbol)
         ) and str(plan_symbol).strip().upper() != market_observation.canonical_symbol:
             raise ExecutionError("Signal symbol does not match the market observation")
         builder = TradePlanBuilder(atr_sl_multiplier=2.0, target_rr=2.0)
@@ -461,11 +635,23 @@ async def run() -> CycleExecutionResult:
             intelligence["atr"] = latest.get("ATR", latest.get("ATR_14"))
 
         plan = builder.build(
-            symbol=settings.default_symbol,
+            symbol=cycle_symbol,
             intelligence=intelligence,
             signal_dict=signal,
             price=latest["close"],
         )
+
+        if active_broker in {"weltrade", "weltrade_demo"}:
+            await _emit_weltrade_signal_alert(
+                events=notification_events, gateway=gateway, symbol=cycle_symbol,
+                timeframe=timeframe.value, side=str(signal["signal"]),
+                confidence=signal.get("confidence", 0),
+                bar_time=market_observation.candle_opened_at.isoformat(),
+                simulated=source_name != "broker",
+                planned_entry=float(latest["close"]),
+                planned_stop_loss=plan.stop_loss,
+                planned_take_profit=plan.take_profit,
+            )
 
         if not plan.is_valid():
             publish_risk(
@@ -481,7 +667,7 @@ async def run() -> CycleExecutionResult:
             )
             await notification_events.trade_rejected(
                 reason="MISSING_OR_INVALID_STOP_LOSS_TAKE_PROFIT",
-                facts={"Symbol": settings.default_symbol},
+                facts={"Symbol": cycle_symbol},
             )
             logger.info(
                 "Cycle complete — Trade plan invalid: {}",
@@ -490,7 +676,7 @@ async def run() -> CycleExecutionResult:
             return CycleExecutionResult(
                 status="BLOCKED",
                 broker=active_broker,
-                symbol=settings.default_symbol,
+                symbol=cycle_symbol,
                 side=plan.signal,
                 decision_code="INVALID_TRADE_PLAN",
                 reason=(
@@ -614,6 +800,22 @@ async def run() -> CycleExecutionResult:
         )
         if existing_record is not None:
             result = await executor.reconcile(intent)
+            if (
+                active_broker == "weltrade"
+                and result.state is ReconciliationState.ALREADY_EXECUTED
+                and existing_record.order_id
+            ):
+                await _observe_confirmed_weltrade_fill(
+                    gateway=gateway, composition=composition,
+                    broker_result=None,
+                    symbol=intent.symbol, side=intent.side,
+                    order_id=existing_record.order_id,
+                    expected_stop_loss=float(intent.stop_loss),
+                    notification_events=notification_events, require_position=False,
+                    timeframe=cycle_timeframe, take_profit=intent.take_profit,
+                    planned_risk_amount=sizing.expected_loss_at_stop,
+                    planned_volume=float(intent.quantity.value), balance=account.balance,
+                )
             logger.info("Recovered order result: {}", result)
             return CycleExecutionResult(
                 status=(
@@ -701,7 +903,7 @@ async def run() -> CycleExecutionResult:
                     reason_codes = ("ORDER_ACCEPTED",)
                 elif result.state is ReconciliationState.REJECTED:
                     authorization = ExecutionAuthorization.BLOCKED
-                    reason_codes = ("BROKER_REJECTED",)
+                    reason_codes = (result.rejection_code or "BROKER_REJECTED",)
                 else:
                     authorization = ExecutionAuthorization.UNKNOWN
                     reason_codes = ("SUBMISSION_OUTCOME_UNKNOWN",)
@@ -754,9 +956,36 @@ async def run() -> CycleExecutionResult:
             )
         if not terminal_safety_published:
             publish_submission_result(result)
+        if (
+            active_broker == "weltrade"
+            and result.state is ReconciliationState.ALREADY_EXECUTED
+            and result.order_status is OrderStatus.FILLED
+        ):
+            if not result.order_id:
+                raise RuntimeError("Weltrade filled order lacks broker ticket evidence")
+            try:
+                await _observe_confirmed_weltrade_fill(
+                    gateway=gateway, composition=composition, broker_result=result.broker_result,
+                    symbol=intent.symbol, side=intent.side, order_id=result.order_id,
+                    expected_stop_loss=float(intent.stop_loss),
+                    notification_events=notification_events, require_position=True,
+                    timeframe=cycle_timeframe, take_profit=intent.take_profit,
+                    planned_risk_amount=sizing.expected_loss_at_stop,
+                    planned_volume=float(intent.quantity.value), balance=account.balance,
+                )
+            except RuntimeError:
+                publish_safety(
+                    ExecutionAuthorization.BLOCKED,
+                    ("POST_FILL_LEDGER_UNVERIFIED",),
+                    daily_authority=DailyStateAuthority.AUTHORITATIVE,
+                )
+                raise
         if not result.decision.allowed:
             await notification_events.trade_rejected(
-                reason=result.decision.code.value, facts={"Symbol": intent.symbol}
+                reason=result.decision.code.value, facts={"Symbol": intent.symbol,
+                                                          "Timeframe": cycle_timeframe},
+                event_id=f"REJECT:{intent.idempotency_key}",
+                demo_account=active_broker == "weltrade",
             )
         elif getattr(result, "order_status", None) is OrderStatus.SUBMITTED:
             await notification_events.pending_order_placed(
@@ -773,7 +1002,11 @@ async def run() -> CycleExecutionResult:
             )
         elif result.state is ReconciliationState.REJECTED:
             await notification_events.trade_rejected(
-                reason="BROKER_REJECTED", facts={"Symbol": intent.symbol}
+                reason=result.rejection_code or "BROKER_REJECTED",
+                facts={"Symbol": intent.symbol, "Timeframe": cycle_timeframe,
+                       "Detail": result.reason},
+                event_id=f"REJECT:{intent.idempotency_key}",
+                demo_account=active_broker == "weltrade",
             )
         logger.info("Order result: {}", result)
         result_decision = result.decision
@@ -782,7 +1015,7 @@ async def run() -> CycleExecutionResult:
                 "ORDER_ACCEPTED"
                 if result.decision.allowed
                 and result.state is ReconciliationState.ALREADY_EXECUTED
-                else "BROKER_REJECTED"
+                else result.rejection_code or "BROKER_REJECTED"
                 if result.decision.allowed
                 and result.state is ReconciliationState.REJECTED
                 else "BLOCKED"
@@ -798,6 +1031,37 @@ async def run() -> CycleExecutionResult:
         )
 
 
+async def run_watchlist() -> tuple[CycleExecutionResult, ...]:
+    """Evaluate the durable watchlist through the canonical guarded cycle.
+
+    Each pair receives its own closed-bar signal and risk decision. A failed
+    pair is recorded while the remaining pairs continue; no gate is changed.
+    """
+    _require_supervisor_for_live_execution()
+    from data.watchlist import WatchlistStore
+
+    if not settings.broker_execution_enabled:
+        raise ConfigurationError("Broker execution is disabled")
+    enforce_weltrade_only(
+        broker=settings.effective_broker,
+        market_data_source=settings.market_data_source,
+    )
+    pairs = WatchlistStore(settings.watchlist_store_path).get_watch_pairs()
+    if not pairs:
+        raise ConfigurationError("The execution watchlist is empty")
+    results: list[CycleExecutionResult] = []
+    for pair in pairs:
+        try:
+            results.append(await run(symbol=pair.symbol, timeframe_name=pair.timeframe.value))
+        except JQEError as exc:
+            logger.error("Watchlist cycle failed for {}: {}", pair.scope, exc)
+            results.append(CycleExecutionResult(
+                status="BLOCKED", broker=settings.effective_broker,
+                symbol=pair.symbol, decision_code=type(exc).__name__, reason=str(exc),
+            ))
+    return tuple(results)
+
+
 def main() -> None:
     """CLI entry point. Runs one cycle and logs any platform-level failure.
 
@@ -811,6 +1075,11 @@ def main() -> None:
         from monitoring.observation_supervisor import run_observation_supervisor
         asyncio.run(run_observation_supervisor())
         return
+    if settings.broker_execution_enabled:
+        raise SystemExit(
+            "Live execution requires the Weltrade execution supervisor; "
+            "bare main.py is disabled"
+        )
     try:
         asyncio.run(run())
     except JQEError as exc:

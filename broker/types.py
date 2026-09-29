@@ -327,6 +327,8 @@ class TradeHistoryEntry(BaseModel):
     closed_at: datetime
     transaction_id: str | None = None
     contract_type: str | None = None
+    position_id: str | None = None
+    close_reason: str | None = None
 
 
 class TradeHistoryCompleteness(str, Enum):
@@ -344,6 +346,8 @@ class TradeHistorySnapshot(BaseModel):
     completeness: TradeHistoryCompleteness = TradeHistoryCompleteness.UNKNOWN
     coverage_start: datetime | None = None
     coverage_end: datetime | None = None
+    position_fees: dict[str, float] = Field(default_factory=dict)
+    position_open_volume: dict[str, float] = Field(default_factory=dict)
 
     def covers(self, start: datetime, end: datetime) -> bool:
         """Return true only for positively established interval coverage."""

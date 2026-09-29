@@ -17,7 +17,7 @@ class TestSettingsDefaults:
 
     def test_default_risk_percent(self) -> None:
         settings = Settings(_env_file=None)
-        assert settings.risk_percent == 1.0
+        assert settings.risk_percent == 0.5
 
     def test_default_max_daily_loss(self) -> None:
         settings = Settings(_env_file=None)

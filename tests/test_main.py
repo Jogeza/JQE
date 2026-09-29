@@ -10,6 +10,7 @@ the behavior of any specific broker or the strategy/risk logic itself.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -21,6 +22,7 @@ from broker.types import (
     OrderResult,
     OrderSide,
     OrderStatus,
+    Position,
     TradeHistoryCompleteness,
     TradeHistorySnapshot,
 )
@@ -50,7 +52,8 @@ def _durable_weltrade_settings(tmp_path, monkeypatch):
     settings.daily_instrument_trade_store_path = tmp_path / "daily-instrument.sqlite3"
     settings.max_daily_trades_per_instrument = 20
     settings.default_symbol = "FX VOL 20"
-    yield
+    with main._armed_by_supervisor():
+        yield
     (
         settings.broker,
         settings.intent_store_path,
@@ -66,6 +69,7 @@ def _durable_weltrade_settings(tmp_path, monkeypatch):
 def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
     """A MagicMock configured to behave like an async-context-managed gateway."""
     gateway = MagicMock()
+    gateway.get_price_point = AsyncMock(return_value=0.01)
     gateway.__aenter__ = AsyncMock(return_value=gateway)
     gateway.__aexit__ = AsyncMock(return_value=None)
     gateway.get_candles = AsyncMock(return_value=candles)
@@ -94,6 +98,21 @@ def _fake_gateway(candles: list, balance: float = 1000.0) -> MagicMock:
             filled_price=100.0,
         )
     )
+    async def broker_positions():
+        if gateway.get_positions.return_value:
+            return gateway.get_positions.return_value
+        if gateway.submit_order.await_count:
+            outcome = gateway.submit_order.return_value
+            if isinstance(outcome, OrderResult) and outcome.status is OrderStatus.FILLED:
+                order = gateway.submit_order.await_args.args[0]
+                return [Position(
+                    position_id=outcome.order_id, symbol=order.symbol,
+                    side=order.side, volume=outcome.volume,
+                    open_price=100.0, stop_loss=order.stop_loss,
+                    opened_at=datetime.now(timezone.utc),
+                )]
+        return []
+    gateway.get_positions.side_effect = broker_positions
     async def submit_from_observation(order, observation):
         return await gateway.submit_order(order)
     gateway.submit_order_from_market_observation = AsyncMock(side_effect=submit_from_observation)
@@ -272,10 +291,11 @@ class TestRunSignalRiskExecution:
 
     @patch("main.asyncio.run", side_effect=MarketDataError("boom"))
     def test_catches_jqe_error_and_does_not_raise(self, mock_run: MagicMock) -> None:
-        main.main()  # must not raise
+        with patch.object(settings, "broker_execution_enabled", False):
+            main.main()  # must not raise
 
     @patch("main.asyncio.run", side_effect=ValueError("unexpected, non-platform error"))
     def test_non_jqe_error_still_propagates(self, mock_run: MagicMock) -> None:
-        with pytest.raises(ValueError):
+        with patch.object(settings, "broker_execution_enabled", False), pytest.raises(ValueError):
             main.main()
 

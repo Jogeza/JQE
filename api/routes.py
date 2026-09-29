@@ -182,6 +182,20 @@ async def execute_live_cycle(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/execution/watchlist-cycles", response_model=list[LiveExecutionResponse])
+async def execute_watchlist_cycles(
+    confirmed: bool = False,
+    service: ApplicationService = Depends(get_service),
+) -> list[LiveExecutionResponse]:
+    """Explicitly run guarded demo cycles for the persisted watchlist."""
+    try:
+        return await service.execute_watchlist_cycles(confirmed=confirmed)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except JQEError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/execution/safety", response_model=ExecutionSafetyResponse)
 def get_execution_safety(
     service: ApplicationService = Depends(get_service),

@@ -80,6 +80,14 @@ class ExecutionError(JQEError):
     the broker or simulator level."""
 
 
+class PreSubmitOrderRejected(ExecutionError):
+    """A deterministic validation rejection before any broker order_send call.
+
+    Only a gateway that can prove it has not submitted the request may raise
+    this. Connection, timeout, and indeterminate broker outcomes must not use it.
+    """
+
+
 class UnsafeBrokerAccountError(ExecutionError, BrokerConnectionError):
     """Raised when an operation is attempted against a non-demo or unverified broker account."""
 

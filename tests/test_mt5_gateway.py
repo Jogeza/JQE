@@ -458,9 +458,38 @@ class TestSubmitOrder:
         mock_mt5.TRADE_RETCODE_DONE = 10009
         mock_mt5.order_send.return_value = MagicMock(retcode=10009, order=777, price=2000.0)
 
-        with pytest.raises(ExecutionError, match="stop-loss validation failed"):
+        with pytest.raises(ExecutionError, match="stop-loss is closer than the symbol minimum"):
             await gateway.submit_order(OrderRequest(symbol="XAUUSD", side=OrderSide.BUY,
                 quantity={"value": 0.1, "unit": "MT5_LOTS"}, stop_loss=1998.0, take_profit=2002.0))
+        mock_mt5.order_send.assert_not_called()
+        mock_mt5.order_check.assert_not_called()
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_weltrade_sfx_99_minimum_stop_rejects_before_mt5_request(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
+    ) -> None:
+        from core.exceptions import PreSubmitOrderRejected
+
+        configure_sdk(mock_mt5)
+        await gateway.connect()
+        gateway._resolve_symbol = MagicMock(return_value="SFX Vol 99")
+        mock_mt5.symbol_select.return_value = True
+        mock_mt5.symbol_info.return_value = MagicMock(
+            digits=2, point=0.01, trade_stops_level=1716, trade_freeze_level=0,
+            trade_mode=4, volume_min=0.01, volume_max=10.0,
+            volume_step=0.01, filling_mode=1,
+        )
+        mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
+        mock_mt5.symbol_info_tick.return_value = MagicMock(ask=1836.27, bid=1836.25)
+
+        with pytest.raises(PreSubmitOrderRejected, match="actual_points=845.0.*required_points=1716"):
+            await gateway.submit_order(OrderRequest(
+                symbol="SFX VOL 99", side=OrderSide.BUY,
+                quantity={"value": 0.08, "unit": "MT5_LOTS"},
+                stop_loss=1827.82, take_profit=1853.17,
+            ))
+        mock_mt5.order_check.assert_not_called()
         mock_mt5.order_send.assert_not_called()
 
 
@@ -478,6 +507,40 @@ class TestMT5OrderPreflight:
         mock_mt5.SYMBOL_TRADE_MODE_DISABLED = 0
         mock_mt5.SYMBOL_FILLING_FOK = 1
         mock_mt5.TRADE_RETCODE_DONE = 10009
+
+    @patch("broker.mt5_gateway.mt5")
+    async def test_partial_market_fill_preserves_actual_broker_volume(
+        self, mock_mt5: MagicMock, gateway: MT5Gateway,
+    ) -> None:
+        self._prepare(mock_mt5, gateway)
+        mock_mt5.TRADE_RETCODE_DONE_PARTIAL = 10010
+        mock_mt5.order_check.return_value = MagicMock(retcode=0)
+        mock_mt5.order_send.return_value = MagicMock(
+            retcode=10010, order=42, deal=43, price=1.10020, volume=0.01,
+        )
+        result = await gateway.submit_order(OrderRequest(
+            symbol="EURUSD", side=OrderSide.BUY,
+            quantity={"value": 0.02, "unit": "MT5_LOTS"}, stop_loss=1.09,
+        ))
+        assert result.status is OrderStatus.FILLED
+        assert result.volume == 0.01
+        assert result.raw["partial_fill"] is True
+
+    @patch("broker.mt5_gateway.mt5")
+    async def test_partial_market_fill_without_volume_is_indeterminate(
+        self, mock_mt5: MagicMock, gateway: MT5Gateway,
+    ) -> None:
+        self._prepare(mock_mt5, gateway)
+        mock_mt5.TRADE_RETCODE_DONE_PARTIAL = 10010
+        mock_mt5.order_check.return_value = MagicMock(retcode=0)
+        mock_mt5.order_send.return_value = MagicMock(
+            retcode=10010, order=42, deal=43, price=1.10020, volume=0,
+        )
+        with pytest.raises(ExecutionError, match="partial fill volume is unverifiable"):
+            await gateway.submit_order(OrderRequest(
+                symbol="EURUSD", side=OrderSide.BUY,
+                quantity={"value": 0.02, "unit": "MT5_LOTS"}, stop_loss=1.09,
+            ))
 
     @pytest.mark.parametrize(
         ("order_type", "side", "extra", "native_type"),

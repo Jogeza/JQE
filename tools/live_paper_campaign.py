@@ -651,7 +651,7 @@ async def run_live_paper_campaign(
                     currency=account.currency,
                 )
                 offline_facts["Recovery"] = "CLOSED_WHILE_OFFLINE"
-                await notification_events.demo_trade(kind="CLOSED", facts=offline_facts)
+                await notification_events.demo_trade(kind="CLOSED", facts=offline_facts, simulated=True)
                 continue
 
             _own_order_ids.add(sp.position_id)
@@ -979,6 +979,7 @@ async def run_live_paper_campaign(
                 }, trade.get("candidate_id"))
                 await notification_events.demo_trade(
                     kind="CLOSED",
+                    simulated=True,
                     facts=_closed_trade_notification_facts(
                         trade=trade,
                         position_id=str(m_id),
@@ -1259,6 +1260,7 @@ async def run_live_paper_campaign(
                 effective_unrealized_pnl = matched_pos.profit if matched_pos else None
                 await notification_events.demo_trade(
                     kind="OPENED",
+                    simulated=True,
                     facts=_open_trade_notification_facts(
                         symbol=symbol,
                         side=side.value,
@@ -1384,6 +1386,7 @@ async def run_live_paper_campaign(
                 }, trade.get("candidate_id"))
                 await notification_events.demo_trade(
                     kind="CLOSED",
+                    simulated=True,
                     facts=_closed_trade_notification_facts(
                         trade=trade,
                         position_id=str(open_oid),

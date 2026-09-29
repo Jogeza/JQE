@@ -1356,39 +1356,14 @@ class ApplicationService:
         )
 
     async def execute_live_cycle(self, *, confirmed: bool) -> LiveExecutionResponse:
-        """Run one explicitly confirmed cycle through the canonical live path.
+        """The API is permanently read-only, regardless of inherited flags."""
+        del confirmed
+        raise ValueError("The API is read-only; broker execution belongs to the supervisor process")
 
-        This method deliberately delegates to ``main.run`` instead of creating
-        an API-specific gateway or submission path. The engine remains fail
-        closed: broker execution must be explicitly enabled, the configured
-        gateway must prove a DEMO account, and the normal risk/policy/recovery
-        checks must all pass.
-        """
-        if confirmed is not True:
-            raise ValueError("Explicit confirmation is required before a demo order cycle")
-        if settings.effective_broker == "simulation":
-            raise ValueError("Simulation is analysis-only; select a verified demo broker first")
-        if settings.broker_execution_enabled is not True:
-            raise ValueError(
-                "Broker execution is disabled; set JQE_BROKER_EXECUTION_ENABLED=true to arm demo execution"
-            )
-
-        from main import run
-
-        if _uses_mt5_session():
-            async with _MT5_GATEWAY_LOCK:
-                result = await run()
-        else:
-            result = await run()
-        return LiveExecutionResponse(
-            status=result.status,
-            broker=result.broker,
-            symbol=result.symbol,
-            side=result.side,
-            order_id=result.order_id,
-            decision_code=result.decision_code,
-            reason=result.reason,
-        )
+    async def execute_watchlist_cycles(self, *, confirmed: bool) -> list[LiveExecutionResponse]:
+        """The API cannot start a watchlist execution loop."""
+        del confirmed
+        raise ValueError("The API is read-only; broker execution belongs to the supervisor process")
 
     async def get_performance_summary(self) -> PerformanceSummaryResponse:
         """Computes statistical performance metrics over closed trade history."""

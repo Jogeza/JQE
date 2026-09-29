@@ -22,11 +22,77 @@ real or mocked package to be importable at all) is tracked as Milestone
 from __future__ import annotations
 
 import sys
+import os
+import socket
+import ipaddress
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+
+_external_network_attempts = 0
+_network_attempt_lock = threading.Lock()
+
+
+def pytest_configure(config):
+    """Discard operator notifier credentials before tests import application modules."""
+    os.environ["JQE_TEST_NO_EXTERNAL_NOTIFICATIONS"] = "1"
+    for name in (
+        "JQE_TELEGRAM_BOT_TOKEN", "JQE_TELEGRAM_ALLOWED_CHAT_ID",
+        "JQE_TELEGRAM_SIGNAL_CHAT_ID", "JQE_TELEGRAM_CHANNEL_CHAT_ID",
+        "JQE_TELEGRAM_ENABLED", "JQE_TELEGRAM_CHANNEL_ENABLED",
+        "JQE_SLACK_WEBHOOK_URL", "JQE_SIMULATION_NOTIFICATIONS_ENABLED",
+    ):
+        os.environ.pop(name, None)
+    from config.settings import Settings, settings
+    Settings.model_config["env_file"] = None
+    settings.telegram_enabled = False
+    settings.telegram_bot_token = None
+    settings.telegram_allowed_chat_id = None
+    settings.telegram_signal_chat_id = None
+    settings.telegram_channel_enabled = False
+    settings.telegram_channel_chat_id = None
+    settings.slack_webhook_url = None
+
+
+def pytest_sessionfinish(session, exitstatus):
+    print(f"EXTERNAL_NETWORK_ATTEMPTS={_external_network_attempts}")
+    if _external_network_attempts:
+        session.exitstatus = 1
+
+
+@pytest.fixture(autouse=True)
+def _block_external_test_network(monkeypatch):
+    """A test must never connect to an external notification endpoint."""
+    connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+
+    def local_only(address):
+        global _external_network_attempts
+        if not isinstance(address, tuple):
+            return
+        try:
+            if ipaddress.ip_address(address[0]).is_loopback:
+                return
+        except ValueError:
+            if address[0] == "localhost":
+                return
+        with _network_attempt_lock:
+            _external_network_attempts += 1
+        raise AssertionError("External network access is blocked during tests")
+
+    def guarded_connect(sock, address):
+        local_only(address)
+        return connect(sock, address)
+
+    def guarded_connect_ex(sock, address):
+        local_only(address)
+        return connect_ex(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
 
 
 def _install_mt5_stub_if_needed() -> None:

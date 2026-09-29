@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
+import math
 import sqlite3
 from pathlib import Path
 
@@ -57,6 +58,17 @@ class PositionLedgerEntry:
     realized_pnl: float | None = None
     currency: str | None = None
     reconciliation_state: str | None = None
+    side: str | None = None
+    volume: float | None = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    notification_claimed_at: str | None = None
+    remaining_volume: float | None = None
+    close_reason: str | None = None
+    close_notification_claimed_at: str | None = None
+    close_unconfirmed_notification_claimed_at: str | None = None
+    expected_lifetime_at: str | None = None
+    timeframe: str | None = None
 
 
 class SQLitePositionLedger:
@@ -86,6 +98,17 @@ class SQLitePositionLedger:
                     realized_pnl REAL,
                     currency TEXT,
                     reconciliation_state TEXT,
+                    side TEXT,
+                    volume REAL,
+                    entry_price REAL,
+                    stop_loss REAL,
+                    notification_claimed_at TEXT,
+                    remaining_volume REAL,
+                    close_reason TEXT,
+                    close_notification_claimed_at TEXT,
+                    close_unconfirmed_notification_claimed_at TEXT,
+                    expected_lifetime_at TEXT,
+                    timeframe TEXT,
                     PRIMARY KEY (broker, position_id)
                 )
                 """
@@ -99,6 +122,17 @@ class SQLitePositionLedger:
                 ("realized_pnl", "REAL"),
                 ("currency", "TEXT"),
                 ("reconciliation_state", "TEXT"),
+                ("side", "TEXT"),
+                ("volume", "REAL"),
+                ("entry_price", "REAL"),
+                ("stop_loss", "REAL"),
+                ("notification_claimed_at", "TEXT"),
+                ("remaining_volume", "REAL"),
+                ("close_reason", "TEXT"),
+                ("close_notification_claimed_at", "TEXT"),
+                ("close_unconfirmed_notification_claimed_at", "TEXT"),
+                ("expected_lifetime_at", "TEXT"),
+                ("timeframe", "TEXT"),
             ):
                 if name not in existing:
                     connection.execute(
@@ -151,6 +185,60 @@ class SQLitePositionLedger:
                 values,
             )
 
+    def record_confirmed_fill_once(
+        self, *, broker: str, symbol: str, position_id: str, order_id: str,
+        side: OrderSide, volume: float, entry_price: float, stop_loss: float,
+        opened_at: datetime,
+        expected_lifetime_at: datetime | None = None,
+        timeframe: str | None = None,
+    ) -> bool:
+        """Persist broker-observed fill facts without replacing an existing row."""
+        if opened_at.tzinfo is None or opened_at.utcoffset() is None:
+            raise ValueError("opened_at must be timezone-aware")
+        if side not in (OrderSide.BUY, OrderSide.SELL):
+            raise ValueError("fill side must be directional")
+        if not all(math.isfinite(x) and x > 0 for x in (volume, entry_price, stop_loss)):
+            raise ValueError("fill quantity, entry, and stop must be positive and finite")
+        if side is OrderSide.BUY and not stop_loss < entry_price:
+            raise ValueError("BUY fill must retain a protective stop")
+        if side is OrderSide.SELL and not entry_price < stop_loss:
+            raise ValueError("SELL fill must retain a protective stop")
+        values = (
+            self._required_text("broker", broker), self._required_text("symbol", symbol),
+            self._required_text("position_id", position_id), self._required_text("order_id", order_id),
+            opened_at.astimezone(timezone.utc).isoformat(), side.value,
+            volume, entry_price, stop_loss,
+            expected_lifetime_at.astimezone(timezone.utc).isoformat() if expected_lifetime_at else None,
+            timeframe,
+        )
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            inserted = connection.execute(
+                """INSERT OR IGNORE INTO live_paper_positions
+                (broker,symbol,position_id,order_id,opened_at,side,volume,entry_price,stop_loss,
+                 remaining_volume,expected_lifetime_at,timeframe)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (*values[:9], volume, values[9], values[10]),
+            ).rowcount == 1
+            if not inserted:
+                row = connection.execute(
+                    """SELECT symbol,order_id,side,volume,entry_price,stop_loss
+                    FROM live_paper_positions WHERE broker=? AND position_id=?""",
+                    (values[0], values[2]),
+                ).fetchone()
+                if row is None or tuple(row) != (values[1], values[3], *values[5:9]):
+                    raise ValueError("Existing position ledger evidence conflicts with the confirmed fill")
+            return inserted
+
+    def claim_open_notification_once(self, *, broker: str, position_id: str) -> bool:
+        """Persist an at-most-once delivery attempt before contacting transports."""
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            return connection.execute(
+                """UPDATE live_paper_positions SET notification_claimed_at=?
+                WHERE broker=? AND position_id=? AND notification_claimed_at IS NULL""",
+                (datetime.now(timezone.utc).isoformat(), broker, position_id),
+            ).rowcount == 1
+
     def mark_closed(
         self,
         *,
@@ -161,6 +249,7 @@ class SQLitePositionLedger:
         realized_pnl: float | None = None,
         currency: str | None = None,
         reconciliation_state: str | None = None,
+        close_reason: str | None = None,
     ) -> bool:
         if closed_at.tzinfo is None or closed_at.utcoffset() is None:
             raise ValueError("closed_at must be timezone-aware")
@@ -170,7 +259,7 @@ class SQLitePositionLedger:
                 """
                 UPDATE live_paper_positions
                 SET closed_at=?, close_price=?, realized_pnl=?, currency=?,
-                    reconciliation_state=?
+                    reconciliation_state=?, close_reason=?, remaining_volume=0
                 WHERE broker=? AND position_id=? AND closed_at IS NULL
                 """,
                 (
@@ -179,18 +268,73 @@ class SQLitePositionLedger:
                     realized_pnl,
                     currency,
                     reconciliation_state,
+                    close_reason,
                     self._required_text("broker", broker),
                     self._required_text("position_id", position_id),
                 ),
             ).rowcount
         return changed == 1
 
+    def mark_partial_close(self, *, broker: str, position_id: str,
+                           remaining_volume: float, realized_pnl: float) -> bool:
+        if not (math.isfinite(remaining_volume) and remaining_volume > 0
+                and math.isfinite(realized_pnl)):
+            raise ValueError("Partial close requires a remaining position")
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            return connection.execute(
+                """UPDATE live_paper_positions SET remaining_volume=?,realized_pnl=?,
+                   reconciliation_state='PARTIAL_CLOSE_CONFIRMED'
+                   WHERE broker=? AND position_id=? AND closed_at IS NULL
+                   AND (remaining_volume IS NULL OR remaining_volume!=? OR realized_pnl IS NULL OR realized_pnl!=?)""",
+                (remaining_volume, realized_pnl, broker, position_id, remaining_volume, realized_pnl),
+            ).rowcount == 1
+
+    def mark_close_unconfirmed(self, *, broker: str, position_id: str) -> bool:
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            return connection.execute(
+                """UPDATE live_paper_positions SET reconciliation_state='CLOSE_UNCONFIRMED'
+                   WHERE broker=? AND position_id=? AND closed_at IS NULL
+                   AND coalesce(reconciliation_state,'')!='CLOSE_UNCONFIRMED'""",
+                (broker, position_id),
+            ).rowcount == 1
+
+    def claim_close_notification_once(self, *, broker: str, position_id: str) -> bool:
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            return connection.execute(
+                """UPDATE live_paper_positions SET close_notification_claimed_at=?
+                   WHERE broker=? AND position_id=? AND closed_at IS NOT NULL
+                   AND close_notification_claimed_at IS NULL""",
+                (datetime.now(timezone.utc).isoformat(), broker, position_id),
+            ).rowcount == 1
+
+    def claim_close_unconfirmed_notification_once(self, *, broker: str, position_id: str) -> bool:
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            return connection.execute(
+                """UPDATE live_paper_positions SET close_unconfirmed_notification_claimed_at=?
+                   WHERE broker=? AND position_id=? AND reconciliation_state='CLOSE_UNCONFIRMED'
+                   AND close_unconfirmed_notification_claimed_at IS NULL""",
+                (datetime.now(timezone.utc).isoformat(), broker, position_id),
+            ).rowcount == 1
+
+    def pending_close_notifications(self, *, broker: str) -> tuple[PositionLedgerEntry, ...]:
+        return tuple(row for row in self.entries()
+                     if row.broker == broker and row.closed_at is not None
+                     and row.reconciliation_state == "CLOSE_CONFIRMED"
+                     and row.close_notification_claimed_at is None)
+
     def open_entries(self, *, broker: str) -> tuple[PositionLedgerEntry, ...]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
                 SELECT broker, symbol, position_id, order_id, opened_at, closed_at,
-                       close_price, realized_pnl, currency, reconciliation_state
+                       close_price, realized_pnl, currency, reconciliation_state,
+                       side, volume, entry_price, stop_loss, notification_claimed_at,
+                       remaining_volume, close_reason, close_notification_claimed_at,
+                       close_unconfirmed_notification_claimed_at, expected_lifetime_at, timeframe
                 FROM live_paper_positions
                 WHERE broker=? AND closed_at IS NULL
                 ORDER BY opened_at, position_id
@@ -205,7 +349,10 @@ class SQLitePositionLedger:
             rows = connection.execute(
                 """
                 SELECT broker, symbol, position_id, order_id, opened_at, closed_at,
-                       close_price, realized_pnl, currency, reconciliation_state
+                       close_price, realized_pnl, currency, reconciliation_state,
+                       side, volume, entry_price, stop_loss, notification_claimed_at,
+                       remaining_volume, close_reason, close_notification_claimed_at,
+                       close_unconfirmed_notification_claimed_at, expected_lifetime_at, timeframe
                 FROM live_paper_positions
                 ORDER BY opened_at, position_id
                 """
@@ -390,6 +537,31 @@ class SQLiteIntentRecordStore:
                     expires_at TEXT NOT NULL
                 )
                 """
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS post_fill_integrity_halt (
+                    singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),
+                    reason TEXT NOT NULL,
+                    observed_at TEXT NOT NULL
+                )"""
+            )
+
+    def post_fill_integrity_halt(self) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT reason FROM post_fill_integrity_halt WHERE singleton_id=1"
+            ).fetchone()
+        return None if row is None else str(row[0])
+
+    def record_post_fill_integrity_halt(self, reason: str) -> None:
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Post-fill integrity reason must be nonblank")
+        with self._connect() as connection:
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute(
+                """INSERT OR IGNORE INTO post_fill_integrity_halt
+                (singleton_id,reason,observed_at) VALUES (1,?,?)""",
+                (reason.strip(), datetime.now(timezone.utc).isoformat()),
             )
 
     @staticmethod

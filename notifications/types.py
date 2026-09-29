@@ -58,6 +58,9 @@ class Notification:
     digest_snapshots: tuple[DigestSnapshot, ...] = ()
     occurred_at: datetime | None = None
     chart_snapshot: ChartSnapshot | None = None
+    event_id: str | None = field(default=None, repr=False)
+    demo_account: bool = False
+    simulated: bool = False
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -68,3 +71,5 @@ class Notification:
                 raise ValueError("notification facts must be nonblank string pairs")
             clean[str(key).strip()] = value.strip()
         object.__setattr__(self, "facts", MappingProxyType(clean))
+        if self.event_id is not None and not self.event_id.strip():
+            raise ValueError("notification event_id must be nonblank")
