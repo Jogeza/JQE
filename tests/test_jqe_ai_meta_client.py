@@ -51,8 +51,8 @@ class StubReader:
 async def test_meta_client_sends_openai_compatible_payload() -> None:
     client = MetaModelClient(
         api_key=META_KEY,
-        model="llama-3.3-70b-instruct",
-        api_base="https://api.llama.com/v1",
+        model="muse-spark-1.3",
+        api_base="https://api.meta.ai/v1",
         max_tokens=256,
         timeout=5.0,
     )
@@ -85,9 +85,9 @@ async def test_meta_client_sends_openai_compatible_payload() -> None:
     assert result.output_tokens == 15
     assert result.stop_reason == "end_turn"
 
-    assert captured_request["url"] == "https://api.llama.com/v1/chat/completions"
+    assert captured_request["url"] == "https://api.meta.ai/v1/chat/completions"
     assert captured_request["headers"]["Authorization"] == f"Bearer {META_KEY}"
-    assert captured_request["body"]["model"] == "llama-3.3-70b-instruct"
+    assert captured_request["body"]["model"] == "muse-spark-1.3"
     assert captured_request["body"]["max_tokens"] == 256
     messages = captured_request["body"]["messages"]
     assert len(messages) == 2
@@ -103,7 +103,7 @@ async def test_meta_client_sanitizes_errors_never_leaking_key() -> None:
 
     client = MetaModelClient(
         api_key=META_KEY,
-        model="llama-3.3-70b-instruct",
+        model="muse-spark-1.3",
         timeout=5.0,
     )
 
@@ -111,7 +111,7 @@ async def test_meta_client_sanitizes_errors_never_leaking_key() -> None:
         fp = MagicMock()
         fp.read.return_value = b'{"error": "Unauthorized"}'
         raise urllib.error.HTTPError(
-            url="https://api.llama.com/v1/chat/completions",
+            url="https://api.meta.ai/v1/chat/completions",
             code=401,
             msg="Unauthorized",
             hdrs={},
@@ -148,13 +148,13 @@ def test_meta_provider_status_reporting() -> None:
         meta_api_key=META_KEY,
         ai_assistant_enabled=True,
         ai_assistant_kill_switch=False,
-        ai_assistant_model="llama-3.3-70b-instruct",
+        ai_assistant_model="muse-spark-1.3",
     )
     svc_ready = JQEAIService(settings=ready_settings, projection_reader=StubReader())
     st_ready = svc_ready.status()
     assert st_ready.state == "READY"
     assert st_ready.healthy is True
-    assert st_ready.model == "llama-3.3-70b-instruct"
+    assert st_ready.model == "muse-spark-1.3"
     assert st_ready.provider == "meta"
 
 
@@ -189,7 +189,7 @@ async def test_meta_provider_chat_successful_response() -> None:
         meta_api_key=META_KEY,
         ai_assistant_enabled=True,
         ai_assistant_kill_switch=False,
-        ai_assistant_model="llama-3.3-70b-instruct",
+        ai_assistant_model="muse-spark-1.3",
     )
 
     class SuccessfulClient:
@@ -205,5 +205,44 @@ async def test_meta_provider_chat_successful_response() -> None:
     resp = await svc.chat("Status?")
     assert resp.state == "ANSWERED"
     assert resp.provider == "meta"
-    assert resp.model == "llama-3.3-70b-instruct"
+    assert resp.model == "muse-spark-1.3"
     assert "NO_TRADE" in resp.answer
+
+
+@pytest.mark.asyncio
+async def test_meta_billing_block_is_actionable_and_redacted() -> None:
+    settings = Settings(
+        _env_file=None,
+        ai_assistant_provider="meta",
+        meta_api_key=META_KEY,
+        ai_assistant_enabled=True,
+        ai_assistant_kill_switch=False,
+    )
+
+    class BillingBlockedClient:
+        async def answer(self, **kwargs):
+            raise RuntimeError("HTTP 402: Payment Required")
+
+    service = JQEAIService(settings=settings, projection_reader=StubReader(), client=BillingBlockedClient())
+    with pytest.raises(AssistantUnavailable) as exc_info:
+        await service.chat("Summarize the evidence")
+    assert exc_info.value.code == "META_BILLING_REQUIRED"
+    assert "billing" in exc_info.value.user_message.lower()
+    assert META_KEY not in exc_info.value.user_message
+
+@pytest.mark.asyncio
+async def test_generic_mode_never_reads_workspace_evidence() -> None:
+    settings = Settings(_env_file=None, ai_assistant_provider="meta", meta_api_key=META_KEY,
+                        ai_assistant_enabled=True, ai_assistant_kill_switch=False,
+                        ai_assistant_context_mode="generic")
+    reader = MagicMock()
+    reader.read.side_effect = AssertionError("Workspace must stay local")
+    client = MagicMock()
+    from unittest.mock import AsyncMock
+    client.answer = AsyncMock(return_value=ProviderResult(text="A closed candle has completed its interval.", input_tokens=10, output_tokens=10, stop_reason="end_turn"))
+    service = JQEAIService(settings=settings, projection_reader=reader, client=client)
+    result = await service.chat("What is a closed candle?")
+    reader.read.assert_not_called()
+    assert client.answer.call_args.kwargs["context"] == ""
+    assert result.context is None
+    assert service.status().context_mode == "generic"

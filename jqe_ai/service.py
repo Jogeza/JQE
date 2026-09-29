@@ -13,7 +13,7 @@ from jqe_ai.context import build_context, serialize_context
 from jqe_ai.models import (
     AssistantChatResponse, AssistantStatusResponse, ContextSummary, UsageSummary,
 )
-from jqe_ai.prompt import SYSTEM_PROMPT
+from jqe_ai.prompt import SYSTEM_PROMPT, GENERIC_SYSTEM_PROMPT
 
 FIGURE_WARNING = "Contains figures not found in the evidence"
 _NUMBER = re.compile(r"(?<![A-Za-z_])-?\d+(?:\.\d+)?%?")
@@ -71,7 +71,10 @@ class JQEAIService:
 
     def status(self) -> AssistantStatusResponse:
         provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
-        if provider in {"meta", "openai_compatible"}:
+        if provider == "groq":
+            configured = bool(getattr(self.settings, "groq_api_key", None))
+            missing_reason = "GROQ_API_KEY_MISSING"
+        elif provider in {"meta", "openai_compatible"}:
             configured = bool(getattr(self.settings, "meta_api_key", None))
             missing_reason = "META_API_KEY_MISSING"
         else:
@@ -90,6 +93,7 @@ class JQEAIService:
             state=state, configured=configured, enabled=self.settings.ai_assistant_enabled,
             healthy=state == "READY", model=self.settings.ai_assistant_model,
             provider=provider, reason_codes=reasons,
+            context_mode=getattr(self.settings, "ai_assistant_context_mode", "workspace"),
         )
 
     def _ready_client(self) -> ModelClient:
@@ -104,7 +108,18 @@ class JQEAIService:
         if self._client is None:
             try:
                 provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
-                if provider in {"meta", "openai_compatible"}:
+                if provider == "groq":
+                    from jqe_ai.client import GroqModelClient
+
+                    self._client = GroqModelClient(
+                        api_key=self.settings.groq_api_key,
+                        model=self.settings.ai_assistant_model,
+                        api_base=getattr(self.settings, "groq_api_base", "https://api.groq.com/openai/v1"),
+                        max_tokens=self.settings.ai_assistant_max_output_tokens,
+                        timeout=self.settings.ai_assistant_timeout_seconds,
+                        reasoning_effort=getattr(self.settings, "groq_reasoning_effort", "medium"),
+                    )
+                elif provider in {"meta", "openai_compatible"}:
                     from jqe_ai.client import MetaModelClient
 
                     self._client = MetaModelClient(
@@ -131,29 +146,33 @@ class JQEAIService:
         client = self._ready_client()
         now = self._clock()
         self._limiter.check_and_record(client_key, now)
-        try:
-            bundle = build_context(
-                reader=self.projection_reader.read,
-                built_at=now.isoformat(), maximum_bytes=self.settings.ai_assistant_max_context_bytes,
-            )
-        except ValueError as exc:
-            code = "CONTEXT_PRIVACY_FAILURE" if "Sensitive" in str(exc) else "CONTEXT_TOO_LARGE"
-            message_text = "JQE AI is unavailable because the evidence bundle failed its privacy check." if code == "CONTEXT_PRIVACY_FAILURE" else "JQE AI is unavailable because the evidence bundle exceeded its safe limit."
-            raise AssistantUnavailable(code, message_text) from exc
-        summary = ContextSummary(
-            overall_freshness=bundle.overall_freshness,
-            stale_sources=bundle.stale_sources, unavailable_sources=bundle.unavailable_sources,
-        )
         provider = getattr(self.settings, "ai_assistant_provider", "anthropic")
-        if len(bundle.unavailable_sources) == 7:
-            return AssistantChatResponse(
-                state="ANSWERED", answer="No Workspace evidence is available.", generated_at=now.isoformat(),
-                model=self.settings.ai_assistant_model, provider=provider, context=summary,
+        generic = getattr(self.settings, "ai_assistant_context_mode", "workspace") == "generic"
+        summary = None
+        encoded = ""
+        if not generic:
+            try:
+                bundle = build_context(
+                    reader=self.projection_reader.read,
+                    built_at=now.isoformat(), maximum_bytes=self.settings.ai_assistant_max_context_bytes,
+                )
+            except ValueError as exc:
+                code = "CONTEXT_PRIVACY_FAILURE" if "Sensitive" in str(exc) else "CONTEXT_TOO_LARGE"
+                message_text = "JQE AI is unavailable because the evidence bundle failed its privacy check." if code == "CONTEXT_PRIVACY_FAILURE" else "JQE AI is unavailable because the evidence bundle exceeded its safe limit."
+                raise AssistantUnavailable(code, message_text) from exc
+            summary = ContextSummary(
+                overall_freshness=bundle.overall_freshness,
+                stale_sources=bundle.stale_sources, unavailable_sources=bundle.unavailable_sources,
             )
-        encoded = serialize_context(bundle)
+            if len(bundle.unavailable_sources) == 7:
+                return AssistantChatResponse(
+                    state="ANSWERED", answer="No Workspace evidence is available.", generated_at=now.isoformat(),
+                    model=self.settings.ai_assistant_model, provider=provider, context=summary,
+                )
+            encoded = serialize_context(bundle)
         try:
             result = await asyncio.wait_for(
-                client.answer(system=SYSTEM_PROMPT, context=encoded, message=message),
+                client.answer(system=GENERIC_SYSTEM_PROMPT if generic else SYSTEM_PROMPT, context=encoded, message=message),
                 timeout=self.settings.ai_assistant_timeout_seconds,
             )
         except asyncio.TimeoutError as exc:
@@ -163,17 +182,35 @@ class JQEAIService:
             err_str = str(exc)
 
             if "AuthenticationError" in error_types or "HTTP 401" in err_str:
-                auth_code = "META_AUTH_FAILED" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_AUTH_FAILED"
-                provider_name = "Meta AI" if provider == "meta" else "Anthropic"
+                auth_code = {
+                    "meta": "META_AUTH_FAILED",
+                    "openai_compatible": "META_AUTH_FAILED",
+                    "groq": "GROQ_AUTH_FAILED",
+                }.get(provider, "ANTHROPIC_AUTH_FAILED")
+                provider_name = {"meta": "Meta AI", "openai_compatible": "Configured provider", "groq": "Groq"}.get(provider, "Anthropic")
                 raise AssistantUnavailable(auth_code, f"JQE AI is unavailable — {provider_name} authentication failed.") from exc
+            if provider == "meta" and "HTTP 402" in err_str:
+                raise AssistantUnavailable(
+                    "META_BILLING_REQUIRED",
+                    "JQE AI is unavailable because Meta Model API billing is required.",
+                    503,
+                ) from exc
             if "APITimeoutError" in error_types or "timed out" in err_str.lower():
                 raise AssistantUnavailable("ASSISTANT_TIMEOUT", "JQE AI timed out. No answer was generated.", 504) from exc
             if "RateLimitError" in error_types or "HTTP 429" in err_str:
-                rate_code = "META_RATE_LIMITED" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_RATE_LIMITED"
-                provider_name = "Meta AI" if provider == "meta" else "Anthropic"
+                rate_code = {
+                    "meta": "META_RATE_LIMITED",
+                    "openai_compatible": "META_RATE_LIMITED",
+                    "groq": "GROQ_RATE_LIMITED",
+                }.get(provider, "ANTHROPIC_RATE_LIMITED")
+                provider_name = {"meta": "Meta AI", "openai_compatible": "Configured provider", "groq": "Groq"}.get(provider, "Anthropic")
                 raise AssistantUnavailable(rate_code, f"JQE AI is temporarily unavailable — {provider_name} request limit reached.", 429) from exc
             if "APIConnectionError" in error_types or "ConnectionError" in error_types:
-                conn_code = "META_CONNECTION_ERROR" if provider in {"meta", "openai_compatible"} else "ANTHROPIC_CONNECTION_ERROR"
+                conn_code = {
+                    "meta": "META_CONNECTION_ERROR",
+                    "openai_compatible": "META_CONNECTION_ERROR",
+                    "groq": "GROQ_CONNECTION_ERROR",
+                }.get(provider, "ANTHROPIC_CONNECTION_ERROR")
                 raise AssistantUnavailable(conn_code, "JQE AI is temporarily unavailable. No answer was generated.") from exc
             if "APIStatusError" in error_types:
                 raise AssistantUnavailable("ANTHROPIC_STATUS_ERROR", "JQE AI is temporarily unavailable. No answer was generated.") from exc
@@ -185,5 +222,5 @@ class JQEAIService:
             state="ANSWERED", answer=answer, generated_at=now.isoformat(),
             model=self.settings.ai_assistant_model, provider=provider, context=summary,
             usage=UsageSummary(input_tokens=result.input_tokens, output_tokens=result.output_tokens),
-            warning=output_warning(answer, encoded, message),
+            warning=None if generic else output_warning(answer, encoded, message),
         )

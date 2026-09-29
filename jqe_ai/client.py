@@ -58,6 +58,9 @@ class AnthropicModelClient:
 class MetaModelClient:
     """Async client for Meta Model API (Llama) and OpenAI-compatible endpoints."""
 
+    token_limit_field = "max_tokens"
+    reasoning_effort: str | None = None
+
     def __init__(
         self,
         *,
@@ -87,7 +90,7 @@ class MetaModelClient:
         }
         payload = {
             "model": self._model,
-            "max_tokens": self._max_tokens,
+            self.token_limit_field: self._max_tokens,
             "messages": [
                 {"role": "system", "content": system},
                 {
@@ -99,6 +102,8 @@ class MetaModelClient:
                 },
             ],
         }
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
 
         def _do_request() -> str:
             req_data = json.dumps(payload).encode("utf-8")
@@ -142,3 +147,28 @@ class MetaModelClient:
             output_tokens=output_tokens,
             stop_reason=stop_reason,
         )
+
+
+class GroqModelClient(MetaModelClient):
+    """Groq chat-completions client using Groq's OpenAI-compatible endpoint."""
+
+    token_limit_field = "max_completion_tokens"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        api_base: str = "https://api.groq.com/openai/v1",
+        max_tokens: int = 512,
+        timeout: float = 12.0,
+        reasoning_effort: str = "medium",
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            model=model,
+            api_base=api_base,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+        self.reasoning_effort = reasoning_effort

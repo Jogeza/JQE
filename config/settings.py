@@ -163,14 +163,21 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_allowed_chat_id: int | None = None
     telegram_signal_chat_id: int | None = None
+    telegram_channel_enabled: bool = False
+    telegram_channel_chat_id: str | None = Field(default=None, repr=False)
+    telegram_channel_claim_store_path: Path = Path("state/telegram_channel_claims.sqlite3")
     telegram_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
     slack_webhook_url: str | None = Field(default=None, repr=False)
     slack_request_timeout_seconds: float = Field(default=10.0, gt=0, le=30)
 
     anthropic_api_key: str | None = Field(default=None, repr=False, exclude=True)
-    ai_assistant_provider: Literal["anthropic", "meta", "openai_compatible"] = "anthropic"
+    ai_assistant_provider: Literal["anthropic", "meta", "groq", "openai_compatible"] = "anthropic"
     meta_api_key: str | None = Field(default=None, repr=False, exclude=True)
     meta_api_base: str = "https://api.llama.com/v1"
+    groq_api_key: str | None = Field(default=None, repr=False, exclude=True)
+    groq_api_base: str = "https://api.groq.com/openai/v1"
+    groq_reasoning_effort: Literal["low", "medium", "high"] = "medium"
+    ai_assistant_context_mode: Literal["workspace", "generic"] = "workspace"
     ai_assistant_enabled: bool = False
     ai_assistant_kill_switch: bool = True
     ai_assistant_model: str = "claude-haiku-4-5-20251001"
@@ -186,7 +193,7 @@ class Settings(BaseSettings):
     default_candle_count: int = Field(default=500, gt=0)
 
     account_balance: float = Field(default=50.0, gt=0)
-    risk_percent: float = Field(default=1.0, gt=0, le=100)
+    risk_percent: float = Field(default=0.5, gt=0, le=100)
     max_daily_loss: float = Field(default=3.0, gt=0, le=100)
     max_trades_daily: int = Field(default=5, gt=0)
 
@@ -202,6 +209,7 @@ class Settings(BaseSettings):
     research_experiment_path: Path = Path("data/experiments")
     intent_store_path: Path = Path("state/intent_records.sqlite3")
     execution_position_ledger_path: Path = Path("state/execution_positions.sqlite3")
+    weltrade_expected_position_lifetime_minutes: int | None = Field(default=None, gt=0)
     execution_lifetime_store_path: Path = Path("state/execution_lifetime.sqlite3")
     daily_instrument_trade_store_path: Path = Path("state/daily_instrument_trades.sqlite3")
     max_daily_trades_per_instrument: int = Field(default=20, gt=0)
