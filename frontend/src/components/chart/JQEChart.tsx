@@ -99,17 +99,17 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     if (annotation) {
       if (annotation.entry !== null) {
         handles.priceLines.push(handles.candles.createPriceLine({
-          price: annotation.entry, color: palette.accent, title: 'ENTRY', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+          price: annotation.entry, color: palette.accent, title: 'ENTRY', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
         }));
       }
       if (annotation.stopLoss !== null) {
         handles.priceLines.push(handles.candles.createPriceLine({
-          price: annotation.stopLoss, color: palette.bear, title: 'SL', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+          price: annotation.stopLoss, color: palette.bear, title: 'STOP LOSS', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
         }));
       }
       if (annotation.takeProfit !== null) {
         handles.priceLines.push(handles.candles.createPriceLine({
-          price: annotation.takeProfit, color: palette.bull, title: 'TP', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+          price: annotation.takeProfit, color: palette.bull, title: 'TAKE PROFIT', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
         }));
       }
       if (annotation.levels) {

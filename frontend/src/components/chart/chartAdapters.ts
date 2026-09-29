@@ -42,9 +42,19 @@ export const toVolumeData = (candles: JQEChartCandle[], palette: JQEChartPalette
 export function adaptSignal(signal: SignalResponse | null, symbol: string): JQEChartAnnotation | null {
   if (!signal || signal.symbol !== symbol) return null;
   const plan = signal.trade_plan;
+  const hasValidPlan = Boolean(
+    plan?.is_valid && plan.signal === signal.signal && signal.signal !== 'NO_TRADE' &&
+    plan.entry != null && plan.stop_loss != null && plan.take_profit != null &&
+    [plan.entry, plan.stop_loss, plan.take_profit].every((value) => Number.isFinite(value) && value > 0) &&
+    (signal.signal === 'BUY'
+      ? plan.stop_loss < plan.entry && plan.entry < plan.take_profit
+      : plan.take_profit < plan.entry && plan.entry < plan.stop_loss),
+  );
   return {
-    signal: signal.signal, entry: finiteOrNull(plan?.entry ?? null),
-    stopLoss: finiteOrNull(plan?.stop_loss ?? null), takeProfit: finiteOrNull(plan?.take_profit ?? null),
+    signal: signal.signal,
+    entry: hasValidPlan ? finiteOrNull(plan?.entry ?? null) : null,
+    stopLoss: hasValidPlan ? finiteOrNull(plan?.stop_loss ?? null) : null,
+    takeProfit: hasValidPlan ? finiteOrNull(plan?.take_profit ?? null) : null,
   };
 }
 

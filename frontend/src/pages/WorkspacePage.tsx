@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Activity, Moon, SendHorizontal, Sun, X } from 'lucide-react';
 import { jqeApi } from '../services/api';
 import { MarketChart } from '../components/MarketChart';
 import type { TabType } from '../components/Sidebar';
@@ -13,6 +14,7 @@ import { formatAge, formatTime, observationState, panelState, reasonText, validA
 import './WorkspacePage.css';
 
 interface Props {
+  configurationOnly?: boolean;
   broker: ResourceState<BrokerStatusResponse>;
   safety: ResourceState<ExecutionSafetyResponse>;
   risk: ResourceState<RiskStatusResponse>;
@@ -36,7 +38,7 @@ interface Props {
 const destinations: { tab: TabType; label: string }[] = [
   { tab: 'workspace', label: 'Workspace' }, { tab: 'overview', label: 'Overview' },
   { tab: 'markets', label: 'Markets' }, { tab: 'watchlist', label: 'Watchlist' },
-  { tab: 'brokers', label: 'Brokers' }, { tab: 'positions', label: 'Positions' },
+  { tab: 'positions', label: 'Positions' },
   { tab: 'trades', label: 'Trades' }, { tab: 'strategy', label: 'Strategy' },
   { tab: 'risk', label: 'Risk Control' }, { tab: 'performance', label: 'Performance' },
   { tab: 'backtesting', label: 'Research' }, { tab: 'system', label: 'System Logs' },
@@ -58,16 +60,22 @@ const ReadinessItem: React.FC<{ label: string; source: string; result: string; o
   ({ label, source, result, observed, age, state }) => <li aria-label={label} data-state={state}><strong>{label}</strong><span>{result}</span><small>{source} · {formatTime(observed)} · age {age ?? formatAge(observed)}</small></li>;
 
 export const WorkspacePage: React.FC<Props> = ({
-  broker, safety, risk, monitoring, observationHealth, watchlist, caps,
+  configurationOnly = false, broker, safety, risk, monitoring, observationHealth, watchlist, caps,
   execution, activeAnalysis, assistantStatus, notificationStatus,
   liveExecution, onExecuteLiveCycle,
   selectedSymbol, selectedTimeframe, onMarketChange, lifecycle, onNavigate,
 }) => {
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiMessage, setAiMessage] = useState('');
-  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
+  interface AiThreadEntry { role: 'user' | 'assistant'; text: string; at: string; kind?: 'error' | 'warning' | 'pending' }
+  const [aiThread, setAiThread] = useState<AiThreadEntry[]>([]);
+  const [aiDraft, setAiDraft] = useState('');
+  const [aiDark, setAiDark] = useState(() => { try { return window.localStorage.getItem('jqe-ai-dark') === '1'; } catch { return false; } });
+  const toggleAiDark = () => setAiDark(value => {
+    try { window.localStorage.setItem('jqe-ai-dark', value ? '0' : '1'); } catch { /* storage unavailable */ }
+    return !value;
+  });
   const [aiSending, setAiSending] = useState(false);
+  const aiThreadEnd = useRef<HTMLDivElement | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [query, setQuery] = useState('');
   const aiLauncher = useRef<HTMLButtonElement>(null);
@@ -162,6 +170,7 @@ export const WorkspacePage: React.FC<Props> = ({
   const executionData = execution?.data ?? null;
   const executionState = execution ? panelState(execution) : 'UNAVAILABLE';
   const assistantState = assistantStatus?.data?.state ?? 'UNAVAILABLE';
+  const assistantLabel = assistantState === 'READY' ? 'CONFIGURED' : assistantState;
   const notificationCandidate = notificationStatus?.data ?? null;
   const notificationData = notificationCandidate &&
     Array.isArray(notificationCandidate.channels) &&
@@ -187,22 +196,25 @@ export const WorkspacePage: React.FC<Props> = ({
   const closePalette = () => { setPaletteOpen(false); setQuery(''); returnFocus.current?.focus(); };
   const navigate = (tab: TabType) => { closePalette(); onNavigate(tab); };
   const sendAssistantMessage = async () => {
-    const message = aiMessage.trim();
+    const message = aiDraft.trim();
     if (!message || aiSending || assistantState !== 'READY') return;
+    const askedAt = new Date().toISOString();
+    setAiDraft('');
     setAiSending(true);
-    setAiAnswer(null);
-    setAiError(null);
+    setAiThread(thread => [...thread, { role: 'user', text: message, at: askedAt }, { role: 'assistant', text: 'Thinking…', at: askedAt, kind: 'pending' }]);
     try {
       const response = await jqeApi.chatWithAssistant(message);
-      setAiAnswer(response.answer ?? response.message ?? 'No answer was returned.');
-      if (response.warning) setAiError(response.warning);
+      const answer = response.answer ?? response.message ?? 'No answer was returned.';
+      setAiThread(thread => [...thread.slice(0, -1), { role: 'assistant', text: answer, at: new Date().toISOString(), kind: response.warning ? 'warning' : undefined }]);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'JQE AI is unavailable.');
+      const text = error instanceof Error ? error.message : 'JQE AI is unavailable.';
+      setAiThread(thread => [...thread.slice(0, -1), { role: 'assistant', text, at: new Date().toISOString(), kind: 'error' }]);
     } finally {
       setAiSending(false);
     }
   };
   useEffect(() => {
+    if (configurationOnly) return;
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -213,7 +225,7 @@ export const WorkspacePage: React.FC<Props> = ({
         else if (aiOpen) closeAi();
       } else if (event.key === 'Tab' && (paletteOpen || aiOpen)) {
         const dialog = document.querySelector(paletteOpen ? '.workspace-palette' : '.workspace-ai-panel');
-        const focusable = Array.from(dialog?.querySelectorAll<HTMLElement>('button, input') ?? []);
+        const focusable = Array.from(dialog?.querySelectorAll<HTMLElement>('button, input, textarea') ?? []);
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -223,31 +235,38 @@ export const WorkspacePage: React.FC<Props> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [paletteOpen, aiOpen]);
+  }, [paletteOpen, aiOpen, configurationOnly]);
   useEffect(() => { if (paletteOpen) paletteInput.current?.focus(); }, [paletteOpen]);
   useEffect(() => { if (aiOpen) aiClose.current?.focus(); }, [aiOpen]);
+  useEffect(() => { aiThreadEnd.current?.scrollIntoView({ block: 'end' }); }, [aiThread, aiOpen]);
 
-  return <main className="workspace-page">
-    <header className="workspace-topbar">
-      <div className="workspace-title"><p className="workspace-eyebrow">JQE / decision workspace · broker status {brokerState}</p><h1>Research, with the evidence in view.</h1></div>
-      <div className="workspace-topbar-facts" aria-label="Broker and execution status">
-        <div><span>Reported active broker</span><strong>{brokerData ? brokerData.active_broker : 'unavailable'}</strong></div>
-        <div><span>Live broker connection</span><strong>{liveConnection}</strong></div>
-        <div className={`workspace-demo-result workspace-demo-result-${demoResult.tone}`}><span>Demo verified</span><strong>{demoResult.text}</strong></div>
-        <div><span>Masked account</span><strong>{maskedAccount}</strong></div>
-        <div><span>Verified at</span><strong>{formatTime(verifiedAt)}</strong></div>
-        <div><span>Broker-status observation age</span><strong>{brokerAge}</strong></div>
-        <div><span>Market data freshness</span><strong>{marketFreshness}</strong></div>
-        <div><span>Broker execution</span><strong>{brokerData ? brokerData.broker_execution_enabled ? 'enabled · guarded demo only' : 'disabled' : 'unavailable'}</strong></div>
-        <div><span>Research batch job</span><strong>unknown · no live job telemetry</strong></div>
-        <div><span>Execution snapshot</span><strong>{safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : `${safetyState.toLowerCase()} · fail closed`}</strong></div>
-        <div><span>Execution</span><strong>{executionData ? `${executionData.connected ? 'connected' : 'disconnected'} · ${executionData.open_positions_count} open` : 'unavailable'}</strong></div>
-      </div>
+  const PageRoot = configurationOnly ? 'section' : 'main';
+  return <PageRoot className="workspace-page">
+    {!configurationOnly && <header className="workspace-topbar">
+      <div className="workspace-title"><p className="workspace-eyebrow">JQE / decision workspace · broker status {brokerState}</p><h1>Decision workspace</h1><p>Current market, safety and broker evidence.</p></div>
       <button ref={paletteTrigger} type="button" className="workspace-command" onClick={() => {
         returnFocus.current = paletteTrigger.current; setPaletteOpen(true);
       }}>Navigate <kbd>Ctrl/⌘ K</kbd></button>
-    </header>
-    <p className="workspace-switch-note">Switching not available yet. The workspace does not change the active broker.</p>
+    </header>}
+    {configurationOnly && <>
+      <div className="workspace-topbar-facts" aria-label="Broker and execution status">
+        <div><span>Live broker connection</span><strong>{liveConnection}</strong></div>
+        <div className={`workspace-demo-result workspace-demo-result-${demoResult.tone}`}><span>Demo verified</span><strong>{demoResult.text}</strong></div>
+        <div><span>Market data freshness</span><strong>{marketFreshness}</strong></div>
+        <div><span>Broker execution</span><strong>{brokerData ? brokerData.broker_execution_enabled ? 'enabled · guarded demo only' : 'disabled' : 'unavailable'}</strong></div>
+      </div>
+    <details className="workspace-details workspace-operational-details">
+      <summary>Connection and operational checks</summary>
+      <div className="workspace-operational-facts">
+        <span>Reported active broker<strong>{brokerData?.active_broker ?? 'unavailable'}</strong></span>
+        <span>Masked account<strong>{maskedAccount}</strong></span>
+        <span>Verified <strong>{formatTime(verifiedAt)}</strong></span>
+        <span>Broker-status observation age<strong>{brokerAge}</strong></span>
+        <span>Execution<strong>{executionData ? `${executionData.connected ? 'connected' : 'disconnected'} · ${executionData.open_positions_count} open` : 'unavailable'}</strong></span>
+        <span>Execution snapshot<strong>{safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : `${safetyState.toLowerCase()} · fail closed`}</strong></span>
+        <span>Research batch job<strong>unknown · no live job telemetry</strong></span>
+      </div>
+      <p className="workspace-switch-note">Broker selection is fixed to Weltrade for this installation.</p>
 
     <Panel title="Readiness" source="Evidence checklist" state={brokerState} className="workspace-readiness">
       <ul className="workspace-readiness-list">
@@ -277,26 +296,28 @@ export const WorkspacePage: React.FC<Props> = ({
         {liveExecution?.error && <p role="alert">{liveExecution.error}</p>}
       </div>}
     </Panel>
+    </details></>}
 
-    <div className="workspace-grid workspace-primary">
+    {!configurationOnly && <div className="workspace-grid workspace-primary">
       <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></div> : <>
-        <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>
+        <details className="workspace-inline-details"><summary>Observation details</summary>        <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>
+</details>
         <ol className="workspace-stages">
           <li><strong>Data freshness</strong><span>{value(assessment.data_freshness.status)}</span><small>{reasonText(assessment.data_freshness.reason_codes)}</small></li>
           <li><strong>Analysis</strong><span>{value(assessment.setup_state)}</span><small>{reasonText(assessment.reason_codes)}</small></li>
           <li><strong>Strategy score</strong><span>{assessment.confidence_score ?? 'unavailable'}</span><small>{reasonText(assessment.reason_codes)}</small>
-            <div className="workspace-factors">{factors.map(name => {
+            <details className="workspace-inline-details"><summary>Six-factor breakdown</summary>            <div className="workspace-factors">{factors.map(name => {
               const factor = assessment.evidence.find(item => item.factor === name);
               return <span key={name}>{name}: {factor ? `${factor.score} / ${factor.maximum_score} · ${factor.assessment}` : 'unavailable'}</span>;
-            })}</div>
+            })}</div></details>
           </li>
           <li><strong>Risk</strong><span>{value(assessment.risk_authorization.status)}</span><small>{reasonText(assessment.risk_authorization.reason_codes)}</small></li>
           <li><strong>Execution policy</strong><span>{value(assessment.execution_authorization.status)}</span><small>{reasonText(assessment.execution_authorization.reason_codes)}</small></li>
           <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>GET /watchlist/cap-usage · observed {capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
           <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>GET /brokers/status · {brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
         </ol></>}
-        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div>
+        <details className="workspace-inline-details"><summary>Safety evidence</summary>        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div></details>
       </Panel>
       <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
         {activeCandles ? <MarketChart
@@ -315,8 +336,10 @@ export const WorkspacePage: React.FC<Props> = ({
         </div>}
         <p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p>
       </Panel>
-    </div>
+    </div>}
 
+    {configurationOnly && <details className="workspace-details workspace-more-details">
+      <summary>Watchlist, research and operational details</summary>
     <div className="workspace-grid workspace-secondary">
       <Panel title="Watchlist" source="GET /watchlist" state={watchlistState}>
         {watchlistState === 'LIVE' && watchlist.data?.items.length === 0 ? <p className="workspace-empty">Watchlist is empty.</p>
@@ -363,18 +386,56 @@ export const WorkspacePage: React.FC<Props> = ({
         {notificationData ? <ul className="workspace-list">{notificationData.channels.map(channel => <li key={channel.channel}><strong>{channel.channel}</strong><span>{channel.state} · {channel.reachability}</span><small>{channel.reason_codes.join(' · ')} · checked {formatTime(channel.checked_at)}</small></li>)}</ul> : <p>Notification status is unavailable.</p>}
       </Panel>
     </div>
+    </details>}
 
-    <button ref={aiLauncher} type="button" className="workspace-ai-launcher" onClick={() => setAiOpen(true)}>JQE AI <small>{assistantState}</small></button>
+    {!configurationOnly && <button ref={aiLauncher} type="button" className="workspace-ai-launcher" aria-label="Open JQE AI" onClick={() => setAiOpen(true)}><span className="workspace-ai-mark" aria-hidden="true"><Activity size={19} /></span><span><strong>JQE AI</strong><small>{assistantLabel}</small></span></button>}
     {aiOpen && <div className="workspace-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeAi(); }}>
-      <aside className="workspace-ai-panel" role="dialog" aria-modal="true" aria-labelledby="workspace-ai-title">
-        <button ref={aiClose} type="button" onClick={closeAi}>Close</button><p className="workspace-eyebrow">JQE AI · {assistantState}</p><h2 id="workspace-ai-title">Read-only evidence assistant</h2>
-        <p>Explains the supplied Workspace evidence. It cannot approve risk, broker status or execution.</p>
-        {assistantState !== 'READY' && <p role="status">{assistantStatus?.data?.reason_codes?.join(' · ') || assistantStatus?.error || 'Assistant unavailable.'}</p>}
-        {aiAnswer && <p role="status">{aiAnswer}</p>}
-        {aiError && <p role="alert">{aiError}</p>}
-        {assistantState === 'READY' && <form onSubmit={event => { event.preventDefault(); void sendAssistantMessage(); }}>
-          <input aria-label="Ask JQE AI" value={aiMessage} onChange={event => setAiMessage(event.target.value)} disabled={aiSending} placeholder="Ask about the current evidence" />
-          <button type="submit" disabled={aiSending || !aiMessage.trim()}>{aiSending ? 'Asking…' : 'Ask'}</button>
+      <aside className={`workspace-ai-panel${aiDark ? ' workspace-ai-dark' : ''}`} role="dialog" aria-modal="true" aria-labelledby="workspace-ai-title">
+        <header className="workspace-ai-header">
+          <div className="workspace-ai-heading">
+            <span className="workspace-ai-mark" aria-hidden="true"><Activity size={17} /></span>
+            <div>
+              <p className="workspace-eyebrow">JQE AI · {assistantState}</p>
+              <h2 id="workspace-ai-title">{assistantStatus?.data?.context_mode === 'generic' ? 'General knowledge assistant' : 'Evidence assistant'}</h2>
+            </div>
+          </div>
+          <div className="workspace-ai-header-actions">
+            <button type="button" className="workspace-ai-mode" aria-label={aiDark ? 'Switch to light appearance' : 'Switch to dark appearance'} aria-pressed={aiDark} onClick={toggleAiDark}>{aiDark ? <Sun size={15} /> : <Moon size={15} />}</button>
+            <button ref={aiClose} type="button" className="workspace-ai-close" aria-label="Close assistant" onClick={closeAi}><X size={16} /></button>
+          </div>
+        </header>
+        <p className="workspace-ai-desc">{assistantStatus?.data?.context_mode === 'generic' ? 'Generic prompts only. Workspace, account and market evidence stays local. Each question is independent.' : 'Explains the supplied Workspace evidence. It cannot approve risk, broker status or execution.'}</p>
+        {assistantState === 'READY'
+          ? <div className="workspace-ai-meta">
+              <span className="workspace-ai-chip"><span className="workspace-ai-chip-dot" aria-hidden="true" />{assistantStatus?.data?.provider ?? 'unknown'}</span>
+              <span className="workspace-ai-chip workspace-ai-chip-model">{assistantStatus?.data?.model}</span>
+            </div>
+          : <p role="status">{assistantStatus?.data?.reason_codes?.join(' · ') || assistantStatus?.error || 'Assistant unavailable.'}</p>}
+        <div className="workspace-ai-thread" aria-live="polite">
+          {aiThread.length === 0 && <div className="workspace-ai-empty">
+            <span className="workspace-ai-empty-mark" aria-hidden="true"><Activity size={22} /></span>
+            <strong>No messages yet</strong>
+            <span>Ask a question to start the conversation.</span>
+          </div>}
+          {aiThread.map((entry, index) => (
+            <div key={index} className={`workspace-ai-msg workspace-ai-msg-${entry.role}${entry.kind ? ` workspace-ai-msg-${entry.kind}` : ''}`}>
+              <span className="workspace-ai-avatar" aria-hidden="true">{entry.role === 'user' ? 'YOU' : <Activity size={13} />}</span>
+              <div className="workspace-ai-bubble">
+                <span className="workspace-ai-msg-role">{entry.role === 'user' ? 'You' : 'JQE AI'} · {formatTime(entry.at)}</span>
+                {entry.kind === 'pending'
+                  ? <span className="workspace-ai-dots" aria-label="JQE AI is thinking"><i /><i /><i /></span>
+                  : <p>{entry.text}</p>}
+              </div>
+            </div>
+          ))}
+          <div ref={aiThreadEnd} />
+        </div>
+        {assistantState === 'READY' && <form className="workspace-ai-composer" onSubmit={event => { event.preventDefault(); void sendAssistantMessage(); }}>
+          <div className="workspace-ai-composer-box">
+            <textarea aria-label="Ask JQE AI" value={aiDraft} rows={2} onChange={event => setAiDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendAssistantMessage(); } }} disabled={aiSending} placeholder={assistantStatus?.data?.context_mode === 'generic' ? 'Ask about platform or research concepts' : 'Ask about the current evidence'} />
+            <button type="submit" aria-label={aiSending ? 'Asking…' : 'Send question'} disabled={aiSending || !aiDraft.trim()}>{aiSending ? '…' : <SendHorizontal size={16} />}</button>
+          </div>
+          <small className="workspace-ai-composer-hint">Enter to send · Shift+Enter for a new line</small>
         </form>}
       </aside></div>}
     {paletteOpen && <div className="workspace-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closePalette(); }}>
@@ -384,5 +445,5 @@ export const WorkspacePage: React.FC<Props> = ({
         <nav aria-label="Pages">{filteredDestinations.map(item => <button type="button" key={item.tab} onClick={() => navigate(item.tab)}>{item.label}</button>)}</nav>
         <button type="button" onClick={closePalette}>Close navigation</button>
       </div></div>}
-  </main>;
+  </PageRoot>;
 };

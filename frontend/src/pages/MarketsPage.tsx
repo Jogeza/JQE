@@ -2,6 +2,7 @@ import React from 'react';
 import { MarketChart } from '../components/MarketChart';
 import { MarketSummaryResponse, CandlesResponse, SignalResponse } from '../types/api';
 import { formatInstrumentPrice } from '../utils/format';
+import './MarketsPage.css';
 
 interface MarketsPageProps {
   summary: MarketSummaryResponse | null;
@@ -22,6 +23,16 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
   signal,
   candleError,
 }) => {
+  const marketSignal = signal?.symbol === symbol ? signal : null;
+  const plan = marketSignal?.trade_plan;
+  const levelsValid = Boolean(
+    plan?.is_valid && plan.signal === marketSignal?.signal &&
+    plan.entry != null && plan.stop_loss != null && plan.take_profit != null &&
+    [plan.entry, plan.stop_loss, plan.take_profit].every((value) => Number.isFinite(value) && value > 0) &&
+    ((marketSignal?.signal === 'BUY' && plan.stop_loss < plan.entry && plan.entry < plan.take_profit) ||
+      (marketSignal?.signal === 'SELL' && plan.take_profit < plan.entry && plan.entry < plan.stop_loss)),
+  );
+
   return (
     <div className="dashboard-page-container markets-page">
       <div className="editorial-heading"><div><span className="editorial-kicker">Market observatory</span><h1>{symbol}<span>.</span></h1></div><p>{timeframe}<small>Latest market snapshot</small></p></div>
@@ -115,7 +126,30 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
         </div>
       </div>
 
-      {/* Main Quantitative Market Chart */}
+      <section className={`market-strategy-strip market-strategy-${marketSignal?.signal?.toLowerCase() ?? 'unavailable'}`} aria-label="JQE strategy analysis">
+        <div className="market-strategy-decision">
+          <span className="market-strategy-eyebrow">JQE strategy</span>
+          <strong>{marketSignal?.signal ?? 'UNAVAILABLE'}</strong>
+          <span>{marketSignal ? `${marketSignal.confidence}% confidence · ${marketSignal.quality}` : 'No current decision for this market'}</span>
+        </div>
+        <div className="market-strategy-level">
+          <span>Entry</span>
+          <strong>{levelsValid && plan?.entry != null ? formatInstrumentPrice(plan.entry, candles?.price_decimals) : '—'}</strong>
+        </div>
+        <div className="market-strategy-level market-strategy-stop">
+          <span>Stop loss</span>
+          <strong>{levelsValid && plan?.stop_loss != null ? formatInstrumentPrice(plan.stop_loss, candles?.price_decimals) : '—'}</strong>
+        </div>
+        <div className="market-strategy-level market-strategy-target">
+          <span>Take profit</span>
+          <strong>{levelsValid && plan?.take_profit != null ? formatInstrumentPrice(plan.take_profit, candles?.price_decimals) : '—'}</strong>
+        </div>
+        <div className="market-strategy-validity">
+          <strong>{levelsValid ? 'VALID STRATEGY PLAN' : 'NO VALID PLAN'}</strong>
+          <span>Analysis only · not an order authorization</span>
+        </div>
+      </section>
+
       <MarketChart
         symbol={symbol}
         timeframe={timeframe}
@@ -125,7 +159,7 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
         loading={loading}
         error={candleError}
         dataStatus={candles?.market_data_status}
-        height={520}
+        height={640}
       />
     </div>
   );

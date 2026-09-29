@@ -69,7 +69,6 @@ interface OverviewPageProps {
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({
   systemStatus,
-  marketSummary,
   candlesData,
   signalData,
   riskData,
@@ -124,6 +123,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}<small>Account, market & system health</small></p>
       </div>
 
+      <details className="dashboard-details">
+      <summary>Connection and data provenance</summary>
       <TelemetryLifecyclePanel lifecycle={telemetryLifecycle} />
 
       <div style={{ margin: '12px 0' }}>
@@ -215,15 +216,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       </div>
 
       {/* Top Command Metric Grid */}
+      </details>
       <div className="grid-metrics">
-        <MetricCard
-          label="Market Data"
-          value={marketSummary?.market_data_source.replace('_', ' ') ?? 'UNAVAILABLE'}
-          subtext={`Execution: ${systemStatus?.broker?.toUpperCase() || 'UNKNOWN'}`}
-          badge="READ ONLY"
-          badgeType="cyan"
-          loading={loading && !marketSummary}
-        />
         <MetricCard
           label="Account Equity"
           value={equity === undefined ? null : formatMoney(equity, riskData?.currency)}
@@ -298,6 +292,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       </div>
 
       {/* Auxiliary & Diagnostic Workstation Grid: Left Strategy/Positions + Right Engine/Risk/Safety */}
+      <details className="dashboard-details">
+      <summary>Positions, execution safety and research diagnostics</summary>
       <div className="grid-two-col">
         {/* Left Column: Strategy Signals & Position Tables */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
@@ -372,6 +368,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           />
         </div>
       </div>
+      </details>
     </div>
   );
 };

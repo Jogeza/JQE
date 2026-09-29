@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
+import { NotificationCenter } from './components/NotificationCenter';
 import { Sidebar, TabType } from './components/Sidebar';
 import { OverviewPage } from './pages/OverviewPage';
 import { MarketsPage } from './pages/MarketsPage';
@@ -10,7 +11,7 @@ import { RiskPage } from './pages/RiskPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ResearchPage } from './pages/ResearchPage';
 import { SystemPage } from './pages/SystemPage';
-import { BrokersPage } from './pages/BrokersPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { jqeApi } from './services/api';
@@ -50,6 +51,8 @@ const legacyProfile = [
   'system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety',
   'performance', 'recovery', 'paperRuntime', 'paperDiagnostics', 'monitoring',
   'observationHealth', 'brokerStatus', 'watchlist', 'watchlistCapUsage',
+  'notificationStatus',
+  'assistantStatus',
 ] as const;
 
 export const App: React.FC = () => {
@@ -149,7 +152,7 @@ export const App: React.FC = () => {
         const clear = resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name);
         next[name] = {
           ...resource, data: clear ? null : resource.data, loading: true,
-          stale: clear ? false : resource.data !== null || resource.stale,
+          stale: clear ? false : resource.stale,
         } as never;
       });
       return next;
@@ -222,11 +225,6 @@ export const App: React.FC = () => {
     }
   }, [activeTab, selectedSymbol, selectedTimeframe]);
 
-  const handleSelectBroker = useCallback(async (broker: string) => {
-    await jqeApi.selectBroker(broker, 'dashboard');
-    await fetchAllData(true, false);
-  }, [fetchAllData]);
-
   const handleExecuteLiveCycle = useCallback(async () => {
     if (liveExecution.loading) return;
     setLiveExecution({ loading: true, result: null, error: null });
@@ -287,11 +285,11 @@ export const App: React.FC = () => {
   const apiError = failedResources.length
     ? `Telemetry errors: ${failedResources.join(', ')}. Prior values, when available, are marked stale.`
     : null;
+  const feedEntries = Object.entries(resources);
+  const feedIssues = feedEntries.filter(([, resource]) => resource.error || (resource.stale && !resource.loading) || !resource.data).length;
 
-  const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'workspace':
-        return <WorkspacePage
+  const renderWorkspace = (configurationOnly = false) => {
+    return <WorkspacePage configurationOnly={configurationOnly}
           broker={resources.brokerStatus}
           safety={resources.safety}
           risk={resources.risk}
@@ -314,6 +312,12 @@ export const App: React.FC = () => {
           lifecycle={telemetryLifecycle}
           onNavigate={setActiveTab}
         />;
+  };
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case 'workspace':
+        return renderWorkspace();
       case 'overview':
         return (
           <OverviewPage
@@ -379,22 +383,14 @@ export const App: React.FC = () => {
             onRefresh={() => fetchAllData(true, false)}
           />
         );
-      case 'brokers':
-        return (
-          <BrokersPage
-            brokerStatus={resources.brokerStatus.data}
-            loading={resources.brokerStatus.loading}
-            onRefresh={() => fetchAllData(true, false)}
-            onSelectBroker={handleSelectBroker}
-          />
-        );
       case 'performance':
         return <PerformancePage performance={performanceData} execution={executionData} loading={loading} currency={performanceData?.currency ?? undefined} />;
       case 'backtesting':
         return <ResearchPage />;
       case 'system':
-      case 'settings':
         return <SystemPage systemStatus={systemStatus} loading={loading} />;
+      case 'settings':
+        return <div className="settings-composite-view"><SettingsPage assistant={resources.assistantStatus} notifications={resources.notificationStatus} broker={resources.brokerStatus} onNavigate={setActiveTab} />{renderWorkspace(true)}</div>;
       default:
         return null;
     }
@@ -419,25 +415,22 @@ export const App: React.FC = () => {
               ? 'Research'
               : activeTab === 'risk'
               ? 'Risk Control'
-              : activeTab === 'brokers'
-              ? 'Brokers & Gateways'
               : activeTab === 'watchlist'
               ? 'Watchlist & Caps'
               : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
           }
           systemStatus={systemStatus}
           loading={loading}
-          telemetryStale={resources.system.stale}
+          telemetryStale={resources.system.stale && !resources.system.loading}
           onRefresh={() => fetchAllData(true, false)}
           selectedSymbol={displaySymbol}
           onSymbolChange={setSelectedSymbol}
           selectedTimeframe={displayTimeframe}
           onTimeframeChange={setSelectedTimeframe}
-          brokerStatus={resources.brokerStatus.data}
-          onSelectBroker={handleSelectBroker}
         />}
 
         <div className="offline-simulation-banner" role="status">
+          <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError} />
           {resources.brokerStatus.data?.broker_execution_enabled === true
             ? 'DEMO EXECUTION — BROKER ORDERS ENABLED'
             : resources.brokerStatus.data?.broker_execution_enabled === false
@@ -479,21 +472,10 @@ export const App: React.FC = () => {
         )}
 
         {/* Telemetry Status Ribbon / System Health Rail */}
-        {activeTab !== 'workspace' && <div className="telemetry-ribbon"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            flexWrap: 'wrap',
-            padding: '3px 16px',
-            borderBottom: '1px solid var(--border-dark)',
-            backgroundColor: 'var(--bg-dark-status)',
-            fontSize: '9.5px',
-            flexShrink: 0,
-            minHeight: '24px',
-          }}
-        >
-          {Object.entries(resources).map(([name, resource]) => {
+        {activeTab !== 'workspace' && <details className="telemetry-ribbon">
+          <summary>Data feeds · {feedEntries.length - feedIssues} current · {feedIssues} need attention</summary>
+          <div className="telemetry-ribbon-feeds">
+          {feedEntries.map(([name, resource]) => {
             const state = resource.loading && !resource.data ? 'UNAVAILABLE'
               : resource.error && !resource.data ? 'OFFLINE'
               : resource.stale ? 'STALE'
@@ -528,7 +510,8 @@ export const App: React.FC = () => {
               </span>
             );
           })}
-        </div>}
+          </div>
+        </details>}
 
         {/* Dynamic Page View */}
         {renderActiveTab()}

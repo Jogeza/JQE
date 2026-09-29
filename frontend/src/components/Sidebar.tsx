@@ -15,9 +15,8 @@ import {
   PanelLeftOpen,
   Menu,
   X,
-  Activity,
   ListChecks,
-  Plug,
+  Activity,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -26,7 +25,6 @@ export type TabType =
   | 'overview'
   | 'markets'
   | 'watchlist'
-  | 'brokers'
   | 'positions'
   | 'trades'
   | 'strategy'
@@ -60,27 +58,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   riskAllowed,
   riskStale,
 }) => {
-  const [collapsed, setCollapsed] = useState(() => window.matchMedia('(min-width: 769px) and (max-width: 1200px)').matches);
+  const [collapsed, setCollapsed] = useState(() =>
+    window.matchMedia('(min-width: 769px) and (max-width: 1200px)').matches
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawer = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+
   const navItems: NavItem[] = [
-    { id: 'workspace', label: 'Workspace', icon: LayoutGrid, group: 'Overview' },
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Overview' },
-    { id: 'markets', label: 'Markets', icon: CandlestickChart, group: 'Markets' },
-    { id: 'watchlist', label: 'Watchlist', icon: ListChecks, group: 'Markets' },
-    { id: 'brokers', label: 'Brokers', icon: Plug, group: 'Markets' },
-    { id: 'positions', label: 'Positions', icon: Briefcase, group: 'Analysis', badge: openPositionsCount !== undefined && openPositionsCount > 0 ? openPositionsCount : undefined },
-    { id: 'trades', label: 'Trades', icon: History, group: 'Analysis' },
-    { id: 'strategy', label: 'Strategy', icon: BrainCircuit, group: 'Analysis' },
-    // Risk Control is always available for inspection. A blocked or stale
-    // risk observation must block execution, not hide the control surface.
-    { id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis', badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : undefined },
-    { id: 'performance', label: 'Performance', icon: LineChart, group: 'Analysis' },
-    { id: 'backtesting', label: 'Research', icon: PlayCircle, group: 'Analysis' },
-    { id: 'system', label: 'System Logs', icon: Terminal, group: 'System' },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon, group: 'System' },
+    { id: 'workspace',   label: 'Workspace',    icon: LayoutGrid,       group: 'Overview' },
+    { id: 'overview',    label: 'Overview',     icon: LayoutDashboard,  group: 'Overview' },
+    { id: 'markets',     label: 'Markets',      icon: CandlestickChart, group: 'Markets'      },
+    { id: 'watchlist',   label: 'Watchlist',    icon: ListChecks,       group: 'Markets'      },
+    {
+      id: 'positions', label: 'Positions', icon: Briefcase, group: 'Analysis',
+      badge: openPositionsCount !== undefined && openPositionsCount > 0 ? openPositionsCount : undefined,
+      badgeType: 'cyan',
+    },
+    { id: 'trades',      label: 'Trades',       icon: History,          group: 'Analysis'     },
+    { id: 'strategy',    label: 'Strategy',     icon: BrainCircuit,     group: 'Analysis'     },
+    {
+      id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis',
+      badge: riskStale ? 'STALE' : riskAllowed === undefined ? 'UNKNOWN' : riskAllowed ? 'OK' : undefined,
+      badgeType: riskStale ? 'amber' : riskAllowed ? 'green' : 'neutral',
+    },
+    { id: 'performance', label: 'Performance',  icon: LineChart,        group: 'Analysis'     },
+    { id: 'backtesting', label: 'Research',     icon: PlayCircle,       group: 'Analysis'     },
+    { id: 'system',      label: 'System Logs',  icon: Terminal,         group: 'System'       },
+    { id: 'settings',    label: 'Settings',     icon: SettingsIcon,     group: 'System'       },
   ];
+
   useEffect(() => {
     if (!drawerOpen) return;
     const dialog = drawer.current;
@@ -97,57 +104,123 @@ export const Sidebar: React.FC<SidebarProps> = ({
       opener.current?.focus();
     };
   }, [drawerOpen]);
+
   const navigation = (mobile = false) => (
-    <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'}>
+    <nav aria-label={mobile ? 'Mobile navigation' : 'Main navigation'} className="sidebar-nav">
       {navItems.map((item, index) => {
         const Icon = item.icon;
-        return <React.Fragment key={item.id}>
-          {(index === 0 || navItems[index - 1].group !== item.group) && <p className="nav-section-label">{item.group}</p>}
-          <button className={activeTab === item.id ? 'nav-link active' : 'nav-link'}
-            aria-current={activeTab === item.id ? 'page' : undefined}
-            aria-label={`${item.label}${item.badge !== undefined ? ', ' + item.badge : ''}`}
-            title={`${item.label}${item.badge !== undefined ? ' · ' + item.badge : ''}`}
-            onClick={() => { onTabChange(item.id); setDrawerOpen(false); }}>
-            <Icon size={19} aria-hidden="true" />
-            <span className="nav-label">{item.label}</span>
-            {item.badge !== undefined && <span className={`nav-badge badge badge-${item.badgeType || 'neutral'}`}>{item.badge}</span>}
-          </button>
-        </React.Fragment>;
+        const isActive = activeTab === item.id;
+        return (
+          <React.Fragment key={item.id}>
+            {(index === 0 || navItems[index - 1].group !== item.group) && (
+              <p className="nav-section-label">{item.group}</p>
+            )}
+            <button
+              className={`nav-link${isActive ? ' active' : ''}`}
+              aria-current={isActive ? 'page' : undefined}
+              aria-label={`${item.label}${item.badge !== undefined ? ', ' + item.badge : ''}`}
+              title={collapsed && !mobile ? item.label : `${item.label}${item.badge !== undefined ? ' · ' + item.badge : ''}`}
+              onClick={() => { onTabChange(item.id); setDrawerOpen(false); }}
+            >
+              <Icon size={17} aria-hidden="true" className="nav-icon" />
+              <span className="nav-label">{item.label}</span>
+              {item.badge !== undefined && (
+                <span className={`nav-badge badge badge-${item.badgeType || 'neutral'}`}>
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          </React.Fragment>
+        );
       })}
     </nav>
   );
+
   const pageTitle = navItems.find(item => item.id === activeTab)?.label ?? 'Workspace';
 
-  return <>
-    <aside className={`desktop-sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-brand"><div className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={21} aria-hidden="true" /></span><span className="jqe-mark">JQE<span>®</span></span></div><small>Research & perspective</small><img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" /></div>
-      {navigation()}
-      <footer className="sidebar-footer">
-        <div className="sidebar-metadata"><strong>SyntX research workspace</strong><span>Weltrade · local MT5 · demo only</span></div>
-        <button className="nav-collapse" onClick={() => setCollapsed(value => !value)}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-          {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
-          <span className="nav-label">Collapse navigation</span>
+  return (
+    <>
+      {/* ── Desktop sidebar ─────────────────────────────────────── */}
+      <aside className={`desktop-sidebar${collapsed ? ' collapsed' : ''}`} aria-label="JQE Navigation">
+
+        <div className="sidebar-brand">
+          <div className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={21} aria-hidden="true" /></span><span className="jqe-mark">JQE<span>®</span></span></div>
+          <small>Research &amp; perspective</small>
+          <img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" />
+        </div>
+
+        {navigation()}
+
+        {/* Footer */}
+        <footer className="sidebar-footer">
+          {!collapsed && (
+            <div className="sidebar-metadata">
+              <span className="sidebar-meta-provider">Weltrade · MT5</span>
+              <span className="sidebar-meta-mode">demo · observation only</span>
+            </div>
+          )}
+          <button
+            className="nav-collapse"
+            onClick={() => setCollapsed(v => !v)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            <span className="nav-label">Collapse</span>
+          </button>
+        </footer>
+      </aside>
+
+      {/* ── Mobile header ────────────────────────────────────────── */}
+      <div className="mobile-navigation-header">
+        <span className="mobile-brand-lockup">
+          <span className="legacy-jqe-mark"><Activity size={17} aria-hidden="true" /></span><span className="jqe-mark">JQE</span>
+        </span>
+        <strong className="mobile-page-title">{pageTitle}</strong>
+        <button
+          ref={opener}
+          className="icon-button"
+          aria-label="Open navigation"
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <Menu size={22} />
         </button>
-      </footer>
-    </aside>
-    <div className="mobile-navigation-header">
-      <span className="mobile-brand-lockup"><span className="legacy-jqe-mark"><Activity size={17} aria-hidden="true" /></span><span className="jqe-mark">JQE</span></span><strong>{pageTitle}</strong>
-      <button ref={opener} className="icon-button" aria-label="Open navigation" aria-haspopup="dialog"
-        aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu size={22} /></button>
-    </div>
-    <dialog ref={drawer} className="mobile-nav-drawer" aria-label="Navigation"
-      onCancel={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)}
-      onClick={event => { if (event.target === event.currentTarget) {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        if (event.clientX > bounds.right || event.clientX < bounds.left) setDrawerOpen(false);
-      } }}>
-      <div className="drawer-heading"><span className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={20} aria-hidden="true" /></span><span className="jqe-mark">JQE</span></span>
-        <button autoFocus className="icon-button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)}><X size={22} /></button>
       </div>
-      {navigation(true)}
-      <div className="sidebar-metadata"><img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" /><span>Weltrade · local MT5 · demo only</span></div>
-    </dialog>
-  </>;
+
+      {/* ── Mobile drawer ────────────────────────────────────────── */}
+      <dialog
+        ref={drawer}
+        className="mobile-nav-drawer"
+        aria-label="Navigation"
+        onCancel={() => setDrawerOpen(false)}
+        onClose={() => setDrawerOpen(false)}
+        onClick={event => {
+          if (event.target === event.currentTarget) {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientX > bounds.right || event.clientX < bounds.left) setDrawerOpen(false);
+          }
+        }}
+      >
+        <div className="drawer-heading">
+          <span className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={20} aria-hidden="true" /></span><span className="jqe-mark">JQE</span></span>
+          <button
+            autoFocus
+            className="icon-button"
+            aria-label="Close navigation"
+            onClick={() => setDrawerOpen(false)}
+          >
+            <X size={22} />
+          </button>
+        </div>
+        {navigation(true)}
+        <div className="sidebar-metadata" style={{ padding: '12px 16px', borderTop: '1px solid var(--border-dark)' }}>
+          <img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" />
+          <span className="sidebar-meta-provider">Weltrade · MT5 demo</span>
+        </div>
+      </dialog>
+    </>
+  );
 };

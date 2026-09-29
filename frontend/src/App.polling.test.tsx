@@ -97,7 +97,7 @@ describe('App polling profiles', () => {
     await mount();
     expect(Array.from(host.querySelectorAll('.desktop-sidebar .nav-section-label')).map(node => node.textContent)).toEqual(['Overview', 'Markets', 'Analysis', 'System']);
     expect(Array.from(host.querySelectorAll('.desktop-sidebar nav button')).map(node => node.textContent?.replace(/UNKNOWN|STALE|LOCK|OK|\d+/g, '').trim())).toEqual([
-      'Workspace', 'Overview', 'Markets', 'Watchlist', 'Brokers', 'Positions', 'Trades',
+      'Workspace', 'Overview', 'Markets', 'Watchlist', 'Positions', 'Trades',
       'Strategy', 'Risk Control', 'Performance', 'Research', 'System Logs', 'Settings',
     ]);
   });
@@ -123,7 +123,7 @@ describe('App polling profiles', () => {
       '/system', '/market/summary', '/market/candles', '/signal', '/risk', '/execution',
       '/execution/safety', '/performance', '/execution/recovery', '/execution/paper-runtime',
       '/research/paper-diagnostics', '/monitoring/offline', '/observation/health',
-      '/brokers/status', '/watchlist', '/watchlist/cap-usage',
+      '/brokers/status', '/watchlist', '/watchlist/cap-usage', '/notifications/status', '/assistant/status',
     ]);
   });
 

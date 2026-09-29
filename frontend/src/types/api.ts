@@ -428,6 +428,8 @@ export interface ObservationHealthComponent {
 }
 
 export interface AssistantStatusResponse {
+  provider?: string;
+  context_mode?: 'workspace' | 'generic';
   state: 'READY' | 'DISABLED' | 'KILLED' | 'UNCONFIGURED' | 'UNAVAILABLE';
   configured: boolean;
   enabled: boolean;

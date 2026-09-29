@@ -52,11 +52,11 @@ const baseProps = (): Props => ({
   selectedSymbol: 'FX Vol 20', selectedTimeframe: 'M1', lifecycle, onNavigate: vi.fn(),
 });
 
-describe('WorkspacePage', () => {
+describe('Workspace and Settings evidence views', () => {
   let host: HTMLDivElement;
   let root: Root;
   const render = async (overrides: Partial<Props> = {}) => {
-    await act(async () => root.render(<WorkspacePage {...baseProps()} {...overrides} />));
+    await act(async () => root.render(<><WorkspacePage {...baseProps()} {...overrides} /><WorkspacePage {...baseProps()} {...overrides} configurationOnly /></>));
   };
   const panel = (name: string) => host.querySelector(`[aria-label="${name}"]`) as HTMLElement;
   const demoCard = () => host.querySelector('.workspace-demo-result') as HTMLElement;
@@ -67,6 +67,15 @@ describe('WorkspacePage', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
+  it('keeps Workspace limited to decision and market views', async () => {
+    await act(async () => root.render(<WorkspacePage {...baseProps()} />));
+    expect(host.querySelectorAll('.workspace-card')).toHaveLength(2);
+    expect(panel('Decision trail')).not.toBeNull();
+    expect(panel('Market chart')).not.toBeNull();
+    expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
+    expect(host.querySelector('.workspace-operational-details')).toBeNull();
+    expect(host.querySelector('.workspace-more-details')).toBeNull();
+  });
   it('renders LOADING state', async () => {
     await render({ watchlist: resource<WatchlistResponse>(null, { loading: true }) });
     expect(panel('Watchlist').dataset.state).toBe('LOADING');
@@ -91,8 +100,9 @@ describe('WorkspacePage', () => {
     const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
     expect(facts.textContent).toContain('Market data freshnessunknown · MARKET_CLOCK_AHEAD');
     expect(facts.textContent).toContain('Broker executiondisabled');
-    expect(facts.textContent).toContain('Research batch jobunknown · no live job telemetry');
-    expect(facts.textContent).toContain('Execution snapshotstale · fail closed');
+    const details = host.querySelector('.workspace-operational-facts') as HTMLElement;
+    expect(details.textContent).toContain('Research batch jobunknown · no live job telemetry');
+    expect(details.textContent).toContain('Execution snapshotstale · fail closed');
     expect(panel('Market chart').textContent).toContain('freshness unknown · MARKET_CLOCK_AHEAD');
     expect(host.querySelector('[data-testid="market-chart"]')?.getAttribute('data-status')).toBe('UNKNOWN');
   });
@@ -188,7 +198,7 @@ describe('WorkspacePage', () => {
   it('uses one human broker age in the top card and MT5 checklist detail', async () => {
     vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
     await render({ broker: resource({ ...broker, live_connection_state: 'CONNECTED', live_checked_at: observed }) });
-    const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
+    const facts = host.querySelector('.workspace-operational-facts') as HTMLElement;
     const connection = host.querySelector('[aria-label="MT5 connection"]') as HTMLElement;
     expect(facts.textContent).toContain('Broker-status observation age7d 0h');
     expect(connection.textContent).toContain('age 7d 0h');
@@ -243,11 +253,11 @@ describe('WorkspacePage', () => {
     const facts = host.querySelector('[aria-label="Broker and execution status"]') as HTMLElement;
     expect(facts.textContent).toContain('Live broker connectionunavailable');
     expect(facts.textContent).toContain('Demo verifiedYes');
-    expect(facts.querySelectorAll(':scope > div')).toHaveLength(11);
+    expect(facts.querySelectorAll(':scope > div')).toHaveLength(4);
   });
   it('renders the connected execution status when supplied', async () => {
     await render({ execution: resource({ connected: true, open_positions_count: 2 } as ExecutionStateResponse) });
-    expect(host.querySelector('[aria-label="Broker and execution status"]')?.textContent).toContain('Executionconnected · 2 open');
+    expect(host.querySelector('.workspace-operational-facts')?.textContent).toContain('Executionconnected · 2 open');
     expect(panel('Readiness').textContent).toContain('Execution statusConnected · 2 open positions');
   });
   it('does not offer broker switching in Workspace', async () => {
@@ -255,10 +265,14 @@ describe('WorkspacePage', () => {
     expect(host.textContent).toContain('Switching not available yet.');
     expect(host.querySelector('select')).toBeNull();
   });
-  it('preserves existing broker-page switching wiring', () => {
+  it('keeps broker details in Settings without a separate broker destination', () => {
     const app = readFileSync('src/App.tsx', 'utf8');
-    expect(app).toContain('onSelectBroker={handleSelectBroker}');
-    expect(app).toContain("jqeApi.selectBroker(broker, 'dashboard')");
+    const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
+    const settings = readFileSync('src/pages/SettingsPage.tsx', 'utf8');
+    expect(app).not.toContain("case 'brokers'");
+    expect(sidebar).not.toContain("id: 'brokers'");
+    expect(settings).toContain('Weltrade connection');
+    expect(settings).toContain('Demo verification');
   });
   it('shows the backend-reported JQE AI status', async () => {
     await render();
@@ -301,12 +315,12 @@ describe('WorkspacePage', () => {
     await render();
     const launcher = host.querySelector('.workspace-ai-launcher') as HTMLButtonElement;
     await act(async () => launcher.click());
-    const close = host.querySelector('.workspace-ai-panel button') as HTMLButtonElement;
+    const close = host.querySelector('.workspace-ai-close') as HTMLButtonElement;
     close.focus();
     const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     await act(async () => window.dispatchEvent(event));
     expect(event.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(close);
+    expect(document.activeElement).toBe(host.querySelector('.workspace-ai-panel button'));
   });
   it('displays every returned watchlist row', async () => {
     await render();
