@@ -9,6 +9,7 @@ import { adaptCandles, adaptMarketSetup, adaptSignal, toCandlestickData, toLineD
 import { adaptVolumeProfile, VolumeProfilePrimitive } from './volumeProfilePrimitive';
 import type { VolumeProfileSnapshotDTO } from '../../types/research';
 import { getChartPalette } from './chartPalette';
+import type { FibonacciLevel } from './fibonacci';
 
 export interface IndicatorVisibility { ema50: boolean; ema200: boolean; rsi: boolean; volume: boolean; }
 interface JQEChartProps {
@@ -21,6 +22,7 @@ interface JQEChartProps {
   volumeProfile?: VolumeProfileSnapshotDTO | null;
   indicators?: IndicatorVisibility;
   height?: number;
+  fibonacciLevels?: FibonacciLevel[];
 }
 interface ChartHandles {
   chart: IChartApi; candles: ISeriesApi<'Candlestick'>; ema50: ISeriesApi<'Line'>;
@@ -39,6 +41,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
   volumeProfile = null,
   indicators = { ema50: true, ema200: true, rsi: true, volume: true },
   height = 460,
+  fibonacciLevels = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef<ChartHandles | null>(null);
@@ -123,8 +126,18 @@ export const JQEChart: React.FC<JQEChartProps> = ({
         });
       }
     }
+    fibonacciLevels.forEach((level) => {
+      handles.priceLines.push(handles.candles.createPriceLine({
+        price: level.price,
+        color: level.kind === 'retracement' ? palette.accentSecondary : palette.bull,
+        title: level.label,
+        lineWidth: 1,
+        lineStyle: level.kind === 'retracement' ? LineStyle.Dashed : LineStyle.Dotted,
+        axisLabelVisible: true,
+      }));
+    });
     if (!hasFitContentRef.current && adapted.length > 0) { handles.chart.timeScale().fitContent(); hasFitContentRef.current = true; }
-  }, [candles, signal, setup, markers, symbol]);
+  }, [candles, signal, setup, markers, symbol, fibonacciLevels]);
 
   useEffect(() => {
     const handles = handlesRef.current;

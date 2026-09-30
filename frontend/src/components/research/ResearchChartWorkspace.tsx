@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyStateIllustration } from '../EmptyStateIllustration';
 import { MarketChart } from '../MarketChart';
 import { adaptExperiment } from '../chart/experimentAdapter';
 import { adaptReplay } from '../chart/researchAdapter';
 import { isValidProfileRange, volumeProfileLabel } from '../chart/volumeProfilePrimitive';
+import { fibonacciLevels, suggestFibonacciAnchors, type FibonacciAnchors, type FibonacciMode } from '../chart/fibonacci';
 import type {
   HistoricalAcquisitionJobDTO,
   ResearchExperimentDTO,
@@ -87,6 +88,8 @@ export function ResearchChartWorkspace({
   const [hypothesis, setHypothesis] = useState('POC_PROXIMITY_FILTER_V1');
   const [lookback, setLookback] = useState(50);
   const [thresholds, setThresholds] = useState('0.25,0.50,1.00');
+  const [fibonacciMode, setFibonacciMode] = useState<FibonacciMode>('both');
+  const [manualAnchors, setManualAnchors] = useState<FibonacciAnchors | null>(null);
   const generation = useRef(0);
   const requestController = useRef<AbortController | null>(null);
   const selectionKey = workspaceSelectionKey(state);
@@ -96,6 +99,9 @@ export function ResearchChartWorkspace({
       item.canonical_symbol === instrument.canonical_symbol &&
       item.timeframe === timeframe
   );
+  const suggestedAnchors = useMemo(() => suggestFibonacciAnchors(view?.candles ?? []), [view]);
+  const activeAnchors = manualAnchors ?? suggestedAnchors;
+  const fibLevels = useMemo(() => fibonacciLevels(fibonacciMode, activeAnchors), [fibonacciMode, activeAnchors]);
 
   useEffect(() => {
     generation.current += 1;
@@ -110,6 +116,7 @@ export function ResearchChartWorkspace({
     setRangeEnd(0);
     setProfile(null);
     setExperiment(null);
+    setManualAnchors(null);
     const range = defaultHistoryRange(timeframe);
     setHistoryStart(range.start);
     setHistoryEnd(range.end);
@@ -473,6 +480,31 @@ export function ResearchChartWorkspace({
             </button>
           </div>
 
+          <div className="research-fibonacci-controls" aria-label="Fibonacci research overlay">
+            <div className="research-fibonacci-modes">
+              <strong>Fibonacci</strong>
+              {(['off', 'retracement', 'extension', 'both'] as FibonacciMode[]).map(mode => (
+                <button key={mode} type="button" className={fibonacciMode === mode ? 'active' : ''}
+                  aria-pressed={fibonacciMode === mode} onClick={() => setFibonacciMode(mode)}>
+                  {mode === 'off' ? 'Off' : mode === 'both' ? 'Both' : mode === 'retracement' ? 'Retracement' : 'Extension'}
+                </button>
+              ))}
+            </div>
+            {fibonacciMode !== 'off' && activeAnchors && (
+              <div className="research-fibonacci-anchors">
+                {(['a', 'b', 'c'] as const).map(anchor => (
+                  <label key={anchor}>
+                    {anchor.toUpperCase()} {anchor === 'a' ? 'swing start' : anchor === 'b' ? 'swing end' : 'retrace'}
+                    <input type="number" step="any" value={activeAnchors[anchor]}
+                      onChange={event => setManualAnchors({ ...activeAnchors, [anchor]: Number(event.target.value) })} />
+                  </label>
+                ))}
+                <button type="button" onClick={() => setManualAnchors(null)} disabled={!manualAnchors}>Auto anchors</button>
+              </div>
+            )}
+            <small>Research overlay on displayed replay candles. Auto A/B use the last 100 bars; C is the latest close. Review or edit anchors before interpreting levels. No signal or order uses these lines.</small>
+          </div>
+
           <MarketChart
             symbol={session.dataset.symbol}
             timeframe={session.dataset.timeframe}
@@ -480,6 +512,7 @@ export function ResearchChartWorkspace({
             markers={view?.markers}
             volumeProfile={profile?.snapshot ?? null}
             indicators={indicators}
+            fibonacciLevels={fibLevels}
             height={440}
             loading={!view && !error}
             error={error}

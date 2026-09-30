@@ -6,6 +6,7 @@ import { JQEChart } from './chart/JQEChart';
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import type { VolumeProfileSnapshotDTO } from '../types/research';
 import type { IndicatorVisibility } from './chart/JQEChart';
+import type { FibonacciLevel } from './chart/fibonacci';
 
 interface MarketChartProps {
   symbol: string;
@@ -21,10 +22,11 @@ interface MarketChartProps {
   volumeProfile?: VolumeProfileSnapshotDTO | null;
   indicators?: IndicatorVisibility;
   height?: number;
+  fibonacciLevels?: FibonacciLevel[];
 }
 
 export const MarketChart: React.FC<MarketChartProps> = ({
-  symbol, timeframe, candles, signal = null, setup = null, priceDecimals, loading = false, error = null, dataStatus, markers = [], volumeProfile = null, indicators, height = 460,
+  symbol, timeframe, candles, signal = null, setup = null, priceDecimals, loading = false, error = null, dataStatus, markers = [], volumeProfile = null, indicators, height = 460, fibonacciLevels = [],
 }) => (
   <div className="quant-panel chart-panel" style={{ minHeight: '360px' }}>
     <div className="quant-panel-header">
@@ -48,7 +50,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
     ) : candles.length === 0 ? (
       <ChartState>NO CANDLE DATA AVAILABLE</ChartState>
     ) : (
-      <JQEChart symbol={symbol} candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} />
+      <JQEChart symbol={symbol} candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} />
     )}
   </div>
 );
