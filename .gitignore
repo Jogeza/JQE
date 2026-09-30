@@ -73,3 +73,5 @@ state/live_paper_operational/
 # Python cache
 __pycache__/
 *.py[cod]
+.npm-cache/
+.vercel-stage/
