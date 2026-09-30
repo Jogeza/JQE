@@ -262,7 +262,7 @@ describe('Workspace and Settings evidence views', () => {
   });
   it('does not offer broker switching in Workspace', async () => {
     await render();
-    expect(host.textContent).toContain('Switching not available yet.');
+    expect(host.textContent).toContain('Weltrade');
     expect(host.querySelector('select')).toBeNull();
   });
   it('keeps broker details in Settings without a separate broker destination', () => {

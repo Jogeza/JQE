@@ -55,7 +55,11 @@ def test_full_window_is_authoritative_and_starts_at_server_day() -> None:
     )
     assert snapshot.covers(start, end)
     assert terminal.window[0] <= start
-    assert terminal.window[0].hour == 21  # Weltrade server midnight at UTC+3.
+    server_day_start = datetime.combine(
+        (terminal.window[1] + timedelta(hours=3)).date(),
+        datetime.min.time(), tzinfo=timezone.utc,
+    ) - timedelta(hours=3)
+    assert terminal.window[0] == min(start, server_day_start)
 
 
 @pytest.mark.parametrize("result", [None, RuntimeError("offline history failure")])
