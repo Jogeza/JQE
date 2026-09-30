@@ -57,6 +57,15 @@ const legacyProfile = [
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
+  const [siteTheme, setSiteTheme] = useState<'light' | 'dark'>(() => {
+    try { return window.localStorage.getItem('jqe-site-theme') === 'dark' ? 'dark' : 'light'; }
+    catch { return 'light'; }
+  });
+  const toggleSiteTheme = () => setSiteTheme(current => {
+    const next = current === 'dark' ? 'light' : 'dark';
+    try { window.localStorage.setItem('jqe-site-theme', next); } catch { /* storage unavailable */ }
+    return next;
+  });
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('');
 
@@ -397,7 +406,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-theme={siteTheme}>
       {/* Navigation Sidebar */}
       <Sidebar
         activeTab={activeTab}
@@ -405,10 +414,12 @@ export const App: React.FC = () => {
         openPositionsCount={activeTab === 'workspace' ? undefined : executionData?.open_positions_count ?? 0}
         riskAllowed={riskData?.risk_allowed}
         riskStale={resources.risk.stale}
+        siteTheme={siteTheme}
+        onToggleTheme={toggleSiteTheme}
       />
 
       {/* Main Content Area */}
-      <div className="main-content-wrapper">
+      <div className="main-content-wrapper" key={siteTheme}>
         {activeTab !== 'workspace' && <Header
           pageTitle={
             activeTab === 'backtesting'

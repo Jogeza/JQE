@@ -17,6 +17,8 @@ import {
   X,
   ListChecks,
   Activity,
+  Moon,
+  Sun,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -40,6 +42,8 @@ interface SidebarProps {
   openPositionsCount?: number;
   riskAllowed?: boolean;
   riskStale?: boolean;
+  siteTheme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
 interface NavItem {
@@ -57,6 +61,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   openPositionsCount,
   riskAllowed,
   riskStale,
+  siteTheme = 'light',
+  onToggleTheme,
 }) => {
   const [collapsed, setCollapsed] = useState(() =>
     window.matchMedia('(min-width: 769px) and (max-width: 1200px)').matches
@@ -153,6 +159,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Footer */}
         <footer className="sidebar-footer">
+          <button className="site-theme-toggle" type="button" onClick={onToggleTheme}
+            aria-label={siteTheme === 'dark' ? 'Switch site to light mode' : 'Switch site to dark mode'}
+            aria-pressed={siteTheme === 'dark'} title={siteTheme === 'dark' ? 'Light mode' : 'Dark mode'}>
+            {siteTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            <span className="nav-label">{siteTheme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          </button>
           {!collapsed && (
             <div className="sidebar-metadata">
               <span className="sidebar-meta-provider">Weltrade · MT5</span>
@@ -178,6 +190,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="legacy-jqe-mark"><Activity size={17} aria-hidden="true" /></span><span className="jqe-mark">JQE</span>
         </span>
         <strong className="mobile-page-title">{pageTitle}</strong>
+        <button type="button" className="site-theme-toggle mobile-theme-toggle" onClick={onToggleTheme}
+          aria-label={siteTheme === 'dark' ? 'Switch site to light mode' : 'Switch site to dark mode'}
+          aria-pressed={siteTheme === 'dark'}>
+          {siteTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
         <button
           ref={opener}
           className="icon-button"

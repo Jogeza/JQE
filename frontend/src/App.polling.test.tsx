@@ -102,6 +102,17 @@ describe('App polling profiles', () => {
     ]);
   });
 
+  it('switches the whole site theme and preserves the choice', async () => {
+    window.localStorage.removeItem('jqe-site-theme');
+    await mount();
+    const app = host.querySelector('.app-container') as HTMLElement;
+    expect(app.dataset.theme).toBe('light');
+    const toggle = host.querySelector('.desktop-sidebar .site-theme-toggle') as HTMLButtonElement;
+    await act(async () => toggle.click());
+    expect(app.dataset.theme).toBe('dark');
+    expect(window.localStorage.getItem('jqe-site-theme')).toBe('dark');
+  });
+
   it.each(legacyOnly)('does not request excluded %s on Workspace mount', async path => {
     await mount();
     expect(paths()).not.toContain(path);
