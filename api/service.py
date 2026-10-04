@@ -314,6 +314,7 @@ class ApplicationService:
                     provider=provider,
                     timeframe=timeframe,
                     count=count,
+                    closed_only=True,
                 )
 
             if candles:
@@ -1320,7 +1321,7 @@ class ApplicationService:
 
         pos_dtos = [
             PositionDTO(
-                id=p.id,
+                id=p.position_id,
                 symbol=p.symbol,
                 side=p.side.value,
                 volume=p.volume,
@@ -1392,7 +1393,7 @@ class ApplicationService:
                     masked_id = "*" * (len(masked_id) - 4) + masked_id[-4:]
                 position_dtos = [
                     PositionDTO(
-                        id=position.id, symbol=position.symbol, side=position.side.value,
+                        id=position.position_id, symbol=position.symbol, side=position.side.value,
                         volume=position.volume, open_price=position.open_price,
                         current_price=position.current_price, stop_loss=position.stop_loss,
                         take_profit=position.take_profit, profit=position.profit,

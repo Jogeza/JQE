@@ -95,6 +95,7 @@ class HistoricalDataService:
         count: int,
         force: bool = False,
         replace_conflicts: bool = False,
+        closed_only: bool = False,
     ) -> tuple[list[Candle], int]:
         """Refresh one provider-qualified active-market cache partition.
 
@@ -111,7 +112,10 @@ class HistoricalDataService:
             should_fetch = now - (latest_open + step) > step * _FRESHNESS_TOLERANCE_CANDLES
         downloaded = 0
         if should_fetch or self.store.count(symbol, timeframe, provider=provider) < count:
-            candles = await self.gateway.get_candles(provider_symbol, timeframe, count)
+            candles = await self.gateway.get_candles(provider_symbol, timeframe, count + (1 if closed_only else 0))
+            if closed_only:
+                # Immutable research caches must never freeze a forming bar.
+                candles = [candle for candle in candles if candle.time + step <= now]
             downloaded = self.store.save_candles(
                 symbol,
                 timeframe,

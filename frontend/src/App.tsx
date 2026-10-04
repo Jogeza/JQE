@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { NotificationCenter } from './components/NotificationCenter';
 import { Sidebar, TabType } from './components/Sidebar';
+import { DemoSupervisorBadge } from './components/DecisionJournal';
 import { OverviewPage } from './pages/OverviewPage';
 import { MarketsPage } from './pages/MarketsPage';
 import { PositionsPage } from './pages/PositionsPage';
@@ -58,7 +59,7 @@ const legacyProfile = [
   'assistantStatus',
 ] as const;
 
-export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; onAdmin?: () => void }> = ({ authenticated = false, onSignOut, onAdmin }) => {
+export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onSignOut?: () => void; onAdmin?: () => void }> = ({ authenticated = false, workstation = false, onSignOut, onAdmin }) => {
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
   const [siteTheme, setSiteTheme] = useState<'light' | 'dark'>(() => {
     try { return window.localStorage.getItem('jqe-site-theme') === 'dark' ? 'dark' : 'light'; }
@@ -301,7 +302,7 @@ export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; on
   const feedIssues = feedEntries.filter(([, resource]) => resource.error || (resource.stale && !resource.loading) || !resource.data).length;
 
   const renderWorkspace = (configurationOnly = false) => {
-    return <WorkspacePage configurationOnly={configurationOnly}
+    return <WorkspacePage configurationOnly={configurationOnly} hosted={authenticated}
           broker={resources.brokerStatus}
           safety={resources.safety}
           risk={resources.risk}
@@ -418,11 +419,22 @@ export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; on
     }
   };
 
+  const headerActions = <div className="compact-header-actions">          <button type="button" className="workspace-refresh" aria-label="Retry data refresh" onClick={() => fetchAllData(true, false)}><RefreshCw size={15} /></button>
+          <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError}
+            resourceErrors={[...activeProfile.filter(name => resources[name].error).map(name => ({ title: name, detail: resources[name].error! })), ...(liveExecution.error ? [{ title: 'Demo cycle', detail: liveExecution.error }] : [])]}
+            hosted={authenticated} /></div>;
+  const menuContent = <div className="header-menu-content">          {(workstation || authenticated) && <DemoSupervisorBadge />}
+          <span className="workspace-execution-status" role="status">Observation API · orders disabled</span>
+              {onAdmin && <button type="button" className="workspace-account-action" onClick={onAdmin}>Admin</button>}
+          {onSignOut && <button type="button" className="workspace-account-action" onClick={onSignOut}>Sign out</button>}</div>;
+
   return (
     <div className="app-container" data-theme={siteTheme}>
       {/* Navigation Sidebar */}
       <Sidebar
         authenticated={authenticated}
+        headerActions={headerActions}
+        menuContent={menuContent}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         openPositionsCount={activeTab === 'workspace' ? undefined : executionData?.open_positions_count ?? 0}
@@ -434,10 +446,17 @@ export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; on
 
       {/* Main Content Area */}
       <div className="main-content-wrapper" key={siteTheme}>
+        <div className="desktop-top-actions">
+          {activeTab === 'workspace' && <strong>Workspace</strong>}
+          {headerActions}
+          <details className="header-account-menu"><summary>Menu</summary>{menuContent}</details>
+        </div>
         {activeTab !== 'workspace' && <Header
           pageTitle={
             activeTab === 'backtesting'
               ? 'Research'
+              : activeTab === 'trades'
+              ? 'Journal'
               : activeTab === 'risk'
               ? 'Risk Control'
               : activeTab === 'watchlist'
@@ -456,15 +475,7 @@ export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; on
           onTimeframeChange={setSelectedTimeframe}
         />}
 
-        <div className="workspace-utility-bar">
-          <span className="workspace-execution-status" role="status">{resources.brokerStatus.data?.broker_execution_enabled === true ? 'Demo execution enabled' : resources.brokerStatus.data?.broker_execution_enabled === false ? 'Execution disabled' : 'Execution unavailable'}</span>
-          <button type="button" className="workspace-refresh" aria-label="Retry data refresh" onClick={() => fetchAllData(true, false)}><RefreshCw size={15} /></button>
-          <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError}
-            resourceErrors={[...activeProfile.filter(name => resources[name].error).map(name => ({ title: name, detail: resources[name].error! })), ...(liveExecution.error ? [{ title: 'Demo cycle', detail: liveExecution.error }] : [])]}
-            hosted={authenticated} />
-          {onAdmin && <button type="button" className="workspace-account-action" onClick={onAdmin}>Admin</button>}
-          {onSignOut && <button type="button" className="workspace-account-action" onClick={onSignOut}>Sign out</button>}
-        </div>
+
 
         {/* Telemetry Status Ribbon / System Health Rail */}
         {activeTab !== 'workspace' && <details className="telemetry-ribbon">

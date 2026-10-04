@@ -7,11 +7,20 @@ const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY?.trim();
 export const authProviderConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const accessSchemaReady = env.VITE_JQE_ACCESS_SCHEMA_READY === 'true';
 export const authConfigured = authProviderConfigured && accessSchemaReady;
+const sessionKey = supabaseUrl
+  ? `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`
+  : undefined;
+// Keep this PC's existing sign-in when moving from tab-only to persistent storage.
+if (sessionKey && !window.localStorage.getItem(sessionKey)) {
+  const previousSession = window.sessionStorage.getItem(sessionKey);
+  if (previousSession) window.localStorage.setItem(sessionKey, previousSession);
+}
 export const supabase = authProviderConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {
         persistSession: true,
-        storage: window.sessionStorage,
+        storage: window.localStorage,
+        storageKey: sessionKey,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },

@@ -16,6 +16,23 @@ from data.storage import CandleStore
 _BASE_TIME = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
+@pytest.mark.asyncio
+async def test_closed_refresh_never_persists_a_changing_forming_bar(tmp_path):
+    store = CandleStore(tmp_path / 'closed.sqlite3')
+    now = datetime.now(timezone.utc)
+    start = now.replace(second=0, microsecond=0) - timedelta(minutes=now.minute % 5)
+    closed = Candle(time=start - timedelta(minutes=5), open=100, high=101, low=99, close=100, volume=10, source='weltrade')
+    forming = Candle(time=start, open=100, high=101, low=99, close=100, volume=10, source='weltrade')
+    gateway = _mock_gateway([closed, forming])
+    service = HistoricalDataService(gateway, store)
+    for close in (100, 100.5):
+        forming.close = close
+        candles, _ = await service.refresh_latest(symbol='FX Vol 20', provider_symbol='FX Vol 20',
+            provider='weltrade', timeframe=Timeframe.M5, count=1, force=True, closed_only=True)
+        assert candles == [closed]
+    assert store.count('FX Vol 20', Timeframe.M5, provider='weltrade') == 1
+
+
 def _candle(minutes_offset: int, price: float = 100.0) -> Candle:
     return Candle(
         time=_BASE_TIME + timedelta(minutes=minutes_offset),

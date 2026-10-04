@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
   OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse,
-  WatchlistResponse, ExecutionStateResponse,
+  WatchlistResponse, ExecutionStateResponse, AssistantStatusResponse,
 } from '../types/api';
 import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
@@ -76,6 +76,23 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
     expect(host.querySelector('.workspace-operational-details')).toBeNull();
     expect(host.querySelector('.workspace-more-details')).toBeNull();
+  });
+  it('docks research AI without trapping chart keyboard focus on desktop', async () => {
+    await render({ assistantStatus: resource({state: 'READY', enabled: true, configured: true,
+      healthy: true, model: 'test', context_mode: 'workspace', reason_codes: []} as AssistantStatusResponse) });
+    expect(host.querySelector('.workspace-ai-dock [role="complementary"]')).not.toBeNull();
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    const prompt = Array.from(host.querySelectorAll('.workspace-ai-prompts button')).find(b => b.textContent?.includes('Explain the trend')) as HTMLButtonElement;
+    await act(async () => prompt.click());
+    expect((host.querySelector('[aria-label="Ask JQE AI"]') as HTMLTextAreaElement).value).toBe('Explain the trend');
+    expect(host.textContent).not.toContain('Thinking…');
+  });
+  it('routes timeframe selection through the selected-market callback', async () => {
+    const change = vi.fn();
+    await render({ onMarketChange: change });
+    const h1 = Array.from(host.querySelectorAll('.workspace-chart-controls button')).find(b => b.textContent === 'H1') as HTMLButtonElement;
+    await act(async () => h1.click());
+    expect(change).toHaveBeenCalledWith(baseProps().selectedSymbol, 'H1');
   });
   it('renders LOADING state', async () => {
     await render({ watchlist: resource<WatchlistResponse>(null, { loading: true }) });
@@ -294,13 +311,13 @@ describe('Workspace and Settings evidence views', () => {
   it('uses command palette only for navigation', async () => {
     const onNavigate = vi.fn();
     await render({ onNavigate });
-    await act(async () => (host.querySelector('.workspace-command') as HTMLButtonElement).click());
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })));
     await act(async () => (Array.from(host.querySelectorAll('.workspace-palette nav button')).find(button => button.textContent === 'Markets') as HTMLButtonElement).click());
     expect(onNavigate).toHaveBeenCalledWith('markets');
   });
   it('opens palette with Control K and closes with Escape', async () => {
     await render();
-    const trigger = host.querySelector('.workspace-command') as HTMLButtonElement;
+    const trigger = host.querySelector('.workspace-ai-launcher') as HTMLButtonElement;
     trigger.focus();
     await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })));
     expect(host.querySelector('[aria-label="Find page"]')).toBe(document.activeElement);

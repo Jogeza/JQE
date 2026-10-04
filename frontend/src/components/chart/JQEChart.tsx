@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   CandlestickSeries, ColorType, CrosshairMode, createChart, createSeriesMarkers,
   HistogramSeries, LineSeries, LineStyle, type IChartApi, type IPriceLine,
@@ -10,6 +10,7 @@ import { adaptVolumeProfile, VolumeProfilePrimitive } from './volumeProfilePrimi
 import type { VolumeProfileSnapshotDTO } from '../../types/research';
 import { getChartPalette } from './chartPalette';
 import type { FibonacciLevel } from './fibonacci';
+import { ChartDrawingTools } from './ChartDrawingTools';
 
 export interface IndicatorVisibility { ema50: boolean; ema200: boolean; rsi: boolean; volume: boolean; }
 interface JQEChartProps {
@@ -23,6 +24,8 @@ interface JQEChartProps {
   indicators?: IndicatorVisibility;
   height?: number;
   fibonacciLevels?: FibonacciLevel[];
+  drawingTools?: boolean;
+  timeframe?: string;
 }
 interface ChartHandles {
   chart: IChartApi; candles: ISeriesApi<'Candlestick'>; ema50: ISeriesApi<'Line'>;
@@ -42,10 +45,13 @@ export const JQEChart: React.FC<JQEChartProps> = ({
   indicators = { ema50: true, ema200: true, rsi: true, volume: true },
   height = 460,
   fibonacciLevels = [],
+  drawingTools = false,
+  timeframe = '',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef<ChartHandles | null>(null);
   const hasFitContentRef = useRef(false);
+  const [drawingHandles, setDrawingHandles] = useState<ChartHandles | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -73,6 +79,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     rsiSeries.createPriceLine({ price: 30, color: palette.axis, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '30' });
     const markers = createSeriesMarkers(candleSeries, []);
     handlesRef.current = { chart, candles: candleSeries, ema50: ema50Series, ema200: ema200Series, rsi: rsiSeries, volume: volumeSeries, markers, priceLines: [], volumeProfile: null };
+    setDrawingHandles(handlesRef.current);
     return () => { handlesRef.current = null; hasFitContentRef.current = false; chart.remove(); };
   }, [priceDecimals, height]);
 
@@ -147,5 +154,8 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     if (handles.volumeProfile) handles.candles.attachPrimitive(handles.volumeProfile);
   }, [volumeProfile]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: `${height}px`, backgroundColor: 'var(--chart-bg)' }} aria-label={`${symbol} candlestick chart`} />;
+  return <div className={drawingTools ? 'chart-drawing-host' : undefined}>
+    <div ref={containerRef} style={{ width: '100%', height: `${height}px`, backgroundColor: 'var(--chart-bg)' }} aria-label={`${symbol} candlestick chart`} />
+    {drawingTools && drawingHandles && <ChartDrawingTools key={`${priceDecimals}:${height}`} chart={drawingHandles.chart} series={drawingHandles.candles} scope={`${symbol}:${timeframe}`} decimals={priceDecimals} />}
+  </div>;
 };

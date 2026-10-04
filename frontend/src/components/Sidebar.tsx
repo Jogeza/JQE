@@ -41,6 +41,8 @@ export type TabType =
 
 interface SidebarProps {
   authenticated?: boolean;
+  headerActions?: React.ReactNode;
+  menuContent?: React.ReactNode;
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   openPositionsCount?: number;
@@ -61,6 +63,8 @@ interface NavItem {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   authenticated = false,
+  headerActions,
+  menuContent,
   activeTab,
   onTabChange,
   openPositionsCount,
@@ -87,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: openPositionsCount !== undefined && openPositionsCount > 0 ? openPositionsCount : undefined,
       badgeType: 'cyan',
     },
-    { id: 'trades',      label: 'Trades',       icon: History,          group: 'Analysis'     },
+    { id: 'trades',      label: 'Journal',      icon: History,          group: 'Analysis'     },
     { id: 'strategy',    label: 'Strategy',     icon: BrainCircuit,     group: 'Analysis'     },
     {
       id: 'risk', label: 'Risk Control', icon: ShieldAlert, group: 'Analysis',
@@ -198,6 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="legacy-jqe-mark"><Activity size={17} aria-hidden="true" /></span><span className="jqe-mark">JQE</span>
         </span>
         <strong className="mobile-page-title">{pageTitle}</strong>
+        {headerActions}
         <button type="button" className="site-theme-toggle mobile-theme-toggle" onClick={onToggleTheme}
           aria-label={siteTheme === 'dark' ? 'Switch site to light mode' : 'Switch site to dark mode'}
           aria-pressed={siteTheme === 'dark'}>
@@ -240,6 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <X size={22} />
           </button>
         </div>
+        {menuContent}
         {navigation(true)}
         <div className="sidebar-metadata" style={{ padding: '12px 16px', borderTop: '1px solid var(--border-dark)' }}>
           <a className="weltrade-logo-link" href={weltradeReferralUrl} target="_blank" rel="noopener noreferrer" aria-label="Register with Weltrade, opens in a new tab">

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import uuid
 from typing import Awaitable, Callable
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -17,6 +18,7 @@ from urllib.request import Request, urlopen
 from core.logger import logger
 from notifications.signal_formatter import render_signal_alert
 from notifications.types import Notification, NotificationType
+from notifications.telegram import TelegramGateway
 
 
 Post = Callable[[str, bytes, float], Awaitable[None]]
@@ -25,6 +27,7 @@ _CHANNEL_KINDS = {
     NotificationType.POSITION_OPENED,
     NotificationType.POSITION_CLOSED,
     NotificationType.ORDER_REJECTED,
+    NotificationType.CHANNEL_UPDATE,
 }
 _cached_gateway: TelegramChannelGateway | None = None
 _cached_key: bytes | None = None
@@ -48,11 +51,12 @@ class TelegramChannelGateway:
     """Enqueue quickly; claim and deliver on an isolated bounded worker."""
 
     def __init__(self, config: TelegramChannelConfig, *, post: Post | None = None,
-                 sleep: Sleep = asyncio.sleep, queue_limit: int = 32) -> None:
+                 sleep: Sleep = asyncio.sleep, queue_limit: int = 32, photo_post: Post | None = None) -> None:
         if queue_limit < 1:
             raise ValueError("Telegram channel queue limit must be positive")
         self._config = config
         self._post = post or self._default_post
+        self._photo_post = photo_post or self._default_photo_post
         self._sleep = sleep
         self._queue: asyncio.Queue[Notification] = asyncio.Queue(maxsize=queue_limit)
         self._worker: asyncio.Task[None] | None = None
@@ -103,9 +107,20 @@ class TelegramChannelGateway:
                     "parse_mode": "HTML",
                 }).encode("utf-8")
                 url = f"https://api.telegram.org/bot{self._config.token}/sendMessage"
+                sender = self._post
+                if notification.chart_snapshot is not None:
+                    snapshot = notification.chart_snapshot
+                    boundary = f"----JQE{uuid.uuid4().hex}"
+                    payload = TelegramGateway._multipart_payload(
+                        boundary=boundary, fields={"chat_id": self._config.chat_id,
+                                                  "caption": text[:1024], "parse_mode": "HTML"},
+                        filename=snapshot.filename, content_type=snapshot.media_type, content=snapshot.content)
+                    url = f"https://api.telegram.org/bot{self._config.token}/sendPhoto"
+                    sender = self._photo_post
                 for attempt in range(3):
                     try:
-                        await self._post(url, payload, self._config.timeout_seconds)
+                        await sender(url, payload, self._config.timeout_seconds)
+                        logger.info("Telegram channel alert delivered")
                         break
                     except Exception as exc:
                         if getattr(exc, "code", getattr(exc, "status_code", None)) == 429 and attempt < 2:
@@ -134,8 +149,22 @@ class TelegramChannelGateway:
         def post() -> None:
             request = Request(url, data=payload, method="POST", headers={"Content-Type": "application/json"})
             with urlopen(request, timeout=timeout) as response:
-                if not 200 <= int(response.status) < 300:
+                result = json.load(response)
+                if not 200 <= int(response.status) < 300 or not result.get("ok"):
                     raise RuntimeError("Telegram channel response was unsuccessful")
+        await asyncio.to_thread(post)
+
+    @staticmethod
+    async def _default_photo_post(url: str, payload: bytes, timeout: float) -> None:
+        def post():
+            boundary = payload.split(b"\r\n", 1)[0][2:].decode("ascii")
+            request = Request(url, data=payload, method="POST",
+                              headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+            with urlopen(request, timeout=timeout) as response:
+                result = json.load(response)
+                if not result.get("ok"):
+                    raise RuntimeError("Telegram photo delivery failed")
+                logger.info("Telegram channel photo accepted; message_id={}", result["result"]["message_id"])
         await asyncio.to_thread(post)
 
 

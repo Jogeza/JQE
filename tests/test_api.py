@@ -32,7 +32,7 @@ from api.routes import (
 from api.service import ApplicationService, _maximum_realized_drawdown
 from tests.weltrade_stubs import WeltradeStubGateway
 from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
-from broker.types import Candle, Tick, Timeframe, TIMEFRAME_SECONDS
+from broker.types import Candle, Tick, Timeframe, TIMEFRAME_SECONDS, Position, OrderSide
 from config.settings import Settings, settings
 from core.exceptions import BrokerConnectionError, MarketDataError
 from data.storage import CandleStore
@@ -176,6 +176,11 @@ class TestApplicationService:
         gateway.get_latest_tick = AsyncMock(return_value=Tick(
             time=now, symbol="FX Vol 20", bid=100.9, ask=101.1, last=101.0,
         ))
+        gateway.get_positions = AsyncMock(return_value=[Position(
+            position_id="demo-position", symbol="FX Vol 20", side=OrderSide.BUY,
+            volume=0.01, open_price=100.0, current_price=101.0, profit=1.0,
+            stop_loss=99.0, take_profit=102.0,
+        )])
         gateway.get_candles = AsyncMock(return_value=[closed])
         gateway.get_terminal_permissions = AsyncMock(return_value={
             "connected": True, "terminal_trading_allowed": False,
@@ -200,6 +205,10 @@ class TestApplicationService:
         assert response.candle.close == 101.0
         assert response.symbol_specification is not None
         assert response.symbol_specification.trade_tick_value == 0.1
+        assert response.positions[0].id == "demo-position"
+        execution = await service.get_execution_state()
+        assert execution.connected is True
+        assert execution.positions[0].id == "demo-position"
         gateway.get_candles.assert_awaited_once()
         gateway.get_latest_tick.assert_awaited_once_with("FX Vol 20")
 

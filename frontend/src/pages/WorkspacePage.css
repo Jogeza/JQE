@@ -259,5 +259,50 @@
 .sidebar-surfaces .collapsed .jqe-mark > span { display: none; }
 .workspace-utility-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 8px; min-height: 38px; padding: 4px 14px; border-bottom: 1px solid var(--border-card); }
 .workspace-execution-status { margin-right: auto; color: var(--text-secondary); font-size: 10px; }
+.workspace-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.workspace-chart-controls button { border: 1px solid var(--border-card); background: var(--surface); color: var(--text-secondary); padding: 6px 9px; border-radius: 7px; cursor: pointer; }
+.workspace-chart-controls button[aria-pressed="true"] { background: var(--brand-cyan-dim); border-color: var(--brand-cyan-border); color: var(--brand-cyan); }
+.workspace-chart-controls > span { margin-left: auto; font-size: 10px; color: var(--text-secondary); }
+.workspace-ai-prompts { display: grid; gap: 8px; margin-bottom: 20px; }
+.workspace-ai-prompts button { text-align: left; border: 1px solid var(--border-card); background: var(--surface-raised, var(--surface)); padding: 10px; border-radius: 8px; color: inherit; cursor: pointer; }
+.workspace-ai-prompts button:hover { border-color: var(--brand-cyan-border); }
+@media (min-width: 900px) {
+  .workspace-studio { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+  .workspace-studio .workspace-topbar { grid-column: 1 / -1; }
+  .workspace-studio .workspace-primary { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; margin-top: 0; }
+  .workspace-studio .workspace-primary > .workspace-card { width: 100%; box-sizing: border-box; }
+  .workspace-studio .workspace-chart { order: 0; }
+  .workspace-studio .workspace-decision { order: 1; }
+  .workspace-studio .workspace-terminal { order: 2; }
+  .workspace-ai-dock { grid-column: 2; grid-row: 1; position: sticky; top: 0; min-width: 0; }
+  .workspace-ai-dock .workspace-ai-panel { width: 100%; height: min(760px, calc(100dvh - 140px)); min-height: 500px; box-sizing: border-box; border-radius: 14px; padding: 16px; }
+  .workspace-studio .workspace-ai-launcher { display: none; }
+}
 .workspace-refresh, .workspace-account-action { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 4px 8px; border: 1px solid var(--border-card); border-radius: 6px; background: var(--surface); color: var(--text-primary); cursor: pointer; }
 @media (max-width: 768px) { .workspace-utility-bar { padding: 4px 12px; } }
+
+.desktop-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 18px; border-bottom: 1px solid var(--border-card); }
+.desktop-top-actions > strong { margin-right: auto; }
+.compact-header-actions { display: flex; align-items: center; gap: 8px; }
+.compact-header-actions .notification-center { position: relative; top: auto; right: auto; }
+.header-account-menu { position: relative; }
+.header-account-menu summary { cursor: pointer; padding: 8px; }
+.header-menu-content { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; color: var(--text-primary); }
+.header-account-menu > .header-menu-content { position: absolute; right: 0; top: 100%; width: 300px; background: var(--surface); border: 1px solid var(--border-card); border-radius: 12px; z-index: 100; box-shadow: 0 12px 30px #0003; }
+@media (max-width: 768px) {
+  .desktop-top-actions { display: none; }
+  .mobile-navigation-header { gap: 8px !important; }
+  .mobile-navigation-header .compact-header-actions { gap: 4px; }
+  .compact-header-actions .notification-panel { position: fixed; top: 70px; left: 12px; right: 12px; width: auto; }
+}
+
+.compact-header-actions .notification-trigger { color: var(--text-primary); background: var(--surface); border-color: var(--border-card); }
+.workspace-ai-upload-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.workspace-ai-upload-row button { display: flex; align-items: center; gap: 5px; background: transparent; color: inherit; padding: 6px; border: 1px solid var(--border-card); border-radius: 6px; cursor: pointer; font-size: 11px; }
+.workspace-ai-upload-row small { font-size: 9px; opacity: .7; }
+.workspace-ai-attachment { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border-card); border-radius: 8px; margin-bottom: 8px; }
+.workspace-ai-attachment img { width: 60px; height: 45px; object-fit: contain; border-radius: 4px; }
+.workspace-ai-attachment span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 10px; }
+.workspace-ai-attachment button { background: transparent; color: inherit; border: 0; cursor: pointer; }
+.workspace-ai-uploaded { max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 6px; display: block; grid-column: 1 / -1; }
+.workspace-ai-upload-error { font-size: 11px; color: var(--quant-red); }

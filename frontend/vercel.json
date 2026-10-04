@@ -2,13 +2,121 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/access", "destination": "/api/hosted_auth?operation=access" },
-    { "source": "/api/onboarding/referral", "destination": "/api/hosted_auth?operation=referral" },
-    { "source": "/api/onboarding/trial/activate", "destination": "/api/hosted_auth?operation=trial-activate" },
-    { "source": "/api/admin/referrals", "destination": "/api/hosted_auth?operation=admin-referrals" },
-    { "source": "/api/admin/access", "destination": "/api/hosted_auth?operation=admin-access" },
-    { "source": "/api/v1/assistant/:path*", "destination": "/api/hosted_assistant?resource=:path*" },
-    { "source": "/api/v1/:path*", "destination": "/api/unavailable?resource=:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/access",
+      "destination": "/api/hosted_auth?operation=access"
+    },
+    {
+      "source": "/api/onboarding/referral",
+      "destination": "/api/hosted_auth?operation=referral"
+    },
+    {
+      "source": "/api/onboarding/trial/activate",
+      "destination": "/api/hosted_auth?operation=trial-activate"
+    },
+    {
+      "source": "/api/admin/referrals",
+      "destination": "/api/hosted_auth?operation=admin-referrals"
+    },
+    {
+      "source": "/api/admin/access",
+      "destination": "/api/hosted_auth?operation=admin-access"
+    },
+    {
+      "source": "/api/v1/assistant/:path*",
+      "destination": "/api/hosted_assistant?resource=:path*"
+    },
+    {
+      "source": "/api/v1/journal",
+      "destination": "/api/hosted_monitor?resource=journal"
+    },
+    {
+      "source": "/api/v1/market/candles",
+      "destination": "/api/hosted_monitor?resource=market/candles"
+    },
+    {
+      "source": "/api/v1/market/summary",
+      "destination": "/api/hosted_monitor?resource=market/summary"
+    },
+    {
+      "source": "/api/v1/signal",
+      "destination": "/api/hosted_monitor?resource=signal"
+    },
+    {
+      "source": "/api/v1/market/setup",
+      "destination": "/api/hosted_monitor?resource=market/setup"
+    },
+    {
+      "source": "/api/v1/market/active-analysis",
+      "destination": "/api/hosted_monitor?resource=market/active-analysis"
+    },
+    {
+      "source": "/api/v1/risk",
+      "destination": "/api/hosted_monitor?resource=risk"
+    },
+    {
+      "source": "/api/v1/brokers/terminal-observation",
+      "destination": "/api/hosted_monitor?resource=brokers/terminal-observation"
+    },
+    {
+      "source": "/api/v1/system",
+      "destination": "/api/hosted_monitor?resource=system"
+    },
+    {
+      "source": "/api/v1/execution",
+      "destination": "/api/hosted_monitor?resource=execution"
+    },
+    {
+      "source": "/api/v1/execution/safety",
+      "destination": "/api/hosted_monitor?resource=execution/safety"
+    },
+    {
+      "source": "/api/v1/execution/recovery",
+      "destination": "/api/hosted_monitor?resource=execution/recovery"
+    },
+    {
+      "source": "/api/v1/execution/paper-runtime",
+      "destination": "/api/hosted_monitor?resource=execution/paper-runtime"
+    },
+    {
+      "source": "/api/v1/performance",
+      "destination": "/api/hosted_monitor?resource=performance"
+    },
+    {
+      "source": "/api/v1/brokers/status",
+      "destination": "/api/hosted_monitor?resource=brokers/status"
+    },
+    {
+      "source": "/api/v1/watchlist",
+      "destination": "/api/hosted_monitor?resource=watchlist"
+    },
+    {
+      "source": "/api/v1/monitoring/offline",
+      "destination": "/api/hosted_monitor?resource=monitoring/offline"
+    },
+    {
+      "source": "/api/v1/observation/health",
+      "destination": "/api/hosted_monitor?resource=observation/health"
+    },
+    {
+      "source": "/api/v1/notifications/status",
+      "destination": "/api/hosted_monitor?resource=notifications/status"
+    },
+    {
+      "source": "/api/v1/research/paper-diagnostics",
+      "destination": "/api/hosted_monitor?resource=research/paper-diagnostics"
+    },
+    {
+      "source": "/api/v1/watchlist/cap-usage",
+      "destination": "/api/hosted_monitor?resource=watchlist/cap-usage"
+    },
+    {
+      "source": "/api/v1/:path*",
+      "destination": "/api/hosted_unavailable"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

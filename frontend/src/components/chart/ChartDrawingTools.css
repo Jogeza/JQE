@@ -1,0 +1,13 @@
+.chart-drawing-host { position: relative; margin-left: 40px; }
+.chart-drawing-rail { position: absolute; left: -40px; top: 0; bottom: 0; width: 40px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: var(--chart-bg); border-right: 1px solid var(--border-card); overflow-y: auto; scrollbar-width: thin; }
+.chart-drawing-rail button { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 30px; border: 0; border-radius: 5px; background: transparent; color: var(--chart-text, #a8b2c4); cursor: pointer; }
+.chart-drawing-rail button:hover, .chart-drawing-rail button[aria-pressed=true] { background: #38bdf823; color: #38bdf8; }
+.chart-drawing-rail button:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+.chart-drawing-rail button:disabled { opacity: .3; cursor: default; }
+.chart-drawing-rail input[type=color] { width: 25px; height: 24px; padding: 0; border: 0; background: transparent; flex-shrink: 0; cursor: pointer; }
+.drawing-divider { width: 24px; border-top: 1px solid #ffffff22; margin: 4px 0; }
+.chart-drawing-overlay { position: absolute; top: 0; left: 0; z-index: 3; overflow: hidden; cursor: crosshair; }
+.chart-drawing-overlay text { font: 11px sans-serif; paint-order: stroke; stroke: #0b1019; stroke-width: 3px; }
+.chart-drawing-hint { position: absolute; left: 8px; top: 6px; right: 65px; z-index: 4; width: fit-content; max-width: calc(100% - 75px); background: #101723ed; color: #e5edf8; border: 1px solid #38bdf84d; border-radius: 5px; padding: 5px 8px; font-size: 10px; pointer-events: none; }
+.chart-drawing-hint input { display: block; width: 150px; max-width: 100%; margin-top: 5px; pointer-events: auto; background: #0b1019; border: 1px solid #526072; color: white; border-radius: 4px; padding: 5px; }
+@media (max-width: 768px) { .chart-drawing-host { margin-left: 36px; } .chart-drawing-rail { left: -36px; width: 36px; } .chart-drawing-rail button { width: 32px; height: 32px; } }

@@ -84,6 +84,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const jqeApi = {
+  async getJournal(signal?: AbortSignal): Promise<{ state: string; items: import('../components/DecisionJournal').JournalEntry[]; analysis?: import('../components/DecisionJournal').AnalysisStatus; supervisor?: { state: string; execution_enabled: boolean; cycle_number?: number; reason?: string | null } }> {
+    return fetchJson(`${API_BASE}/journal`, { signal });
+  },
   async getOfflineMonitoring(signal?: AbortSignal): Promise<OfflineMonitoringResponse> {
     return fetchJson(`${API_BASE}/monitoring/offline`, { signal });
   },
@@ -93,10 +96,10 @@ export const jqeApi = {
   async getAssistantStatus(signal?: AbortSignal): Promise<AssistantStatusResponse> {
     return fetchJson(`${API_BASE}/assistant/status`, { signal });
   },
-  async chatWithAssistant(message: string, signal?: AbortSignal): Promise<AssistantChatResponse> {
+  async chatWithAssistant(message: string, signal?: AbortSignal, market?: {symbol: string; timeframe: string}, image?: string): Promise<AssistantChatResponse> {
     return fetchJson(`${API_BASE}/assistant/chat`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, ...market, ...(image ? { image } : {}) }),
       signal,
     });
   },

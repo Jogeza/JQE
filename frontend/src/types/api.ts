@@ -464,6 +464,8 @@ export interface ObservationHealthComponent {
 }
 
 export interface AssistantStatusResponse {
+  supports_images?: boolean;
+  image_max_bytes?: number;
   provider?: string;
   context_mode?: 'workspace' | 'generic';
   state: 'READY' | 'DISABLED' | 'KILLED' | 'UNCONFIGURED' | 'UNAVAILABLE';

@@ -101,6 +101,14 @@ Commercial access remains planned: verified registration through the owner's [We
 
 ## Hosted dashboard access
 
+For the current local demo test session, open
+[the workstation](http://127.0.0.1:5173/workstation) while the loopback API and Vite
+development server are running. This development-only entry has live terminal
+ticks/charts and **Journal** for UTC analysis and decision evidence. The separately
+armed demo supervisor is independent of the read-only API. See
+[demo supervisor operations](docs/weltrade-execution-supervisor.md) for the verified
+2026-10-04 launch, current guards, forward cache and restart limitations.
+
 The workstation API must remain bound to `127.0.0.1`; do not expose its port, MT5 terminal, or credentials directly to the internet. The local API trusts only the local Vite development/preview origins. A hosted `jqe.vercel.app` page cannot connect to the workstation API directly.
 
 Phone access requires a separately configured HTTPS backend boundary: an outbound-only tunnel from the workstation to a protected edge, user authentication (OIDC/SSO), server-side token validation, per-user authorization, TLS, rate limiting, and an explicit read-only route allowlist. The Vercel client must not contain a long-lived backend token, and the edge must not proxy MT5 credentials or order-submission routes. Keep the API bound to loopback behind that boundary; do not enable wildcard CORS. Until that authenticated path is implemented and tested, hosted access is intentionally unavailable. The API itself continues to force JQE broker execution off.

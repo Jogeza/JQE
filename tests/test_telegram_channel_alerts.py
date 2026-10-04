@@ -37,7 +37,7 @@ def _opened(side="BUY", *, targets=True, symbol="FX Vol <60> & Co"):
 @pytest.mark.parametrize("targets", [True, False])
 def test_opened_formatter_uses_only_factual_targets_and_escapes(side, targets):
     text = render_signal_alert(_opened(side, targets=targets))
-    assert text.startswith("TRADE ALERT | 28 SEP 2026 | DEMO ACCOUNT")
+    assert text.startswith("JQE ✨ Demo trade opened | 28 SEP 2026 | DEMO ACCOUNT")
     assert "BROKER: Weltrade" in text
     assert "ASSET: FX Vol &lt;60&gt; &amp; Co M5" in text
     assert f"ACTION | DIRECTION: {side}" in text
@@ -49,7 +49,7 @@ def test_opened_formatter_uses_only_factual_targets_and_escapes(side, targets):
     assert ("TP2: 135.00" in text) is targets
     assert "TP3:" not in text and "TP4:" not in text
     assert "<60>" not in text
-    assert "Automated demo alert. Not financial advice." in text
+    assert "Watching the setup with you 👀 Demo update; outcomes aren't guaranteed." in text
     assert "http" not in text.lower() and "+256" not in text
 
 
@@ -60,7 +60,7 @@ def test_closed_and_rejected_formatter_have_result_and_reason():
         "Account mode": "DEMO",
     }, occurred_at=DATE, event_id="CLOSE:ticket-1")
     rendered = render_signal_alert(closed)
-    assert "TRADE CLOSED | 28 SEP 2026 | DEMO ACCOUNT" in rendered
+    assert "JQE 📝 Trade wrapped up | 28 SEP 2026 | DEMO ACCOUNT" in rendered
     assert "RESULT: +1.2 USD" in rendered
     assert "REASON: Stop moved &amp; hit" in rendered
     assert "TP1:" not in rendered
@@ -68,7 +68,7 @@ def test_closed_and_rejected_formatter_have_result_and_reason():
         "Symbol": "FX Vol 20", "Timeframe": "M5", "Reason": "Risk &lt; minimum",
         "Account mode": "DEMO",
     }, occurred_at=DATE, event_id="REJECT:intent-1")
-    assert "ORDER REJECTED" in render_signal_alert(rejected)
+    assert "JQE 🛑 Sitting this one out" in render_signal_alert(rejected)
     assert "REASON: Risk &amp;lt; minimum" in render_signal_alert(rejected)
 
 
@@ -111,7 +111,7 @@ async def test_channel_sends_once_per_event_and_destination(tmp_path):
     assert post.await_count == 1
     _, payload, _ = post.await_args.args
     assert json.loads(payload)["chat_id"] == "-100123456789"
-    assert "TRADE ALERT" in json.loads(payload)["text"]
+    assert "JQE ✨ Demo trade opened" in json.loads(payload)["text"]
     retry = TelegramChannelGateway(_config(tmp_path), post=post, sleep=sleep)
     await retry.send(event)
     await retry.drain()
@@ -140,8 +140,8 @@ async def test_closed_and_rejected_events_require_stable_id(tmp_path):
     await channel.send(rejected)
     await channel.drain()
     assert post.await_count == 2
-    assert "TRADE CLOSED" in json.loads(post.await_args_list[0].args[1])["text"]
-    assert "ORDER REJECTED" in json.loads(post.await_args_list[1].args[1])["text"]
+    assert "JQE 📝 Trade wrapped up" in json.loads(post.await_args_list[0].args[1])["text"]
+    assert "JQE 🛑 Sitting this one out" in json.loads(post.await_args_list[1].args[1])["text"]
 
 
 @pytest.mark.asyncio

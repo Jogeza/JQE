@@ -178,8 +178,44 @@ async def test_heartbeat_stops_after_cycle_crash(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(supervisor, "ObservationMutex", Mutex)
     monkeypatch.setattr(supervisor, "_publish", lambda **kwargs: statuses.append(kwargs))
     monkeypatch.setattr(supervisor.asyncio, "sleep", AsyncMock(return_value=None))
+    monkeypatch.setattr(supervisor, "_wait_for_cycle", AsyncMock())
     monkeypatch.setattr(supervisor, "run_cycle_once", AsyncMock(side_effect=RuntimeError("offline")))
     with pytest.raises(RuntimeError, match="offline"):
         await supervisor.run_forever()
     assert [item["status"] for item in statuses] == ["STARTING", "BLOCKED", "STOPPED"]
     assert statuses[-1]["reason"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_position_limit_keeps_monitor_alive_without_running_signals(monkeypatch):
+    class Mutex:
+        def __init__(self, path): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    blocked = supervisor.PreflightBlocked(SimpleNamespace(
+        daily_state_authority=DailyStateAuthority.AUTHORITATIVE,
+        reason_codes=("OPEN_POSITION_LIMIT_REACHED", "READ_ONLY_PREFLIGHT_NO_ORDER_INTENT"),
+    ))
+    statuses = []
+    monkeypatch.setattr(supervisor, "_require_process_authorization", lambda: None)
+    monkeypatch.setattr(supervisor, "monitor_weltrade_closes", AsyncMock())
+    monkeypatch.setattr(supervisor, "ObservationMutex", Mutex)
+    monkeypatch.setattr(supervisor, "_publish", lambda **kw: statuses.append(kw))
+    monkeypatch.setattr(supervisor, "_wait_for_cycle", AsyncMock(side_effect=[None, asyncio.CancelledError()]))
+    monkeypatch.setattr(supervisor, "run_cycle_once", AsyncMock(side_effect=blocked))
+    runner = AsyncMock()
+    monkeypatch.setattr(supervisor, "run_watchlist", runner)
+    with pytest.raises(asyncio.CancelledError):
+        await supervisor.run_forever()
+    assert [s["status"] for s in statuses] == ["STARTING", "BLOCKED", "STOPPED"]
+    assert statuses[1]["reason"] == "OPEN_POSITION_LIMIT_REACHED"
+    runner.assert_not_awaited()
+
+
+def test_position_retry_requires_only_known_limit_and_authoritative_history():
+    for authority, reasons in [
+        (DailyStateAuthority.NOT_AUTHORITATIVE, ("OPEN_POSITION_LIMIT_REACHED", "READ_ONLY_PREFLIGHT_NO_ORDER_INTENT")),
+        (DailyStateAuthority.AUTHORITATIVE, ("OPEN_POSITION_LIMIT_REACHED", "POST_FILL_INTEGRITY_HALT", "READ_ONLY_PREFLIGHT_NO_ORDER_INTENT")),
+    ]:
+        assert not supervisor.PreflightBlocked(SimpleNamespace(
+            daily_state_authority=authority, reason_codes=reasons)).retry_position_limit

@@ -60,6 +60,7 @@ mt5-daemon-profile/
 data/historical.sqlite3
 data/historical.sqlite3-shm
 data/historical.sqlite3-wal
+data/live_monitoring_*.sqlite3*
 
 # Local durable execution state
 state/*.sqlite3
@@ -75,3 +76,7 @@ __pycache__/
 *.py[cod]
 .npm-cache/
 .vercel-stage/
+# Local connector binary and private runtime configuration
+tools/bin/
+state/monitor-*.json
+state/monitor-*.token

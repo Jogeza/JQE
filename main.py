@@ -51,6 +51,7 @@ from execution.idempotency import build_execution_idempotency_key
 from execution.persistence import SQLiteIntentRecordStore, SQLitePositionLedger
 from execution.daily_instrument_guard import DailyInstrumentCapReached, DailyInstrumentTradeGuard
 from execution.policy import ExecutionContext, ExecutionIntent
+from execution.position_limits import demo_position_cap
 from execution.reconciliation import get_reconciliation_adapter
 from execution.recovery import StartupRecoveryService
 from execution.safety import (
@@ -539,6 +540,18 @@ async def run(*, symbol: str | None = None, timeframe_name: str | None = None) -
         regime = detect_regime(df)
         signal = generate_trading_signal(df, cycle_symbol, regime=regime)
 
+        # Persist analysis before any order path. A journal failure prevents a
+        # new submission rather than running an unaudited experiment.
+        from monitoring.decision_journal import DecisionJournal
+        DecisionJournal(settings.decision_journal_path).append(
+            symbol=cycle_symbol, timeframe=timeframe.value, stage="ANALYSIS",
+            facts={"broker": active_broker, "mode": "DEMO", "regime": regime,
+                   "candle_opened_at": market_observation.candle_opened_at,
+                   "signal": signal["signal"], "confidence": signal["confidence"],
+                   "quality": signal.get("quality"), "reasons": signal.get("reasons", []),
+                   "factors": signal.get("intelligence", {}).get("confidence_breakdown", {})},
+        )
+
         logger.info("Market regime: {}", regime)
         logger.info("Trading signal: {}", signal)
 
@@ -744,7 +757,8 @@ async def run(*, symbol: str | None = None, timeframe_name: str | None = None) -
             daily_trade_count=daily_count,
             max_daily_trades=max_daily_trades,
             open_positions=open_positions,
-            max_open_positions=1,
+            max_open_positions=(demo_position_cap(settings, equity=account.equity, currency=account.currency)
+                                if active_broker == "weltrade" else 1),
             used_idempotency_keys=(
                 frozenset({idempotency_key}) if existing_record is not None else frozenset()
             ),
@@ -784,6 +798,7 @@ async def run(*, symbol: str | None = None, timeframe_name: str | None = None) -
                 stop_loss=plan.stop_loss,
                 take_profit=plan.take_profit,
                 max_candles=80,
+                strategy_note=f"{side.value} · {regime} · guarded demo plan",
             )
         except Exception as exc:
             logger.warning("Signal chart snapshot unavailable: {}", exc)
@@ -1059,6 +1074,15 @@ async def run_watchlist() -> tuple[CycleExecutionResult, ...]:
                 status="BLOCKED", broker=settings.effective_broker,
                 symbol=pair.symbol, decision_code=type(exc).__name__, reason=str(exc),
             ))
+        from monitoring.decision_journal import DecisionJournal
+        result = results[-1]
+        DecisionJournal(settings.decision_journal_path).append(
+            symbol=pair.symbol, timeframe=pair.timeframe.value, stage="DECISION",
+            # Only typed decision facts, never exceptions, account IDs or credentials.
+            facts={"broker": result.broker, "mode": "DEMO", "status": result.status,
+                   "side": result.side, "order_id": result.order_id,
+                   "decision_code": result.decision_code},
+        )
     return tuple(results)
 
 

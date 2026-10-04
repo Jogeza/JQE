@@ -65,7 +65,7 @@ export const NotificationCenter: React.FC<Props> = ({ notifications, safety, bro
     </button>
     {open && <section className="notification-panel" role="dialog" aria-label="System notifications">
       <div className="notification-heading"><div><strong>Notifications</strong><small>Current system evidence</small></div><button type="button" aria-label="Close notifications" onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} /></button></div>
-      <>{hosted && <p className="notification-empty">Authenticated research access. Hosted MT5 data is unavailable; automated execution is excluded.</p>}</>
+      <>{hosted && <p className="notification-empty">Authenticated workstation monitoring. Guarded demo execution runs on the PC; this dashboard is read-only.</p>}</>
       <div className="notification-facts" aria-label="Workspace status"><strong>Workspace status</strong><dl>
         <div><dt>Live broker connection</dt><dd>{broker.data?.live_connection_state === 'CONNECTED' ? 'Yes - live' : broker.data?.live_connection_state === 'DISCONNECTED' ? 'No - live' : 'Unavailable'}</dd></div>
         <div><dt>Demo verified</dt><dd>{verified ? `Yes - age ${formatAge(identity?.verified_at)}` : 'Unverified'}</dd></div>

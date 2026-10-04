@@ -1,4 +1,5 @@
 import React from 'react';
+import { DecisionJournal } from '../components/DecisionJournal';
 import { RecentTradesTable } from '../components/RecentTradesTable';
 import { ExecutionStateResponse } from '../types/api';
 
@@ -11,6 +12,7 @@ interface TradesPageProps {
 export const TradesPage: React.FC<TradesPageProps> = ({ execution, loading, currency }) => {
   return (
     <div className="dashboard-page-container">
+      <DecisionJournal />
       <RecentTradesTable
         trades={execution?.recent_trades || []}
         loading={loading}

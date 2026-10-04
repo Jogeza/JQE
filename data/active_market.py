@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from broker.types import Candle, TIMEFRAME_SECONDS, Timeframe
+from broker.weltrade_symbols import is_weltrade_synthetic
 
 
 class ActiveMarketContext(BaseModel):
@@ -38,7 +39,7 @@ class ActiveMarketContext(BaseModel):
 
 def is_continuous_market(symbol: str) -> bool:
     normalized = symbol.strip().upper()
-    return normalized.startswith(("R_", "1HZ", "BTC", "ETH", "SOL", "CRY"))
+    return is_weltrade_synthetic(symbol) or normalized.startswith(("R_", "1HZ", "BTC", "ETH", "SOL", "CRY"))
 
 
 def symbol_display_name(symbol: str) -> str:

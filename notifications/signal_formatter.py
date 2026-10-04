@@ -10,6 +10,12 @@ from notifications.types import Notification, NotificationType
 
 def render_signal_alert(notification: Notification) -> str:
     """Render only fields actually present in the event's broker/plan facts."""
+    if notification.kind is NotificationType.CHANNEL_UPDATE:
+        lines = [escape(notification.title)]
+        for field in ("Session", "Market", "Observed at", "Did you know", "Explore JQE", "Join & share"):
+            if notification.facts.get(field):
+                lines.append(f"{field}: {escape(notification.facts[field])}")
+        return "\n".join(lines + ["Explore with JQE ✨ Weltrade demo research; outcomes aren't guaranteed."])
     if notification.kind not in {
         NotificationType.POSITION_OPENED,
         NotificationType.POSITION_CLOSED,
@@ -21,9 +27,9 @@ def render_signal_alert(notification: Notification) -> str:
     if date.tzinfo is None:
         raise ValueError("alert date must be timezone-aware")
     label = {
-        NotificationType.POSITION_OPENED: "TRADE ALERT",
-        NotificationType.POSITION_CLOSED: "TRADE CLOSED",
-        NotificationType.ORDER_REJECTED: "ORDER REJECTED",
+        NotificationType.POSITION_OPENED: "JQE ✨ Demo trade opened",
+        NotificationType.POSITION_CLOSED: "JQE 📝 Trade wrapped up",
+        NotificationType.ORDER_REJECTED: "JQE 🛑 Sitting this one out",
     }[notification.kind]
     title = f"{label} | {date.astimezone(timezone.utc).strftime('%d %b %Y').upper()}"
     if notification.simulated:
@@ -59,5 +65,5 @@ def render_signal_alert(notification: Notification) -> str:
         if facts.get("Reason"):
             lines.append(f"REASON: {escape(facts['Reason'])}")
 
-    lines.append("Automated demo alert. Not financial advice.")
+    lines.append("Watching the setup with you 👀 Demo update; outcomes aren't guaranteed.")
     return "\n".join(lines)

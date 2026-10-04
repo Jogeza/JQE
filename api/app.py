@@ -25,6 +25,7 @@ from api.watchlist import router as watchlist_router
 from api.assistant import router as assistant_router
 from api.notifications import router as notifications_router
 from api.market_scan import router as market_scan_router
+from api.journal import router as journal_router
 from config.settings import settings
 from core.exceptions import JQEError
 
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant_router)
     app.include_router(notifications_router)
     app.include_router(market_scan_router)
+    app.include_router(journal_router)
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

@@ -95,6 +95,7 @@ async def test_watchlist_runner_uses_each_persisted_pair_without_changing_gates(
     monkeypatch.setattr(main, "settings", SimpleNamespace(
         broker_execution_enabled=True, effective_broker="weltrade",
         market_data_source="broker", watchlist_store_path=path,
+        decision_journal_path=tmp_path / "decisions.sqlite3",
     ))
     runner = AsyncMock(side_effect=lambda *, symbol, timeframe_name: main.CycleExecutionResult(
         status="NO_TRADE", broker="weltrade", symbol=symbol,
@@ -104,6 +105,10 @@ async def test_watchlist_runner_uses_each_persisted_pair_without_changing_gates(
     with main._armed_by_supervisor():
         results = await main.run_watchlist()
     assert len(results) == 2
+    from monitoring.decision_journal import read_journal
+    journal = read_journal(tmp_path / "decisions.sqlite3")
+    assert len(journal['items']) == 2
+    assert all(item['facts']['status'] == 'NO_TRADE' for item in journal['items'])
     assert [call.kwargs for call in runner.await_args_list] == [
         {"symbol": "FX VOL 20", "timeframe_name": "M1"},
         {"symbol": "PAINX 400", "timeframe_name": "M5"},

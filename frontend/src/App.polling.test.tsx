@@ -94,7 +94,7 @@ describe('App polling profiles', () => {
     await mount();
     expect(paths()).toEqual(allowed);
     expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Active market analysis is unavailable.');
-    expect(host.querySelector('[role="status"]')?.textContent).toContain('Execution disabled');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Observation API · orders disabled');
     expect(host.querySelector('[role="status"]')?.textContent).not.toContain('OFFLINE SIMULATION');
   });
 
@@ -102,7 +102,7 @@ describe('App polling profiles', () => {
     await mount();
     expect(Array.from(host.querySelectorAll('.desktop-sidebar .nav-section-label')).map(node => node.textContent)).toEqual(['Overview', 'Markets', 'Analysis', 'System']);
     expect(Array.from(host.querySelectorAll('.desktop-sidebar nav button')).map(node => node.textContent?.replace(/UNKNOWN|STALE|LOCK|OK|\d+/g, '').trim())).toEqual([
-      'Workspace', 'Overview', 'Markets', 'SyntX Markets', 'Watchlist', 'Positions', 'Trades',
+      'Workspace', 'Overview', 'Markets', 'SyntX Markets', 'Watchlist', 'Positions', 'Journal',
       'Strategy', 'Risk Control', 'Performance', 'Research', 'System Logs', 'Settings',
     ]);
   });

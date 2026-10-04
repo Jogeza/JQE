@@ -50,7 +50,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
     ) : candles.length === 0 ? (
       <ChartState>NO CANDLE DATA AVAILABLE</ChartState>
     ) : (
-      <JQEChart symbol={symbol} candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} />
+      <JQEChart symbol={symbol} timeframe={timeframe} drawingTools candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} />
     )}
   </div>
 );

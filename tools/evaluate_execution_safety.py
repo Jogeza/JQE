@@ -19,6 +19,7 @@ from broker.demo_guard import DemoOnlyGuard
 from broker.mt5_gateway import read_mt5_trade_history_snapshot
 from broker.scope import enforce_weltrade_only
 from config.settings import Settings
+from execution.position_limits import demo_position_cap
 from execution.safety import (
     DailyStateAuthority, EmergencyStopState, ExecutionAuthorization,
     ExecutionMode, ExecutionSafetySnapshot, RiskAuthorizationSnapshot,
@@ -202,7 +203,7 @@ def evaluate(settings: Settings, *, terminal=mt5) -> ExecutionSafetySnapshot:
                     positions = terminal.positions_get()
                     if positions is None:
                         reasons.append("POSITIONS_UNAVAILABLE")
-                    elif len(positions) >= 1:
+                    elif len(positions) >= demo_position_cap(settings, equity=equity, currency=currency):
                         reasons.append("OPEN_POSITION_LIMIT_REACHED")
                     try:
                         cap_clear, cap_count, cap_symbols = _daily_cap_state(settings, account_id, at)

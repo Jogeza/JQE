@@ -41,6 +41,12 @@ def test_continuous_vs_fx_market_classification():
     assert is_continuous_market("EURUSD") is False
 
 
+@pytest.mark.parametrize('symbol', ['FX Vol 20', 'SFX Vol 20', 'PainX 400', 'MAX PainX 1000', 'FiboX'])
+def test_weltrade_synthetic_weekend_clock_is_continuous(symbol):
+    sunday = datetime(2026, 10, 4, 17, 12, tzinfo=timezone.utc)
+    assert expected_latest_closed_candle_at(sunday, Timeframe.M5, symbol) == sunday.replace(minute=10)
+
+
 def test_weekend_fx_closed_candle_expectation():
     """Verify weekend FX candle expectation maps to Friday 22:00 UTC."""
     # Saturday 14:00 UTC
