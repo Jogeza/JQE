@@ -27,6 +27,7 @@ from api.dto import (
     SelectBrokerRequest,
     SelectBrokerResponse,
     WatchlistCapUsageResponse,
+    TerminalObservationResponse,
 )
 from api.service import (
     ApplicationService,
@@ -166,6 +167,16 @@ async def get_execution_state(
         return await service.get_execution_state()
     except JQEError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/brokers/terminal-observation", response_model=TerminalObservationResponse)
+async def get_terminal_observation(
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    service: ApplicationService = Depends(get_service),
+) -> TerminalObservationResponse:
+    """Read current Weltrade account and market observations; never submits orders."""
+    return await service.get_terminal_observation(symbol=symbol, timeframe_str=timeframe)
 
 
 @router.post("/execution/cycle", response_model=LiveExecutionResponse)

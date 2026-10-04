@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import OrderedDict
 import json
 import re
+import sqlite3
 from pathlib import Path
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -24,10 +25,10 @@ from data.watchlist import WatchlistStore
 from data.provenance import DatasetProvenance, VolumeType
 from data.historical import HistoricalDataService
 from broker.factory import get_gateway
-from broker.weltrade_symbols import require_weltrade_synthetic, is_weltrade_synthetic
+from broker.weltrade_symbols import require_weltrade_synthetic, is_weltrade_synthetic, weltrade_symbol_key
 from research.markets import MarketCatalogueService, catalogue_from_watchlist
 from config.settings import settings
-from core.exceptions import MarketDataError
+from core.exceptions import CacheError, MarketDataError
 from broker.types import TIMEFRAME_SECONDS
 from research.volume_profile import (
     VolumeAllocationMethod, VolumeProfileRequest as DomainVolumeProfileRequest,
@@ -558,13 +559,15 @@ async def get_research_markets(refresh: bool = False):
         watchlist_items,
         provider=settings.effective_broker,
     )
-    watched_symbols = {item.symbol.casefold() for item in watchlist_items}
+    watched_symbols = {weltrade_symbol_key(item.symbol) for item in watchlist_items}
     try:
         cached = tuple(
             item for item in CandleStore(settings.historical_data_path, read_only=True).list_cached_datasets()
-            if item.provider == "weltrade" and item.symbol.casefold() in watched_symbols
+            if item.provider == "weltrade" and weltrade_symbol_key(item.canonical_symbol) in watched_symbols
         )
-    except Exception:
+    except (CacheError, sqlite3.Error):
+        # Only an unreadable cache means "no datasets"; a bug here must not
+        # masquerade as an empty cache or the UI silently reports NOT CACHED.
         cached = ()
     return {
         "catalogue": asdict(catalogue),

@@ -69,7 +69,8 @@ describe('Workspace and Settings evidence views', () => {
 
   it('keeps Workspace limited to decision and market views', async () => {
     await act(async () => root.render(<WorkspacePage {...baseProps()} />));
-    expect(host.querySelectorAll('.workspace-card')).toHaveLength(2);
+    expect(host.querySelectorAll('.workspace-card')).toHaveLength(3);
+    expect(panel('Weltrade terminal')).not.toBeNull();
     expect(panel('Decision trail')).not.toBeNull();
     expect(panel('Market chart')).not.toBeNull();
     expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
@@ -121,7 +122,8 @@ describe('Workspace and Settings evidence views', () => {
   it('renders ERROR state for a failed first request', async () => {
     await render({ watchlist: resource<WatchlistResponse>(null, { error: 'request failed' }) });
     expect(panel('Watchlist').dataset.state).toBe('ERROR');
-    expect(host.textContent).toContain('Watchlist error: request failed');
+    expect(host.textContent).toContain('Watchlist unavailable. See Notifications.');
+    expect(host.textContent).not.toContain('request failed');
   });
   it('rejects a malformed broker payload', async () => {
     await render({ broker: resource({ active_broker: 'mt5', connected: 'yes' } as unknown as BrokerStatusResponse) });
@@ -185,15 +187,15 @@ describe('Workspace and Settings evidence views', () => {
     expect(validBroker({ ...broker, observed_at: 'invalid' })).toBe(false);
     expect(validAssessment({ ...assessment, candle_close_time: 'invalid' })).toBe(false);
   });
-  it('derives both broker freshness badges from observation age', async () => {
+  it('derives broker freshness in readiness and expandable safety evidence from observation age', async () => {
     await render();
     expect(panel('Readiness').dataset.state).toBe('LIVE');
-    expect(host.querySelector('.workspace-title .workspace-eyebrow')?.textContent).toContain('broker status LIVE');
+    expect(host.querySelector('.workspace-context')?.textContent).toContain('GET /brokers/status: LIVE');
     vi.setSystemTime(new Date(Date.parse(observed) + WORKSPACE_FRESHNESS_THRESHOLDS_MS.brokerStatus + 1));
     await render();
     expect(panel('Readiness').dataset.state).toBe('STALE');
-    expect(host.querySelector('.workspace-title .workspace-eyebrow')?.textContent).toContain('broker status STALE');
-    expect(host.querySelector('.workspace-title .workspace-eyebrow')?.textContent).not.toContain('broker status LIVE');
+    expect(host.querySelector('.workspace-context')?.textContent).toContain('GET /brokers/status: STALE');
+    expect(host.querySelector('.workspace-context')?.textContent).not.toContain('GET /brokers/status: LIVE');
   });
   it('uses one human broker age in the top card and MT5 checklist detail', async () => {
     vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
@@ -356,7 +358,7 @@ describe('Workspace and Settings evidence views', () => {
     expect(panel('Market chart').dataset.state).toBe('UNAVAILABLE');
     expect(panel('Market chart').textContent).toContain('Active market analysis is unavailable.');
     expect(host.querySelector('[data-testid="market-chart"]')).toBeNull();
-    expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('NO_MARKET_SNAPSHOT');
+    expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('see Notifications');
     expect(panel('Market chart').classList).toContain('workspace-chart-unavailable');
     expect(panel('Market chart').textContent).toContain('strategy, setup, and candles share one observation.');
     expect(panel('Market chart').textContent).not.toContain('Selected FX Vol 20 / M1');

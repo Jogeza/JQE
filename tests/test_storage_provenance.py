@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
 import sqlite3
 
-from broker.types import Timeframe
-from broker.types import Candle
+from broker.types import Candle, Tick, Timeframe
 from data.provenance import DatasetProvenance, VolumeType
 from data.storage import CandleStore
 
@@ -41,3 +40,23 @@ def test_cached_dataset_enumeration_preserves_symbol_timeframe_and_provenance_is
     summaries = store.list_cached_datasets("deriv")
     assert {(item.canonical_symbol, item.timeframe) for item in summaries} == {("EURUSD", "M15"), ("GBPUSD", "M15"), ("EURUSD", "M5")}
     assert all(item.volume_type is VolumeType.UNAVAILABLE for item in summaries)
+
+
+def test_tick_round_trip_isolated_by_provider_and_keeps_terminal_symbol(tmp_path):
+    store = CandleStore(tmp_path / "ticks.db")
+    tick = Tick(
+        time=datetime(2026, 1, 1, tzinfo=timezone.utc).replace(microsecond=123000),
+        symbol="FX Vol 20",
+        bid=100.0,
+        ask=100.2,
+        last=100.1,
+    )
+
+    assert store.save_ticks("FX Vol 20", "FX Vol 20", [tick], provider="weltrade") == 1
+    assert store.save_ticks("FX Vol 20", "FX Vol 20", [tick], provider="weltrade") == 0
+    assert store.load_latest_tick("FX Vol 20", provider="weltrade") == tick
+    assert store.load_latest_tick("FX Vol 20", provider="simulation") is None
+    with sqlite3.connect(store.db_path) as connection:
+        assert connection.execute(
+            "SELECT provider_symbol FROM ticks WHERE provider='weltrade'"
+        ).fetchone()[0] == "FX Vol 20"

@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     weltrade_demo_login: int | None = None
     weltrade_demo_password: str | None = Field(default=None, repr=False)
     weltrade_demo_server: str | None = None
+    weltrade_referral_url: str = Field(
+        default="https://track.gowt.me/visit/?bta=44132&brand=weltrade",
+        description="Configured Weltrade partner/referral registration URL",
+    )
 
     @property
     def effective_weltrade_login(self) -> int | None:

@@ -10,6 +10,7 @@ import {
   SignalResponse,
   RiskStatusResponse,
   ExecutionStateResponse,
+    TerminalObservationResponse,
   LiveExecutionResponse,
   ExecutionSafetyResponse,
   RecoveryDiagnosticsResponse,
@@ -37,6 +38,12 @@ import {
 } from '../types/api';
 
 const API_BASE = '/api/v1';
+let apiAccessToken: string | null = null;
+
+// Short-lived provider session only; server handlers validate it independently.
+export function setApiAccessToken(token: string | null): void {
+  apiAccessToken = token;
+}
 
 class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) {
@@ -51,6 +58,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
+      ...(apiAccessToken ? { Authorization: `Bearer ${apiAccessToken}` } : {}),
       ...init?.headers,
     },
   });
@@ -177,6 +185,14 @@ export const jqeApi = {
     return fetchJson(`${API_BASE}/execution`, { signal });
   },
 
+  async getTerminalObservation(symbol?: string, timeframe?: string, signal?: AbortSignal): Promise<TerminalObservationResponse> {
+    const params = new URLSearchParams();
+    if (symbol) params.append('symbol', symbol);
+    if (timeframe) params.append('timeframe', timeframe);
+    const query = params.size ? `?${params.toString()}` : '';
+    return fetchJson(`${API_BASE}/brokers/terminal-observation${query}`, { signal });
+  },
+
   async executeLiveCycle(signal?: AbortSignal): Promise<LiveExecutionResponse> {
     return fetchJson(`${API_BASE}/execution/cycle?confirmed=true`, {
       method: 'POST', signal,
@@ -265,6 +281,22 @@ export const jqeApi = {
   async getWatchlistCapUsage(accountScope?: string, signal?: AbortSignal): Promise<WatchlistCapUsageResponse> {
     const query = accountScope ? `?account_scope=${encodeURIComponent(accountScope)}` : '';
     return fetchJson(`${API_BASE}/watchlist/cap-usage${query}`, { signal });
+  },
+
+  /** SyntX market overview — all native Weltrade SyntX instruments with cached candle data */
+  async getSyntXOverview(
+    timeframe: 'M1' | 'M5' | 'H1' = 'M5',
+    family = 'all',
+    search = '',
+    signal?: AbortSignal,
+  ): Promise<import('../types/api').SyntXOverviewResponse> {
+    const params = new URLSearchParams({ timeframe, family, search });
+    return fetchJson(`${API_BASE}/syntx/overview?${params}`, { signal });
+  },
+
+  /** Configured Weltrade referral / partner registration link */
+  async getReferralInfo(signal?: AbortSignal): Promise<import('../types/api').ReferralInfoResponse> {
+    return fetchJson(`${API_BASE}/referral`, { signal });
   },
 };
 

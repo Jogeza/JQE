@@ -7,9 +7,16 @@ served by api/unavailable.py and fail closed.
 """
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _lib.security import SecurityError, access_for, authenticate, rpc, write_json
 
 MODEL = os.environ.get("JQE_AI_ASSISTANT_MODEL", "inclusionai/ling-3.0-flash-sante:free")
 API_BASE = os.environ.get("JQE_AI_ASSISTANT_API_BASE", "https://openrouter.ai/api/v1")
@@ -28,23 +35,32 @@ SYSTEM_PROMPT = (
 
 
 class handler(BaseHTTPRequestHandler):
-    def _send_json(self, status, payload):
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def _resource(self):
+        return parse_qs(urlparse(self.path).query).get("resource", [""])[0]
+
+    def _send_error(self, exc):
+        write_json(self, exc.status, {"detail": exc.detail, "reason_code": exc.reason_code})
+
+    def _session(self):
+        token, _user = authenticate(self.headers)
+        access = access_for(token)
+        if access.get("access_granted") is not True or "ai_chat" not in access.get("feature_access", []):
+            raise SecurityError(403, "AI chat is not included in current access.", "FEATURE_ACCESS_DENIED")
+        return token, access
 
     def _provider_ready(self):
         return bool(os.environ.get("OPENROUTER_API_KEY"))
 
     def do_GET(self):
-        if not self.path.split("?")[0].endswith("/status"):
-            self._send_json(404, {"detail": "Not found"})
+        if self._resource() != "status":
+            write_json(self, 404, {"detail": "Not found"})
             return
+        try:
+            _token, access = self._session()
+        except SecurityError as exc:
+            return self._send_error(exc)
         ready = self._provider_ready()
-        self._send_json(200, {
+        write_json(self, 200, {
             "provider": "openrouter",
             "context_mode": "generic",
             "state": "READY" if ready else "UNCONFIGURED",
@@ -52,15 +68,24 @@ class handler(BaseHTTPRequestHandler):
             "enabled": True,
             "healthy": ready,
             "model": MODEL,
+            "daily_limit": access.get("ai_daily_limit"),
+            "used_today": access.get("ai_used_today"),
             "reason_codes": [] if ready else ["ASSISTANT_PROVIDER_UNCONFIGURED"],
         })
 
+    def do_OPTIONS(self):
+        write_json(self, 405, {"detail": "Method not allowed."})
+
     def do_POST(self):
-        if not self.path.split("?")[0].endswith("/chat"):
-            self._send_json(404, {"detail": "Not found"})
+        if self._resource() != "chat":
+            write_json(self, 404, {"detail": "Not found"})
             return
+        try:
+            token, _access = self._session()
+        except SecurityError as exc:
+            return self._send_error(exc)
         if not self._provider_ready():
-            self._send_json(200, {
+            write_json(self, 503, {
                 "state": "UNAVAILABLE", "answer": None,
                 "generated_at": "", "model": MODEL, "context": None,
                 "usage": None, "warning": "Assistant provider is not configured.",
@@ -69,20 +94,36 @@ class handler(BaseHTTPRequestHandler):
             return
         length = int(self.headers.get("Content-Length", "0"))
         try:
+            if length > 8192:
+                raise ValueError("request too large")
             message = str(json.loads(self.rfile.read(length) or b"{}").get("message", "")).strip()
         except (ValueError, UnicodeDecodeError):
             message = ""
         if not message:
-            self._send_json(200, {
+            write_json(self, 400, {
                 "state": "UNAVAILABLE", "answer": None,
                 "generated_at": "", "model": MODEL, "context": None,
                 "usage": None, "warning": "Empty question.", "reason_code": "EMPTY_MESSAGE",
             })
             return
         try:
+            quota = rpc(token, "jqe_consume_feature", {"p_feature": "ai_chat"})
+        except SecurityError as exc:
+            return self._send_error(exc)
+        if not isinstance(quota, dict) or quota.get("allowed") is not True:
+            write_json(self, 429, {
+                "state": "LIMIT_REACHED", "answer": None, "generated_at": "",
+                "model": MODEL, "context": None, "usage": None,
+                "warning": "Today's AI chat limit has been reached.",
+                "reason_code": "AI_DAILY_LIMIT_REACHED",
+                "daily_limit": quota.get("limit") if isinstance(quota, dict) else None,
+                "used_today": quota.get("used") if isinstance(quota, dict) else None,
+            })
+            return
+        try:
             answer, usage = self._ask(message)
         except Exception:
-            self._send_json(200, {
+            write_json(self, 503, {
                 "state": "UNAVAILABLE", "answer": None,
                 "generated_at": "", "model": MODEL, "context": None,
                 "usage": None, "warning": "Assistant provider request failed.",
@@ -90,7 +131,7 @@ class handler(BaseHTTPRequestHandler):
             })
             return
         from datetime import datetime, timezone
-        self._send_json(200, {
+        write_json(self, 200, {
             "state": "ANSWERED", "answer": answer,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "model": MODEL, "context": None, "usage": usage,

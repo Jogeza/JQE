@@ -17,15 +17,18 @@ import {
   X,
   ListChecks,
   Activity,
+  Globe,
   Moon,
   Sun,
   type LucideIcon,
 } from 'lucide-react';
+import { weltradeReferralUrl } from '../auth/supabase';
 
 export type TabType =
   | 'workspace'
   | 'overview'
   | 'markets'
+  | 'syntx'
   | 'watchlist'
   | 'positions'
   | 'trades'
@@ -37,6 +40,7 @@ export type TabType =
   | 'settings';
 
 interface SidebarProps {
+  authenticated?: boolean;
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
   openPositionsCount?: number;
@@ -56,6 +60,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
+  authenticated = false,
   activeTab,
   onTabChange,
   openPositionsCount,
@@ -75,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'workspace',   label: 'Workspace',    icon: LayoutGrid,       group: 'Overview' },
     { id: 'overview',    label: 'Overview',     icon: LayoutDashboard,  group: 'Overview' },
     { id: 'markets',     label: 'Markets',      icon: CandlestickChart, group: 'Markets'      },
+    { id: 'syntx',       label: 'SyntX Markets',icon: Globe,            group: 'Markets'      },
     { id: 'watchlist',   label: 'Watchlist',    icon: ListChecks,       group: 'Markets'      },
     {
       id: 'positions', label: 'Positions', icon: Briefcase, group: 'Analysis',
@@ -145,14 +151,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const pageTitle = navItems.find(item => item.id === activeTab)?.label ?? 'Workspace';
 
   return (
-    <>
+    <div className={`sidebar-surfaces${authenticated ? " authenticated" : ""}`} aria-label={authenticated ? "Authenticated JQE account" : undefined}>
       {/* ── Desktop sidebar ─────────────────────────────────────── */}
       <aside className={`desktop-sidebar${collapsed ? ' collapsed' : ''}`} aria-label="JQE Navigation">
 
         <div className="sidebar-brand">
           <div className="brand-lockup"><span className="legacy-jqe-mark"><Activity size={21} aria-hidden="true" /></span><span className="jqe-mark">JQE<span>®</span></span></div>
           <small>Research &amp; perspective</small>
-          <img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" />
+          <a className="weltrade-logo-link" href={weltradeReferralUrl} target="_blank" rel="noopener noreferrer" aria-label="Register with Weltrade, opens in a new tab">
+            <img className="weltrade-logo" src="/weltrade-logo.svg" alt="" width="136" height="28" />
+          </a>
         </div>
 
         {navigation()}
@@ -234,10 +242,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         {navigation(true)}
         <div className="sidebar-metadata" style={{ padding: '12px 16px', borderTop: '1px solid var(--border-dark)' }}>
-          <img className="weltrade-logo" src="/weltrade-logo.svg" alt="Weltrade" width="136" height="28" />
+          <a className="weltrade-logo-link" href={weltradeReferralUrl} target="_blank" rel="noopener noreferrer" aria-label="Register with Weltrade, opens in a new tab">
+            <img className="weltrade-logo" src="/weltrade-logo.svg" alt="" width="136" height="28" />
+          </a>
           <span className="sidebar-meta-provider">Weltrade · MT5 demo</span>
         </div>
       </dialog>
-    </>
+    </div>
   );
 };

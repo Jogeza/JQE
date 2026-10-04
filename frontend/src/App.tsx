@@ -14,6 +14,7 @@ import { SystemPage } from './pages/SystemPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { WorkspacePage } from './pages/WorkspacePage';
+import { SyntXMarketsPage } from './pages/SyntXMarketsPage';
 import { jqeApi } from './services/api';
 import {
   SystemStatusResponse,
@@ -38,14 +39,16 @@ import {
   AssistantStatusResponse,
   NotificationStatusResponse,
   LiveExecutionResponse,
+  TerminalObservationResponse,
 } from './types/api';
 import { useInterval } from './hooks/useApi';
 import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry } from './services/telemetryLifecycle';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 const workspaceProfile = [
   'brokerStatus', 'safety', 'risk', 'monitoring', 'observationHealth',
   'watchlist', 'watchlistCapUsage', 'execution', 'activeAnalysis', 'assistantStatus', 'notificationStatus',
+  'terminalObservation',
 ] as const;
 const legacyProfile = [
   'system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety',
@@ -55,7 +58,7 @@ const legacyProfile = [
   'assistantStatus',
 ] as const;
 
-export const App: React.FC = () => {
+export const App: React.FC<{ authenticated?: boolean; onSignOut?: () => void; onAdmin?: () => void }> = ({ authenticated = false, onSignOut, onAdmin }) => {
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
   const [siteTheme, setSiteTheme] = useState<'light' | 'dark'>(() => {
     try { return window.localStorage.getItem('jqe-site-theme') === 'dark' ? 'dark' : 'light'; }
@@ -76,6 +79,7 @@ export const App: React.FC = () => {
     strategy: ResourceState<SignalResponse>;
     risk: ResourceState<RiskStatusResponse>;
     execution: ResourceState<ExecutionStateResponse>;
+    terminalObservation: ResourceState<TerminalObservationResponse>;
     safety: ResourceState<ExecutionSafetyResponse>;
     performance: ResourceState<PerformanceSummaryResponse>;
     recovery: ResourceState<RecoveryDiagnosticsResponse>;
@@ -97,6 +101,7 @@ export const App: React.FC = () => {
   const [resources, setResources] = useState<Resources>({
     system: emptyResource(), market: emptyResource(), candles: emptyResource(),
     strategy: emptyResource(), risk: emptyResource(), execution: emptyResource(),
+    terminalObservation: emptyResource(),
     safety: emptyResource(), performance: emptyResource(), recovery: emptyResource(),
     paperRuntime: emptyResource(), paperDiagnostics: emptyResource(),
     setup: emptyResource(),
@@ -109,7 +114,6 @@ export const App: React.FC = () => {
     assistantStatus: emptyResource(),
     notificationStatus: emptyResource(),
   });
-  const [lastRefreshAttempt, setLastRefreshAttempt] = useState<Date | null>(null);
   const [lastSuccessfulContact, setLastSuccessfulContact] = useState<Date | null>(null);
   const [lifecycleNow, setLifecycleNow] = useState(() => new Date());
   const [monitoringValidationError, setMonitoringValidationError] = useState<string | null>(null);
@@ -138,6 +142,7 @@ export const App: React.FC = () => {
         case 'strategy': return jqeApi.getStrategySignal(requestedSymbol, requestedTimeframe, undefined, controller.signal);
         case 'risk': return jqeApi.getRiskStatus(requestedSymbol, requestedTimeframe, controller.signal);
         case 'execution': return jqeApi.getExecutionState(controller.signal);
+          case 'terminalObservation': return jqeApi.getTerminalObservation(requestedSymbol, requestedTimeframe, controller.signal);
         case 'safety': return jqeApi.getExecutionSafety(controller.signal);
         case 'performance': return jqeApi.getPerformanceSummary(controller.signal);
         case 'recovery': return jqeApi.getRecoveryDiagnostics(controller.signal);
@@ -213,7 +218,6 @@ export const App: React.FC = () => {
         });
         return next;
       });
-      setLastRefreshAttempt(updatedAt);
     } catch (err) {
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -226,8 +230,7 @@ export const App: React.FC = () => {
         });
         return next;
       });
-      setLastRefreshAttempt(new Date());
-    } finally {
+      } finally {
       if (requestId === requestIdRef.current) {
         inFlightRef.current = false;
       }
@@ -307,6 +310,7 @@ export const App: React.FC = () => {
           watchlist={resources.watchlist}
           caps={resources.watchlistCapUsage}
           execution={resources.execution}
+                    terminalObservation={resources.terminalObservation}
           activeAnalysis={resources.activeAnalysis}
           assistantStatus={resources.assistantStatus}
           notificationStatus={resources.notificationStatus}
@@ -375,6 +379,15 @@ export const App: React.FC = () => {
             candleError={resources.candles.error}
           />
         );
+      case 'syntx':
+        return (
+          <SyntXMarketsPage
+            onSelectSymbol={(sym, tf) => {
+              setSelectedSymbol(sym);
+              if (tf) setSelectedTimeframe(tf);
+            }}
+          />
+        );
       case 'positions':
         return <PositionsPage execution={executionData} loading={loading} currency={executionData?.currency} />;
       case 'trades':
@@ -409,6 +422,7 @@ export const App: React.FC = () => {
     <div className="app-container" data-theme={siteTheme}>
       {/* Navigation Sidebar */}
       <Sidebar
+        authenticated={authenticated}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         openPositionsCount={activeTab === 'workspace' ? undefined : executionData?.open_positions_count ?? 0}
@@ -428,6 +442,8 @@ export const App: React.FC = () => {
               ? 'Risk Control'
               : activeTab === 'watchlist'
               ? 'Watchlist & Caps'
+              : activeTab === 'syntx'
+              ? 'SyntX Markets'
               : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)
           }
           systemStatus={systemStatus}
@@ -440,47 +456,15 @@ export const App: React.FC = () => {
           onTimeframeChange={setSelectedTimeframe}
         />}
 
-        <div className="offline-simulation-banner" role="status">
-          <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError} />
-          {resources.brokerStatus.data?.broker_execution_enabled === true
-            ? 'DEMO EXECUTION — BROKER ORDERS ENABLED'
-            : resources.brokerStatus.data?.broker_execution_enabled === false
-              ? 'WELTRADE DEMO — BROKER EXECUTION DISABLED'
-              : 'BROKER EXECUTION STATUS UNAVAILABLE'}
-          <span>{resources.brokerStatus.data?.active_broker
-            ? ` ${resources.brokerStatus.data.active_broker} · ${resources.brokerStatus.data.observation_state}`
-            : ` ${telemetryLifecycle.state}`}</span>
+        <div className="workspace-utility-bar">
+          <span className="workspace-execution-status" role="status">{resources.brokerStatus.data?.broker_execution_enabled === true ? 'Demo execution enabled' : resources.brokerStatus.data?.broker_execution_enabled === false ? 'Execution disabled' : 'Execution unavailable'}</span>
+          <button type="button" className="workspace-refresh" aria-label="Retry data refresh" onClick={() => fetchAllData(true, false)}><RefreshCw size={15} /></button>
+          <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError}
+            resourceErrors={[...activeProfile.filter(name => resources[name].error).map(name => ({ title: name, detail: resources[name].error! })), ...(liveExecution.error ? [{ title: 'Demo cycle', detail: liveExecution.error }] : [])]}
+            hosted={authenticated} />
+          {onAdmin && <button type="button" className="workspace-account-action" onClick={onAdmin}>Admin</button>}
+          {onSignOut && <button type="button" className="workspace-account-action" onClick={onSignOut}>Sign out</button>}
         </div>
-
-        {/* API Error Notification Banner */}
-        {apiError && (
-          <div
-            style={{
-              backgroundColor: 'var(--quant-amber-subtle)',
-              borderBottom: '1px solid var(--quant-amber-border)',
-              padding: '5px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '11px',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--quant-amber)',
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={13} />
-              <span>{apiError}{lastRefreshAttempt ? ` Last refresh attempt: ${lastRefreshAttempt.toLocaleTimeString('en-GB')}.` : ''}</span>
-            </div>
-            <button
-              onClick={() => fetchAllData(true, false)}
-              className="btn-quant"
-              style={{ fontSize: '9.5px', padding: '1px 6px', height: '18px' }}
-            >
-              <RefreshCw size={9} /> RETRY
-            </button>
-          </div>
-        )}
 
         {/* Telemetry Status Ribbon / System Health Rail */}
         {activeTab !== 'workspace' && <details className="telemetry-ribbon">

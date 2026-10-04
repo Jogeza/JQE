@@ -14,7 +14,7 @@ import type {
   VolumeProfileResultDTO,
 } from '../../types/research';
 import { acquisitionSelectionKey, isTerminalAcquisition, jobSelectionKey } from '../chart/acquisitionAdapter';
-import { isCached } from '../chart/marketCatalogueAdapter';
+import { isCached, symbolIdentity } from '../chart/marketCatalogueAdapter';
 import { ReplayControls } from './ReplayControls';
 import {
   indicatorVisibility,
@@ -96,7 +96,7 @@ export function ResearchChartWorkspace({
   const selectedCache = markets.cached_datasets.find(
     (item) =>
       item.provider === instrument.provider &&
-      item.canonical_symbol === instrument.canonical_symbol &&
+      symbolIdentity(item.canonical_symbol) === symbolIdentity(instrument.canonical_symbol) &&
       item.timeframe === timeframe
   );
   const suggestedAnchors = useMemo(() => suggestFibonacciAnchors(view?.candles ?? []), [view]);

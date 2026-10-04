@@ -213,6 +213,69 @@ class ExecutionStateResponse(BaseModel):
     recent_trades_count: int = 0
     recent_trades: list[TradeHistoryDTO] = Field(default_factory=list)
     currency: str
+    observed_at: str | None = None
+    source: str = "CURRENT_TERMINAL"
+
+
+class TerminalTickDTO(BaseModel):
+    time: str
+    symbol: str
+    bid: float
+    ask: float
+    last: float | None = None
+
+
+class TerminalCandleDTO(BaseModel):
+    symbol: str
+    timeframe: str
+    opened_at: str
+    closed_at: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float | None = None
+    source: str = "CURRENT_TERMINAL"
+
+
+class TerminalSymbolSpecificationDTO(BaseModel):
+    name: str
+    description: str = ""
+    digits: int
+    point: float | None = None
+    trade_tick_size: float | None = None
+    trade_tick_value: float | None = None
+    contract_size: float | None = None
+    volume_min: float | None = None
+    volume_step: float | None = None
+    volume_max: float | None = None
+    trade_mode: int | None = None
+
+
+class TerminalObservationResponse(BaseModel):
+    state: Literal["CONNECTED", "DISCONNECTED", "UNAVAILABLE"]
+    broker: str = "weltrade"
+    observed_at: str
+    error: str | None = None
+    server: str | None = None
+    account_id_masked: str | None = None
+    environment: Literal["DEMO", "UNVERIFIED"] = "UNVERIFIED"
+    currency: str | None = None
+    balance: float | None = None
+    equity: float | None = None
+    margin: float | None = None
+    free_margin: float | None = None
+    margin_level: float | None = None
+    account_trading_allowed: bool | None = None
+    expert_trading_allowed: bool | None = None
+    terminal_trading_allowed: bool | None = None
+    trade_api_disabled: bool | None = None
+    execution_enabled: bool = False
+    tick: TerminalTickDTO | None = None
+    candle: TerminalCandleDTO | None = None
+    symbol_specification: TerminalSymbolSpecificationDTO | None = None
+    positions: list[PositionDTO] = Field(default_factory=list)
+    recent_trades: list[TradeHistoryDTO] = Field(default_factory=list)
 
 
 class LiveExecutionResponse(BaseModel):
@@ -489,3 +552,65 @@ class WatchlistCapUsageDTO(BaseModel):
 class WatchlistCapUsageResponse(BaseModel):
     items: list[WatchlistCapUsageDTO] = Field(default_factory=list)
     observed_at: str
+
+
+class SyntXFamilyDTO(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+class SyntXSpecsDTO(BaseModel):
+    symbol: str
+    family_id: str
+    family_name: str
+    digits: int
+    point: float
+    volume_min: float
+    volume_step: float
+    volume_max: float
+    contract_size: float = 1.0
+
+
+class SyntXMarketCardDTO(BaseModel):
+    symbol: str
+    family_id: str
+    family_name: str
+    timeframe: str
+    latest_close: float | None = None
+    open_price: float | None = None
+    high_price: float | None = None
+    low_price: float | None = None
+    change_pct: float | None = None
+    change_value: float | None = None
+    volume: float | None = None
+    spread: float | None = None
+    atr: float | None = None
+    rsi: float | None = None
+    sparkline: list[float] = Field(default_factory=list)
+    cache_status: Literal["CACHED", "PARTIAL", "MISSING", "STALE", "UNAVAILABLE"] = "MISSING"
+    candle_count: int = 0
+    first_candle_time: str | None = None
+    last_candle_time: str | None = None
+    freshness_age_seconds: float | None = None
+    last_tick_time: str | None = None
+    last_tick_age_seconds: float | None = None
+    provenance: str = "UNAVAILABLE"
+    is_watched: bool = False
+    specs: SyntXSpecsDTO
+
+
+class SyntXOverviewResponse(BaseModel):
+    timeframe: str
+    total_instruments: int
+    cached_instruments: int
+    families: list[SyntXFamilyDTO]
+    instruments: list[SyntXMarketCardDTO]
+    weltrade_referral_url: str
+    refreshed_at: str
+
+
+class ReferralInfoResponse(BaseModel):
+    referral_url: str
+    broker: str = "weltrade"
+    status: str = "ACTIVE"

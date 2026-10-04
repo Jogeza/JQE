@@ -330,6 +330,42 @@ export interface ExecutionStateResponse {
   recent_trades_count: number;
   recent_trades: TradeHistoryDTO[];
   currency: string;
+  observed_at?: string | null;
+  source?: string;
+}
+
+export interface TerminalObservationResponse {
+  state: 'CONNECTED' | 'DISCONNECTED' | 'UNAVAILABLE';
+  broker: string;
+  observed_at: string;
+  error: string | null;
+  server: string | null;
+  account_id_masked: string | null;
+  environment: 'DEMO' | 'UNVERIFIED';
+  currency: string | null;
+  balance: number | null;
+  equity: number | null;
+  margin: number | null;
+  free_margin: number | null;
+  margin_level: number | null;
+  account_trading_allowed: boolean | null;
+  expert_trading_allowed: boolean | null;
+  terminal_trading_allowed: boolean | null;
+  trade_api_disabled: boolean | null;
+  execution_enabled: boolean;
+  tick: { time: string; symbol: string; bid: number; ask: number; last: number | null } | null;
+  candle: {
+    symbol: string; timeframe: string; opened_at: string; closed_at: string;
+    open: number; high: number; low: number; close: number; volume: number | null;
+    source: 'CURRENT_TERMINAL' | string;
+  } | null;
+  symbol_specification: {
+    name: string; description: string; digits: number; point: number | null;
+    trade_tick_size: number | null; trade_tick_value: number | null; contract_size: number | null;
+    volume_min: number | null; volume_step: number | null; volume_max: number | null; trade_mode: number | null;
+  } | null;
+  positions: PositionDTO[];
+  recent_trades: TradeHistoryDTO[];
 }
 
 export interface LiveExecutionResponse {
@@ -794,4 +830,69 @@ export interface WatchlistCapUsageDTO {
 export interface WatchlistCapUsageResponse {
   items: WatchlistCapUsageDTO[];
   observed_at: string;
+}
+
+// ── SyntX Market Scan DTOs ─────────────────────────────────────────────────
+
+export interface SyntXSpecsDTO {
+  symbol: string;
+  family_id: string;
+  family_name: string;
+  digits: number;
+  point: number;
+  volume_min: number;
+  volume_step: number;
+  volume_max: number;
+  contract_size: number;
+}
+
+export interface SyntXMarketCardDTO {
+  symbol: string;
+  family_id: string;
+  family_name: string;
+  timeframe: string;
+  cache_status: 'CACHED' | 'PARTIAL' | 'MISSING' | 'STALE' | 'UNAVAILABLE';
+  candle_count: number;
+  provenance: string;
+  latest_close: number | null;
+  open_price: number | null;
+  high_price: number | null;
+  low_price: number | null;
+  /** Renamed from change_val — matches Python DTO */
+  change_value: number | null;
+  change_pct: number | null;
+  atr: number | null;
+  rsi: number | null;
+  volume: number | null;
+  spread: number | null;
+  sparkline: number[];
+  is_watched: boolean;
+  specs: SyntXSpecsDTO;
+  first_candle_time: string | null;
+  last_candle_time: string | null;
+  freshness_age_seconds: number | null;
+  last_tick_time: string | null;
+  last_tick_age_seconds: number | null;
+}
+
+export interface SyntXFamilyDTO {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface SyntXOverviewResponse {
+  timeframe: string;
+  total_instruments: number;
+  cached_instruments: number;
+  families: SyntXFamilyDTO[];
+  instruments: SyntXMarketCardDTO[];
+  weltrade_referral_url: string;
+  refreshed_at: string;
+}
+
+export interface ReferralInfoResponse {
+  referral_url: string;
+  broker: string;
+  status: string;
 }

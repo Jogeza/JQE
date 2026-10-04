@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import math
-import re
 from typing import Any
 
 import MetaTrader5 as mt5
@@ -17,7 +16,7 @@ from broker.mt5_gateway import _DEFAULT_TICK_POLL_INTERVAL_SECONDS
 from broker.types import Tick
 from core.exceptions import BrokerConnectionError
 from core.logger import logger
-from broker.weltrade_symbols import is_weltrade_synthetic
+from broker.weltrade_symbols import is_weltrade_synthetic, weltrade_symbol_key
 
 
 _WELTRADE_SYNTHETIC_ALIASES: dict[str, tuple[str, ...]] = {
@@ -33,14 +32,11 @@ _WELTRADE_SYNTHETIC_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _symbol_key(value: str) -> str:
-    return re.sub(r"[^A-Z0-9]", "", value.upper())
-
-
 class WeltradeGateway(MT5DemoGateway):
     """Weltrade-only identity and symbol policy over shared MT5 mechanics."""
 
     demo_guard_broker = "weltrade"
+    market_data_provider = "weltrade"
 
     async def get_price_point(self, symbol: str) -> float:
         """Read the connected terminal's price quantum for fill verification."""
@@ -67,14 +63,73 @@ class WeltradeGateway(MT5DemoGateway):
                    if abs(stamp - hours * 3600 - now.timestamp()) <= 120]
         if len(offsets) != 1:
             return None
+        stamp_milliseconds = getattr(raw, "time_msc", None)
+        if type(stamp_milliseconds) is int and stamp_milliseconds > 0:
+            tick_time = datetime.fromtimestamp(
+                (stamp_milliseconds - offsets[0] * 1000) / 1000,
+                tz=timezone.utc,
+            )
+        else:
+            tick_time = datetime.fromtimestamp(stamp - offsets[0], tz=timezone.utc)
         bid = float(getattr(raw, "bid", 0.0))
         ask = float(getattr(raw, "ask", 0.0))
         if not all(math.isfinite(value) and value > 0 for value in (bid, ask)):
             return None
         return Tick(
-            time=datetime.fromtimestamp(stamp - offsets[0], tz=timezone.utc),
-            symbol=symbol, bid=bid, ask=ask,
+            time=tick_time,
+            symbol=symbol,
+            bid=bid,
+            ask=ask,
+            last=(
+                float(raw.last)
+                if isinstance(getattr(raw, "last", None), (int, float))
+                and math.isfinite(float(raw.last))
+                and float(raw.last) > 0
+                else None
+            ),
         )
+
+    async def get_terminal_permissions(self) -> dict[str, bool | None]:
+        """Return current terminal-side connection and trade permission flags."""
+        self._require_connected()
+        info = await asyncio.to_thread(mt5.terminal_info)
+        if info is None:
+            raise BrokerConnectionError("Weltrade terminal status is unavailable")
+        return {
+            "connected": bool(getattr(info, "connected", False)),
+            "terminal_trading_allowed": bool(getattr(info, "trade_allowed", False)),
+            "trade_api_disabled": bool(getattr(info, "tradeapi_disabled", True)),
+        }
+
+    async def get_symbol_specification(self, symbol: str) -> dict[str, str | int | float | None]:
+        """Read terminal-reported contract economics without submitting an order."""
+        self._require_connected()
+        if not is_weltrade_synthetic(symbol):
+            raise BrokerConnectionError("Symbol outside Weltrade synthetic scope")
+        real_symbol = self._resolve_symbol(symbol)
+        if not real_symbol:
+            raise BrokerConnectionError("Weltrade terminal symbol is unavailable")
+        info = await asyncio.to_thread(mt5.symbol_info, real_symbol)
+        if info is None:
+            raise BrokerConnectionError("Weltrade symbol specification is unavailable")
+
+        def numeric(name: str) -> float | None:
+            value = getattr(info, name, None)
+            return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else None
+
+        return {
+            "name": str(getattr(info, "name", real_symbol)),
+            "description": str(getattr(info, "description", "") or ""),
+            "digits": int(info.digits),
+            "point": numeric("point"),
+            "trade_tick_size": numeric("trade_tick_size"),
+            "trade_tick_value": numeric("trade_tick_value"),
+            "contract_size": numeric("trade_contract_size"),
+            "volume_min": numeric("volume_min"),
+            "volume_step": numeric("volume_step"),
+            "volume_max": numeric("volume_max"),
+            "trade_mode": int(getattr(info, "trade_mode", 0)),
+        }
 
     def __init__(
         self,
@@ -148,10 +203,10 @@ class WeltradeGateway(MT5DemoGateway):
                 return candidate
 
         available = mt5.symbols_get() or ()
-        targets = {_symbol_key(candidate) for candidate in aliases}
+        targets = {weltrade_symbol_key(candidate) for candidate in aliases}
         for item in available:
             name = str(getattr(item, "name", "") or "")
-            if _symbol_key(name) in targets:
+            if weltrade_symbol_key(name) in targets:
                 if not getattr(item, "visible", True):
                     mt5.symbol_select(name, True)
                 logger.info("Weltrade symbol mapped from terminal catalogue: {} -> {}", symbol, name)
@@ -177,7 +232,11 @@ class WeltradeGateway(MT5DemoGateway):
         if not real_symbol:
             raise MarketDataError("Unknown Weltrade MT5 symbol", symbol=symbol)
         raw_rates = await asyncio.to_thread(
-            mt5.copy_rates_range, real_symbol, _mt5_timeframe(timeframe), start, end
+            mt5.copy_rates_range,
+            str(real_symbol),
+            int(_mt5_timeframe(timeframe)),
+            start.astimezone(timezone.utc),
+            end.astimezone(timezone.utc),
         )
         if raw_rates is None or len(raw_rates) == 0:
             raise MarketDataError("No candle data returned from MT5", symbol=symbol)
@@ -193,7 +252,7 @@ class WeltradeGateway(MT5DemoGateway):
                     if not isinstance(rate, dict) or "tick_volume" in rate
                     else None
                 ),
-                source="weltrade",
+                source=self.market_data_provider,
             )
             for rate in raw_rates
         ]

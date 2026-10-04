@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, runtime_checkable
 
-from broker.types import TIMEFRAME_SECONDS, Candle, Timeframe
+from broker.types import TIMEFRAME_SECONDS, Candle, Tick, Timeframe
 from core.exceptions import MarketDataError
 from core.logger import logger
 from data.storage import CandleStore, find_gaps
@@ -72,6 +72,19 @@ class HistoricalDataService:
         self.gateway = gateway
         self.store = store or CandleStore()
 
+    async def refresh_latest_tick(
+        self, *, symbol: str, provider_symbol: str, provider: str
+    ) -> Tick | None:
+        """Read and persist one broker-observed tick through the shared data service."""
+        tick_reader = getattr(type(self.gateway), "get_latest_tick", None)
+        if tick_reader is None:
+            raise MarketDataError("Configured market-data source does not expose observed ticks")
+        tick = await tick_reader(self.gateway, provider_symbol)
+        if tick is None:
+            return None
+        self.store.save_ticks(symbol, provider_symbol, [tick], provider=provider)
+        return tick
+
     async def refresh_latest(
         self,
         *,
@@ -81,6 +94,7 @@ class HistoricalDataService:
         timeframe: Timeframe,
         count: int,
         force: bool = False,
+        replace_conflicts: bool = False,
     ) -> tuple[list[Candle], int]:
         """Refresh one provider-qualified active-market cache partition.
 
@@ -99,7 +113,11 @@ class HistoricalDataService:
         if should_fetch or self.store.count(symbol, timeframe, provider=provider) < count:
             candles = await self.gateway.get_candles(provider_symbol, timeframe, count)
             downloaded = self.store.save_candles(
-                symbol, timeframe, candles, provider=provider
+                symbol,
+                timeframe,
+                candles,
+                provider=provider,
+                replace_conflicts=replace_conflicts,
             )
         return self.store.load_latest(
             symbol, timeframe, count, provider=provider
@@ -274,9 +292,20 @@ class HistoricalDataService:
             # edges unfilled.
             candles_needed = max(1, int(span_seconds // step_seconds) + 2)
             try:
-                fetched = await self.gateway.get_candles(
-                    symbol, timeframe, candles_needed, end=gap_end
-                )
+                range_loader = getattr(type(self.gateway), "get_candles_range", None)
+                if range_loader is not None:
+                    fetched = await range_loader(
+                        self.gateway,
+                        symbol,
+                        timeframe,
+                        gap_start.astimezone(timezone.utc),
+                        gap_end.astimezone(timezone.utc),
+                        count=candles_needed,
+                    )
+                else:
+                    fetched = await self.gateway.get_candles(
+                        symbol, timeframe, candles_needed, end=gap_end
+                    )
             except MarketDataError:
                 logger.error(
                     "Failed to fill gap {} -> {} for {} {}",

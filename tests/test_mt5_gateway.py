@@ -227,7 +227,40 @@ class TestGetCandles:
         assert candles[0].time == datetime.fromtimestamp(
             1700000000 - _MT5_SERVER_UTC_OFFSET_SECONDS, tz=timezone.utc
         )
-        mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 15, 0, 1)
+        mock_mt5.copy_rates_from_pos.assert_called_once_with("XAUUSDm", 15, 1, 1)
+
+    @patch("broker.mt5_gateway.mt5")
+    @patch("broker.mt5_gateway.mt5_connect", return_value=True)
+    async def test_paginates_from_closed_bar_and_restores_chronological_order(
+        self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        configure_sdk(mock_mt5)
+        await gateway.connect()
+        gateway._resolve_symbol = MagicMock(return_value="FX Vol 20")
+        monkeypatch.setattr("broker.mt5_gateway._MAX_RATES_PER_REQUEST", 2)
+
+        def rate(timestamp: int) -> dict[str, float | int]:
+            return {
+                "time": timestamp, "open": 1.0, "high": 2.0,
+                "low": 0.5, "close": 1.5, "tick_volume": 10,
+            }
+
+        mock_mt5.copy_rates_from_pos.side_effect = [
+            [rate(30), rate(40)],
+            [rate(10), rate(20)],
+        ]
+        candles = await gateway.get_candles("FX Vol 20", Timeframe.M1, 4)
+
+        assert [candle.time.timestamp() for candle in candles] == [
+            10 - 10800, 20 - 10800, 30 - 10800, 40 - 10800,
+        ]
+        assert mock_mt5.copy_rates_from_pos.call_args_list[0].args == (
+            "FX Vol 20", 1, 1, 2,
+        )
+        assert mock_mt5.copy_rates_from_pos.call_args_list[1].args == (
+            "FX Vol 20", 1, 3, 2,
+        )
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -255,14 +288,14 @@ class TestGetCandles:
 class TestGetCandlesWithEnd:
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
-    async def test_uses_copy_rates_from_for_historical_range(
+    async def test_uses_utc_copy_rates_range_for_historical_window(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
         configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
         mock_mt5.TIMEFRAME_M5 = 5
-        mock_mt5.copy_rates_from.return_value = [
+        mock_mt5.copy_rates_range.return_value = [
             {
                 "time": 1700000000,
                 "open": 1.0,
@@ -278,7 +311,9 @@ class TestGetCandlesWithEnd:
 
         assert len(candles) == 1
         assert candles[0].close == 1.1
-        mock_mt5.copy_rates_from.assert_called_once_with("XAUUSDm", 5, end, 1)
+        mock_mt5.copy_rates_range.assert_called_once_with(
+            "XAUUSDm", 5, datetime(2023, 12, 31, 23, 55, tzinfo=timezone.utc), end
+        )
 
     @patch("broker.mt5_gateway.mt5")
     @patch("broker.mt5_gateway.mt5_connect", return_value=True)
@@ -301,7 +336,7 @@ class TestGetCandlesWithEnd:
         configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="XAUUSDm")
-        mock_mt5.copy_rates_from.return_value = None
+        mock_mt5.copy_rates_range.return_value = None
         with pytest.raises(MarketDataError):
             await gateway.get_candles(
                 "XAUUSD", Timeframe.M5, 1, end=datetime(2024, 1, 1, tzinfo=timezone.utc)

@@ -110,6 +110,11 @@ class AccountInfo(BaseModel):
     leverage: float | None = None
     server: str | None = None
     trade_mode: str | None = None
+    margin: float | None = None
+    free_margin: float | None = None
+    margin_level: float | None = None
+    trading_allowed: bool | None = None
+    expert_trading_allowed: bool | None = None
 
 
 class AccountIdentity(BaseModel):

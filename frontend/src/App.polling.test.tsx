@@ -10,6 +10,7 @@ const allowed = [
   '/brokers/status', '/execution/safety', '/risk', '/monitoring/offline',
   '/observation/health', '/watchlist', '/watchlist/cap-usage', '/execution',
   '/market/active-analysis', '/assistant/status', '/notifications/status',
+  '/brokers/terminal-observation',
 ];
 const legacyOnly = [
   '/system', '/market/summary', '/market/candles', '/signal',
@@ -54,7 +55,11 @@ describe('App polling profiles', () => {
     await act(async () => button.click());
   };
   const paths = () => calls.map(call => call.path);
-  const banner = () => host.textContent?.match(/Telemetry errors: [^.]+\./)?.[0] ?? null;
+  const banner = async () => {
+    const trigger = host.querySelector('.notification-trigger') as HTMLButtonElement;
+    if (trigger.getAttribute('aria-expanded') !== 'true') await act(async () => trigger.click());
+    return host.querySelector('.notification-panel')?.textContent?.match(/Telemetry errors: [^.]+\./)?.[0] ?? null;
+  };
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -89,7 +94,7 @@ describe('App polling profiles', () => {
     await mount();
     expect(paths()).toEqual(allowed);
     expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Active market analysis is unavailable.');
-    expect(host.querySelector('[role="status"]')?.textContent).toContain('WELTRADE DEMO — BROKER EXECUTION DISABLED');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Execution disabled');
     expect(host.querySelector('[role="status"]')?.textContent).not.toContain('OFFLINE SIMULATION');
   });
 
@@ -97,7 +102,7 @@ describe('App polling profiles', () => {
     await mount();
     expect(Array.from(host.querySelectorAll('.desktop-sidebar .nav-section-label')).map(node => node.textContent)).toEqual(['Overview', 'Markets', 'Analysis', 'System']);
     expect(Array.from(host.querySelectorAll('.desktop-sidebar nav button')).map(node => node.textContent?.replace(/UNKNOWN|STALE|LOCK|OK|\d+/g, '').trim())).toEqual([
-      'Workspace', 'Overview', 'Markets', 'Watchlist', 'Positions', 'Trades',
+      'Workspace', 'Overview', 'Markets', 'SyntX Markets', 'Watchlist', 'Positions', 'Trades',
       'Strategy', 'Risk Control', 'Performance', 'Research', 'System Logs', 'Settings',
     ]);
   });
@@ -156,7 +161,7 @@ describe('App polling profiles', () => {
     await nav('Overview');
     await nav('Workspace');
     await act(async () => pending.get('/system')?.reject(new Error('late system failure')));
-    expect(banner()).toBeNull();
+    expect(await banner()).toBeNull();
   });
 
   it('hides retained system and execution errors on Workspace and restores them on a legacy tab', async () => {
@@ -166,21 +171,21 @@ describe('App polling profiles', () => {
     await nav('Overview');
     // The system request is held by the transport fixture; reject it explicitly.
     await act(async () => pending.get('/system')?.reject(new Error('failed /system')));
-    expect(banner()).toContain('system');
-    expect(banner()).toContain('execution');
+    expect(await banner()).toContain('system');
+    expect(await banner()).toContain('execution');
     await nav('Workspace');
-    expect(banner()).toContain('execution');
+    expect(await banner()).toContain('execution');
     expect(host.querySelector('.telemetry-ribbon')).toBeNull();
     await nav('Overview');
-    expect(banner()).toContain('system');
-    expect(banner()).toContain('execution');
+    expect(await banner()).toContain('system');
+    expect(await banner()).toContain('execution');
     expect(host.querySelector('.telemetry-ribbon')?.textContent).toContain('OFFLINE');
   });
 
   it('shows a Workspace-allowed resource failure', async () => {
     rejectedPaths.add('/watchlist');
     await mount();
-    expect(banner()).toContain('watchlist');
+    expect(await banner()).toContain('watchlist');
   });
 
   it('keeps Positions navigation without a badge even after a retained legacy count', async () => {
@@ -208,7 +213,7 @@ describe('App polling profiles', () => {
     await nav('Overview');
     await act(async () => pending.get('/system')?.reject(new DOMException('cancelled', 'AbortError')));
     await nav('Workspace');
-    expect(banner()).not.toContain('system');
+    expect(await banner()).not.toContain('system');
   });
 
   it('accounts for StrictMode by aborting its first request batch and making one replacement batch', async () => {

@@ -10,12 +10,25 @@ interface Props {
   broker: ResourceState<BrokerStatusResponse>;
   apiError: string | null;
   market: ResourceState<ActiveMarketAnalysisResponse>;
+  resourceErrors?: { title: string; detail: string }[];
+  hosted?: boolean;
 }
 
-export const NotificationCenter: React.FC<Props> = ({ notifications, safety, broker, apiError, market }) => {
+export const NotificationCenter: React.FC<Props> = ({ notifications, safety, broker, apiError, market, resourceErrors = [], hosted = false }) => {
   const [open, setOpen] = useState(false);
+  const [actionIssues, setActionIssues] = useState<{ title: string; detail: string }[]>([]);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const issue = (event as CustomEvent).detail;
+      if (!issue || typeof issue.title !== 'string' || typeof issue.detail !== 'string') return;
+      setActionIssues(previous => [...previous.filter(item => item.title !== issue.title), issue].slice(-20));
+    };
+    window.addEventListener('jqe:notification', receive);
+    return () => window.removeEventListener('jqe:notification', receive);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -27,6 +40,8 @@ export const NotificationCenter: React.FC<Props> = ({ notifications, safety, bro
   }, [open]);
 
   const issues = [
+    ...actionIssues,
+    ...resourceErrors,
     ...(apiError ? [{ title: 'Data feed issue', detail: apiError }] : []),
     ...(!broker.data || broker.error || (broker.stale && !broker.loading) || !broker.data.connected
       ? [{ title: 'Broker connection', detail: broker.error || 'Weltrade demo connection is unavailable or stale.' }] : []),
@@ -50,6 +65,7 @@ export const NotificationCenter: React.FC<Props> = ({ notifications, safety, bro
     </button>
     {open && <section className="notification-panel" role="dialog" aria-label="System notifications">
       <div className="notification-heading"><div><strong>Notifications</strong><small>Current system evidence</small></div><button type="button" aria-label="Close notifications" onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} /></button></div>
+      <>{hosted && <p className="notification-empty">Authenticated research access. Hosted MT5 data is unavailable; automated execution is excluded.</p>}</>
       <div className="notification-facts" aria-label="Workspace status"><strong>Workspace status</strong><dl>
         <div><dt>Live broker connection</dt><dd>{broker.data?.live_connection_state === 'CONNECTED' ? 'Yes - live' : broker.data?.live_connection_state === 'DISCONNECTED' ? 'No - live' : 'Unavailable'}</dd></div>
         <div><dt>Demo verified</dt><dd>{verified ? `Yes - age ${formatAge(identity?.verified_at)}` : 'Unverified'}</dd></div>

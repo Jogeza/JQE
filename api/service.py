@@ -50,6 +50,10 @@ from api.dto import (
     BrokerItemStatusDTO,
     ActiveBrokerIdentityDTO,
     BrokerStatusResponse,
+    TerminalCandleDTO,
+    TerminalObservationResponse,
+    TerminalSymbolSpecificationDTO,
+    TerminalTickDTO,
     SelectBrokerResponse,
     WatchlistCapUsageDTO,
     WatchlistCapUsageResponse,
@@ -1308,6 +1312,7 @@ class ApplicationService:
     async def get_execution_state(self) -> ExecutionStateResponse:
         """Retrieves open positions and recent executed trades from the broker."""
         async with self._gateway_session() as gateway:
+            observed_at = utc_now().isoformat()
             is_conn = gateway.is_connected
             positions = await gateway.get_positions()
             history = await gateway.get_trade_history()
@@ -1353,7 +1358,89 @@ class ApplicationService:
             recent_trades_count=len(trade_dtos),
             recent_trades=trade_dtos,
             currency=account.currency,
+            observed_at=observed_at,
         )
+
+    async def get_terminal_observation(
+        self, symbol: str | None = None, timeframe_str: str | None = None,
+    ) -> TerminalObservationResponse:
+        """Read one timestamped Weltrade terminal snapshot through the shared gateway."""
+        target_symbol = symbol.strip() if isinstance(symbol, str) and symbol.strip() else settings.default_symbol
+        timeframe = _resolve_timeframe(timeframe_str)
+
+        try:
+            async with self._gateway_session() as gateway:
+                account = await gateway.get_account_info()
+                positions = await gateway.get_positions()
+                history = await gateway.get_trade_history(count=20)
+                tick_reader = getattr(gateway, "get_latest_tick", None)
+                tick = await tick_reader(target_symbol) if callable(tick_reader) else None
+                candles = await gateway.get_candles(target_symbol, timeframe, 2)
+                permissions_reader = getattr(gateway, "get_terminal_permissions", None)
+                permissions = await permissions_reader() if callable(permissions_reader) else {}
+                specs_reader = getattr(gateway, "get_symbol_specification", None)
+                specifications = await specs_reader(target_symbol) if callable(specs_reader) else None
+
+                now = utc_now()
+                closed_candle = next((
+                    candle for candle in reversed(candles)
+                    if candle.time.tzinfo is not None
+                    and candle.time + datetime.timedelta(seconds=TIMEFRAME_SECONDS[timeframe]) <= now
+                ), None)
+                masked_id = account.account_id
+                if len(masked_id) > 4:
+                    masked_id = "*" * (len(masked_id) - 4) + masked_id[-4:]
+                position_dtos = [
+                    PositionDTO(
+                        id=position.id, symbol=position.symbol, side=position.side.value,
+                        volume=position.volume, open_price=position.open_price,
+                        current_price=position.current_price, stop_loss=position.stop_loss,
+                        take_profit=position.take_profit, profit=position.profit,
+                        price_decimals=_price_decimals(position.symbol),
+                    ) for position in positions
+                ]
+                trade_dtos = [
+                    TradeHistoryDTO(
+                        id=trade.trade_id, symbol=trade.symbol, side=trade.side.value,
+                        volume=trade.volume, open_price=trade.open_price,
+                        close_price=trade.close_price, profit=trade.profit,
+                        open_time=trade.opened_at.isoformat(), close_time=trade.closed_at.isoformat(),
+                        price_decimals=_price_decimals(trade.symbol),
+                    ) for trade in history
+                ]
+                return TerminalObservationResponse(
+                    state="CONNECTED" if gateway.is_connected and permissions.get("connected", True) else "DISCONNECTED",
+                    observed_at=utc_now().isoformat(), server=account.server,
+                    account_id_masked=masked_id,
+                    environment="DEMO" if account.trade_mode == "demo" else "UNVERIFIED",
+                    currency=account.currency, balance=account.balance, equity=account.equity,
+                    margin=account.margin, free_margin=account.free_margin, margin_level=account.margin_level,
+                    account_trading_allowed=account.trading_allowed,
+                    expert_trading_allowed=account.expert_trading_allowed,
+                    terminal_trading_allowed=permissions.get("terminal_trading_allowed"),
+                    trade_api_disabled=permissions.get("trade_api_disabled"),
+                    tick=(TerminalTickDTO(
+                        time=tick.time.isoformat(), symbol=tick.symbol, bid=tick.bid,
+                        ask=tick.ask, last=tick.last,
+                    ) if tick else None),
+                    candle=(TerminalCandleDTO(
+                        symbol=target_symbol, timeframe=timeframe.value,
+                        opened_at=closed_candle.time.isoformat(),
+                        closed_at=(closed_candle.time + datetime.timedelta(seconds=TIMEFRAME_SECONDS[timeframe])).isoformat(),
+                        open=closed_candle.open, high=closed_candle.high, low=closed_candle.low,
+                        close=closed_candle.close, volume=closed_candle.volume,
+                    ) if closed_candle else None),
+                    symbol_specification=(
+                        TerminalSymbolSpecificationDTO(**specifications) if specifications else None
+                    ),
+                    positions=position_dtos, recent_trades=trade_dtos,
+                )
+        except Exception as exc:
+            logger.exception("Weltrade terminal observation failed")
+            return TerminalObservationResponse(
+                state="DISCONNECTED", observed_at=utc_now().isoformat(),
+                error=type(exc).__name__,
+            )
 
     async def execute_live_cycle(self, *, confirmed: bool) -> LiveExecutionResponse:
         """The API is permanently read-only, regardless of inherited flags."""

@@ -2,8 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/v1/assistant/:path*", "destination": "/api/hosted_assistant" },
-    { "source": "/api/v1/:path*", "destination": "/api/unavailable" },
+    { "source": "/api/access", "destination": "/api/hosted_auth?operation=access" },
+    { "source": "/api/onboarding/referral", "destination": "/api/hosted_auth?operation=referral" },
+    { "source": "/api/onboarding/trial/activate", "destination": "/api/hosted_auth?operation=trial-activate" },
+    { "source": "/api/admin/referrals", "destination": "/api/hosted_auth?operation=admin-referrals" },
+    { "source": "/api/admin/access", "destination": "/api/hosted_auth?operation=admin-access" },
+    { "source": "/api/v1/assistant/:path*", "destination": "/api/hosted_assistant?resource=:path*" },
+    { "source": "/api/v1/:path*", "destination": "/api/unavailable?resource=:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

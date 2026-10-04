@@ -97,4 +97,10 @@ remain separately opt-in. Neither is required to open the read-only dashboard.
 
 ## Future access model
 
-Planned access: verified registration through the owner's Weltrade partner link **or** a paid JQE licence. This is roadmap work, not an implemented entitlement system. The partner URL, verification mechanism, payment provider and pricing still need owner input. Do not invent affiliate APIs, promise returns, or unlock trading from a client-side flag.
+Commercial access remains planned: verified registration through the owner's [Weltrade partner link](https://track.gowt.me/visit/?bta=44132&brand=weltrade) **or** a paid JQE licence. Hosted Supabase authentication, explicit one-time 24-hour trials, manual referral review and server-enforced AI quotas are implemented. A referral click is not verification, and approval alone grants no entitlement. Pricing is unset and payments are inactive; commercial verification/payment mechanisms still need owner input. See [hosted authentication deployment](docs/hosted-auth-deployment.md) for verified configuration and remaining validation limits. Do not invent affiliate APIs, promise returns, or unlock trading from a client-side flag.
+
+## Hosted dashboard access
+
+The workstation API must remain bound to `127.0.0.1`; do not expose its port, MT5 terminal, or credentials directly to the internet. The local API trusts only the local Vite development/preview origins. A hosted `jqe.vercel.app` page cannot connect to the workstation API directly.
+
+Phone access requires a separately configured HTTPS backend boundary: an outbound-only tunnel from the workstation to a protected edge, user authentication (OIDC/SSO), server-side token validation, per-user authorization, TLS, rate limiting, and an explicit read-only route allowlist. The Vercel client must not contain a long-lived backend token, and the edge must not proxy MT5 credentials or order-submission routes. Keep the API bound to loopback behind that boundary; do not enable wildcard CORS. Until that authenticated path is implemented and tested, hosted access is intentionally unavailable. The API itself continues to force JQE broker execution off.

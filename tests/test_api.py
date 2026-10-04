@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.dto import (
@@ -31,6 +32,7 @@ from api.routes import (
 from api.service import ApplicationService, _maximum_realized_drawdown
 from tests.weltrade_stubs import WeltradeStubGateway
 from broker.types import Candle, Timeframe, TIMEFRAME_SECONDS
+from broker.types import Candle, Tick, Timeframe, TIMEFRAME_SECONDS
 from config.settings import Settings, settings
 from core.exceptions import BrokerConnectionError, MarketDataError
 from data.storage import CandleStore
@@ -83,6 +85,13 @@ def _risk_snapshot(
         execution_quantity_unit="MT5_LOTS" if quantity_available else None,
         execution_quantity_reason=reason,
     )
+
+
+def test_api_rejects_non_loopback_clients() -> None:
+    client = TestClient(create_app(), client=("198.51.100.42", 12345))
+    response = client.get("/health")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Workstation-local API only"
 
 
 @pytest.fixture(autouse=True)
@@ -157,6 +166,42 @@ class TestApplicationService:
         assert path.exists() is False
         gateway.assert_not_called()
         publish.assert_not_called()
+    async def test_terminal_observation_uses_direct_gateway_reads(self, monkeypatch) -> None:
+        gateway = WeltradeStubGateway(starting_balance=321.0)
+        now = datetime.now(timezone.utc)
+        closed = Candle(
+            time=now - timedelta(minutes=10), open=100.0, high=102.0,
+            low=99.0, close=101.0, volume=12.0, source="weltrade",
+        )
+        gateway.get_latest_tick = AsyncMock(return_value=Tick(
+            time=now, symbol="FX Vol 20", bid=100.9, ask=101.1, last=101.0,
+        ))
+        gateway.get_candles = AsyncMock(return_value=[closed])
+        gateway.get_terminal_permissions = AsyncMock(return_value={
+            "connected": True, "terminal_trading_allowed": False,
+            "trade_api_disabled": True,
+        })
+        gateway.get_symbol_specification = AsyncMock(return_value={
+            "name": "FX Vol 20", "digits": 2, "point": 0.01,
+            "trade_tick_size": 0.01, "trade_tick_value": 0.1,
+            "contract_size": 1.0, "volume_min": 0.01,
+            "volume_step": 0.01, "volume_max": 100.0, "trade_mode": 4,
+        })
+        service = ApplicationService(gateway=gateway)
+
+        response = await service.get_terminal_observation("FX Vol 20", "M5")
+
+        assert response.state == "CONNECTED"
+        assert response.environment == "DEMO"
+        assert response.execution_enabled is False
+        assert response.tick is not None and response.tick.bid == 100.9
+        assert response.candle is not None
+        assert response.candle.source == "CURRENT_TERMINAL"
+        assert response.candle.close == 101.0
+        assert response.symbol_specification is not None
+        assert response.symbol_specification.trade_tick_value == 0.1
+        gateway.get_candles.assert_awaited_once()
+        gateway.get_latest_tick.assert_awaited_once_with("FX Vol 20")
 
     async def test_execution_safety_fresh_and_stale_states(self, tmp_path, monkeypatch) -> None:
         path = tmp_path / "safety.sqlite3"

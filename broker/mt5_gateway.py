@@ -13,6 +13,7 @@ import asyncio
 import math
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
+from numbers import Integral
 from pathlib import Path
 
 import MetaTrader5 as mt5
@@ -32,6 +33,7 @@ from broker.types import (
     TradeHistoryEntry,
     TradeHistoryCompleteness,
     TradeHistorySnapshot,
+    TIMEFRAME_SECONDS,
 )
 from core.exceptions import (
     BrokerConnectionError,
@@ -47,6 +49,7 @@ from core.mt5_session import mt5_session
 
 _TRADE_HISTORY_LOOKBACK_DAYS = 30
 _DEFAULT_TICK_POLL_INTERVAL_SECONDS = 1.0
+_MAX_RATES_PER_REQUEST = 50_000
 
 # Weltrade's MT5 server reports bar/tick timestamps in server-local time
 # (UTC+3, confirmed empirically: stored max timestamp exceeds current UTC
@@ -173,6 +176,17 @@ def _mt5_ts_to_utc(raw_server_ts: int) -> datetime:
     )
 
 
+def _mt5_tick_ts_to_utc(tick: object) -> datetime:
+    """Convert MT5 tick time, retaining milliseconds when the terminal supplies them."""
+    raw_milliseconds = getattr(tick, "time_msc", None)
+    if type(raw_milliseconds) is int and raw_milliseconds > 0:
+        return datetime.fromtimestamp(
+            (raw_milliseconds - _MT5_SERVER_UTC_OFFSET_SECONDS * 1000) / 1000,
+            tz=timezone.utc,
+        )
+    return _mt5_ts_to_utc(int(getattr(tick, "time")))
+
+
 _MT5_SYMBOL_ALIASES: dict[str, list[str]] = {
     "GOLD": [
         "GOLD",
@@ -257,6 +271,8 @@ def _mt5_timeframe(timeframe: Timeframe) -> int:
 
 class MT5Gateway(BrokerGateway):
     """MetaTrader 5 implementation of BrokerGateway."""
+
+    market_data_provider = "mt5"
 
     def __init__(
         self,
@@ -426,6 +442,10 @@ class MT5Gateway(BrokerGateway):
             mt5_session.deactivate(self._session_owner)
             raise BrokerConnectionError("MT5 pinned account identity or DEMO verification failed")
 
+        def optional_float(name: str) -> float | None:
+            value = getattr(info, name, None)
+            return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else None
+
         return AccountInfo(
             account_id=str(info.login),
             balance=float(info.balance),
@@ -434,59 +454,88 @@ class MT5Gateway(BrokerGateway):
             leverage=float(info.leverage),
             server=str(info.server),
             trade_mode="demo",
+            margin=optional_float("margin"),
+            free_margin=optional_float("margin_free"),
+            margin_level=optional_float("margin_level"),
+            trading_allowed=bool(getattr(info, "trade_allowed", False)),
+            expert_trading_allowed=bool(getattr(info, "trade_expert", False)),
         )
 
     async def get_candles(
         self, symbol: str, timeframe: Timeframe, count: int, end: datetime | None = None
     ) -> list[Candle]:
         self._require_connected()
+        if isinstance(count, bool) or not isinstance(count, Integral) or count <= 0:
+            raise MarketDataError("MT5 candle count must be a positive integer", symbol=symbol)
+        requested_count = int(count)
+        timeframe_value = int(_mt5_timeframe(timeframe))
 
         if end is not None:
-            # Historical range query — no existing wrapper for this in
-            # core.market_data, so call the SDK directly (same pattern
-            # as submit_order/get_positions/get_trade_history below).
-            # NOT verified against a live terminal — see module
-            # docstring; mt5.copy_rates_from's exact date-anchoring
-            # semantics should be confirmed against a demo account
-            # before relying on this for precise gap-filling.
+            if end.tzinfo is None:
+                raise MarketDataError("MT5 candle range end must be timezone-aware", symbol=symbol)
             real_symbol = self._resolve_symbol(symbol)
             if not real_symbol:
                 raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
+            end_utc = end.astimezone(timezone.utc)
+            start_utc = end_utc - timedelta(
+                seconds=TIMEFRAME_SECONDS[timeframe] * requested_count
+            )
             raw_rates = await asyncio.to_thread(
-                mt5.copy_rates_from, real_symbol, _mt5_timeframe(timeframe), end, count
+                mt5.copy_rates_range,
+                str(real_symbol),
+                timeframe_value,
+                start_utc,
+                end_utc,
             )
             if raw_rates is None or len(raw_rates) == 0:
-                raise MarketDataError("No candle data returned from MT5", symbol=symbol)
-            return [
-                Candle(
-                    time=_mt5_ts_to_utc(rate["time"]),
-                    open=float(rate["open"]),
-                    high=float(rate["high"]),
-                    low=float(rate["low"]),
-                    close=float(rate["close"]),
-                    volume=float(rate["tick_volume"]),
-                    source="mt5",
+                error = mt5.last_error()
+                raise MarketDataError(
+                    "No candle data returned from MT5",
+                    symbol=symbol,
+                    mt5_error=error,
                 )
-                for rate in raw_rates
-            ]
+            pages = [raw_rates]
+        else:
+            real_symbol = self._resolve_symbol(symbol)
+            if not real_symbol:
+                raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
 
-        real_symbol = self._resolve_symbol(symbol)
-        if not real_symbol:
-            raise MarketDataError("Unknown MT5 symbol", symbol=symbol)
+            pages = []
+            start_pos = 1
+            remaining = requested_count
+            while remaining:
+                page_size = min(remaining, _MAX_RATES_PER_REQUEST)
+                raw_page = await asyncio.to_thread(
+                    mt5.copy_rates_from_pos,
+                    str(real_symbol),
+                    timeframe_value,
+                    int(start_pos),
+                    int(page_size),
+                )
+                if raw_page is None:
+                    error = mt5.last_error()
+                    raise MarketDataError(
+                        "MT5 rejected candle history request",
+                        symbol=symbol,
+                        mt5_error=error,
+                    )
+                if len(raw_page) == 0:
+                    if not pages:
+                        error = mt5.last_error()
+                        raise MarketDataError(
+                            "No candle data returned from MT5",
+                            symbol=symbol,
+                            mt5_error=error,
+                        )
+                    break
+                pages.append(raw_page)
+                received = len(raw_page)
+                remaining -= received
+                start_pos += received
+                if received < page_size:
+                    break
 
-        raw_rates = await asyncio.to_thread(
-            mt5.copy_rates_from_pos,
-            real_symbol,
-            _mt5_timeframe(timeframe),
-            0,
-            count,
-        )
-
-        if raw_rates is None or len(raw_rates) == 0:
-            raise MarketDataError(
-                "No candle data returned from MT5",
-                symbol=symbol,
-            )
+        raw_rates = [rate for page in reversed(pages) for rate in page]
 
         return [
             Candle(
@@ -500,7 +549,7 @@ class MT5Gateway(BrokerGateway):
                     if not isinstance(rate, dict) or "tick_volume" in rate
                     else None
                 ),
-                source="mt5",
+                source=self.market_data_provider,
             )
             for rate in raw_rates
         ]
@@ -950,7 +999,7 @@ class MT5Gateway(BrokerGateway):
 
             if tick:
                 yield Tick(
-                    time=_mt5_ts_to_utc(tick.time),
+                    time=_mt5_tick_ts_to_utc(tick),
                     symbol=symbol,
                     bid=float(tick.bid),
                     ask=float(tick.ask),

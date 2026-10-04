@@ -121,6 +121,31 @@ class TestGetCandlesFreshCache:
         assert len(result) == 10
 
 
+class TestProviderRefresh:
+    async def test_can_refresh_changed_broker_bar_when_explicitly_requested(
+        self, store: CandleStore
+    ) -> None:
+        now = datetime.now(timezone.utc).replace(second=0, microsecond=0) - timedelta(minutes=2)
+        old = Candle(time=now, open=100, high=101, low=99, close=100, volume=10, source="weltrade")
+        fresh = old.model_copy(update={"high": 102, "close": 101})
+        store.save_candles("FX Vol 20", Timeframe.M1, [old], provider="weltrade")
+        gateway = _mock_gateway([fresh])
+        service = HistoricalDataService(gateway, store=store)
+
+        _, downloaded = await service.refresh_latest(
+            symbol="FX Vol 20",
+            provider_symbol="FX Vol 20",
+            provider="weltrade",
+            timeframe=Timeframe.M1,
+            count=1,
+            force=True,
+            replace_conflicts=True,
+        )
+
+        assert downloaded == 1
+        assert store.load_latest("FX Vol 20", Timeframe.M1, 1, provider="weltrade") == [fresh]
+
+
 class TestFillGaps:
     async def test_fills_a_detected_gap(self, store: CandleStore) -> None:
         store.save_candles("R_100", Timeframe.M5, [_candle(0), _candle(5), _candle(50)])

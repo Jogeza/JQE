@@ -21,6 +21,8 @@ it('keeps all four status facts visible when evidence is unavailable and closes 
     expect(panel!.textContent).toContain('Unverified');
     expect(panel!.textContent).toContain('Execution remains blocked');
     expect(panel!.textContent).not.toContain('Yes - live');
+    await act(async () => window.dispatchEvent(new CustomEvent('jqe:notification', { detail: { title: 'JQE AI', detail: 'Provider request failed' } })));
+    expect(host.querySelector('.notification-panel')?.textContent).toContain('Provider request failed');
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(host.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(host.querySelector('.notification-trigger'));

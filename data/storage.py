@@ -20,9 +20,10 @@ from collections.abc import Iterable
 from contextlib import closing
 from datetime import datetime, timezone
 from itertools import pairwise
+import math
 from pathlib import Path
 
-from broker.types import TIMEFRAME_SECONDS, Candle, Timeframe
+from broker.types import TIMEFRAME_SECONDS, Candle, Tick, Timeframe
 from config import settings
 from core.exceptions import CacheError
 from core.logger import logger
@@ -57,6 +58,13 @@ CREATE TABLE IF NOT EXISTS dataset_provenance (
     volume_type TEXT NOT NULL, retrieved_at TEXT NOT NULL,
     PRIMARY KEY (provider, symbol, timeframe)
 );
+CREATE TABLE IF NOT EXISTS ticks (
+    provider TEXT NOT NULL, symbol TEXT NOT NULL, provider_symbol TEXT NOT NULL,
+    time_us INTEGER NOT NULL, bid REAL NOT NULL, ask REAL NOT NULL, last REAL,
+    PRIMARY KEY (provider, symbol, time_us)
+);
+CREATE INDEX IF NOT EXISTS idx_ticks_provider_symbol_time
+    ON ticks (provider, symbol, time_us);
 """
 
 #: A gap is flagged when the interval between two consecutive cached
@@ -118,7 +126,15 @@ class CandleStore:
             raise CacheError(f"Failed to create cache directory for {self.db_path}") from exc
         self._init_schema()
 
-    def save_candles(self, symbol: str, timeframe: Timeframe, candles: Iterable[Candle], provider: str | None = None) -> int:
+    def save_candles(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        candles: Iterable[Candle],
+        provider: str | None = None,
+        *,
+        replace_conflicts: bool = False,
+    ) -> int:
         """Upserts candles into the cache.
 
         Safe to call with overlapping data — existing candles at the
@@ -178,7 +194,7 @@ class CandleStore:
                         existing_values = tuple(existing)
                         incoming_values = row[4:9]
                         if existing_values != incoming_values:
-                            if strict_conflicts:
+                            if strict_conflicts and not replace_conflicts:
                                 raise CacheError("Conflicting duplicate candle", provider=resolved_provider, symbol=symbol, timestamp=row[3])
                             conn.execute(
                                 "UPDATE candles SET open=?, high=?, low=?, close=?, volume=?, source=? WHERE provider=? AND symbol=? AND timeframe=? AND time=?",
@@ -292,6 +308,61 @@ class CandleStore:
                 (symbol, timeframe.value, provider) if provider is not None else (symbol, timeframe.value),
             ).fetchone()
         return int(row["n"])
+
+    def save_ticks(
+        self, symbol: str, provider_symbol: str, ticks: Iterable[Tick], *, provider: str
+    ) -> int:
+        """Persist observed broker ticks in an isolated provider partition."""
+        if not provider.strip() or not symbol.strip() or not provider_symbol.strip():
+            raise CacheError("Tick provider and symbol identities are required")
+        rows = []
+        for tick in ticks:
+            values = (tick.bid, tick.ask)
+            if (
+                tick.time.tzinfo is None
+                or not all(math.isfinite(value) and value > 0 for value in values)
+                or tick.ask < tick.bid
+                or (tick.last is not None and (not math.isfinite(tick.last) or tick.last <= 0))
+            ):
+                raise CacheError("Broker tick failed timestamp or price validation", symbol=symbol)
+            rows.append((
+                provider, symbol, provider_symbol,
+                int(round(tick.time.astimezone(timezone.utc).timestamp() * 1_000_000)),
+                float(tick.bid), float(tick.ask), None if tick.last is None else float(tick.last),
+            ))
+        if not rows:
+            return 0
+        try:
+            with closing(self._connect()) as conn, conn:
+                before = conn.total_changes
+                conn.executemany(
+                    "INSERT OR IGNORE INTO ticks "
+                    "(provider,symbol,provider_symbol,time_us,bid,ask,last) VALUES (?,?,?,?,?,?,?)",
+                    rows,
+                )
+                return conn.total_changes - before
+        except sqlite3.DatabaseError as exc:
+            raise CacheError("Failed to write broker ticks", symbol=symbol) from exc
+
+    def load_latest_tick(self, symbol: str, *, provider: str) -> Tick | None:
+        """Return the newest persisted broker tick from one provider partition."""
+        try:
+            with closing(self._connect()) as conn:
+                row = conn.execute(
+                    "SELECT time_us,bid,ask,last FROM ticks "
+                    "WHERE provider=? AND symbol=? ORDER BY time_us DESC LIMIT 1",
+                    (provider, symbol),
+                ).fetchone()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return None
+            raise CacheError("Failed to read broker ticks", symbol=symbol) from exc
+        if row is None:
+            return None
+        return Tick(
+            time=datetime.fromtimestamp(row["time_us"] / 1_000_000, tz=timezone.utc),
+            symbol=symbol, bid=row["bid"], ask=row["ask"], last=row["last"],
+        )
 
     def resolve_symbol_partition(
         self, symbol: str, timeframe: Timeframe, provider: str | None = None
@@ -447,9 +518,13 @@ class CandleStore:
         return cursor.rowcount
 
     def _connect(self) -> sqlite3.Connection:
-        conn = (sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
-                if self.read_only else sqlite3.connect(self.db_path))
+        conn = (
+            sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=30)
+            if self.read_only
+            else sqlite3.connect(self.db_path, timeout=30)
+        )
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
         return conn
 
     def _init_schema(self) -> None:

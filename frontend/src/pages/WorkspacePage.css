@@ -1,8 +1,8 @@
 .workspace-page {
-  padding: var(--space-6);
+  padding: clamp(12px, 1.5vw, 20px);
   color: var(--text-primary);
   background: var(--bg-canvas);
-  min-height: 100%;
+  min-height: 0;
   padding-bottom: calc(var(--space-12) * 2);
 }
 
@@ -21,11 +21,11 @@
 }
 
 .workspace-title { flex: 1 1 260px; }
-.workspace-title h1 { font-size: clamp(24px, 2.5vw, 36px); line-height: 1.15; }
+.workspace-title h1 { font-size: clamp(22px, 2vw, 30px); line-height: 1.15; }
 .workspace-title > p:last-child { color: var(--text-secondary); font-size: 12px; margin-top: var(--space-2); }
 .workspace-eyebrow { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; margin-bottom: var(--space-2); }
 .workspace-topbar-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); flex: 2 1 620px; }
-.workspace-topbar-facts div { border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: var(--space-2); min-width: 140px; flex: 1 1 140px; background: var(--surface); }
+.workspace-topbar-facts div { border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: var(--space-2); min-width: 0; flex: 1 1 140px; background: var(--surface); }
 .workspace-topbar-facts span,
 .workspace-topbar-facts strong { display: block; overflow-wrap: anywhere; }
 .workspace-topbar-facts span { font-size: 10px; color: var(--text-muted); }
@@ -54,6 +54,16 @@
 .workspace-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
 .workspace-card h2 { font-size: 17px; margin-bottom: var(--space-3); }
 .workspace-card p { line-height: 1.5; }
+.workspace-terminal { grid-column: 1 / -1; }
+.workspace-terminal-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.workspace-terminal-metrics span, .workspace-terminal-observations > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 11px; }
+.workspace-terminal-metrics strong, .workspace-terminal-observations strong { color: var(--text-primary); font-size: 13px; overflow-wrap: anywhere; }
+.workspace-terminal-observations { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); border-top: 1px solid var(--border-card); margin-top: var(--space-4); padding-top: var(--space-4); }
+.workspace-terminal-observations small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.workspace-terminal-disconnected { color: var(--text-secondary); }
+.workspace-terminal-records { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); padding-top: var(--space-3); }
+.workspace-terminal-records > div { display: grid; gap: 6px; font-size: 12px; }
+.workspace-terminal-records span { color: var(--text-secondary); overflow-wrap: anywhere; }
 .workspace-state { font-size: 10px; font-weight: 700; border: 1px solid var(--border-card-strong); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
 .workspace-card[data-state='LIVE'] .workspace-state { color: var(--status-green); border-color: var(--status-green-border); }
 .workspace-card[data-state='STALE'] .workspace-state,
@@ -166,6 +176,8 @@
   .workspace-factors { grid-template-columns: 1fr; }
   .workspace-ai-launcher { right: var(--space-3); bottom: var(--space-3); }
   .workspace-operational-facts { grid-template-columns: 1fr 1fr; }
+  .workspace-terminal-metrics, .workspace-terminal-observations { grid-template-columns: 1fr 1fr; }
+  .workspace-terminal-records { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -222,3 +234,30 @@
 .workspace-ai-panel.workspace-ai-dark .workspace-ai-msg-warn .workspace-ai-bubble { background: rgba(255, 179, 71, 0.14); border-color: rgba(255, 179, 71, 0.45); color: #ffd9a0; }
 .workspace-ai-panel.workspace-ai-dark textarea { background: var(--surface-raised); color: var(--text-primary); }
 .workspace-ai-panel.workspace-ai-dark textarea::placeholder { color: var(--text-secondary); }
+
+/* The main workspace scrolls; settings retain their enclosing scroll area. */
+.main-content-wrapper > .workspace-page { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.workspace-topbar { gap: 12px; margin-bottom: 12px; }
+.workspace-grid { gap: 12px; margin-top: 12px; }
+.workspace-card { padding: 12px; }
+@media (max-width: 700px) {
+  .workspace-page { padding: 12px; padding-bottom: 72px; }
+}
+
+/* Reflow cards with the available workspace width, including beside the sidebar. */
+.workspace-primary { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: start; }
+.workspace-card-heading h2 { margin: 0; font-size: 15px; }
+.workspace-provenance { margin: 6px 0 10px; }
+.workspace-provenance > summary { font-size: 10px; font-weight: 400; }
+.workspace-card p { overflow-wrap: anywhere; }
+.workspace-terminal-metrics, .workspace-terminal-observations { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); }
+.workspace-dialog-backdrop .workspace-ai-panel { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+
+.sidebar-surfaces { display: contents; }
+.sidebar-surfaces.authenticated .jqe-mark, .sidebar-surfaces.authenticated .legacy-jqe-mark { color: #1684eb; }
+.sidebar-surfaces .collapsed .brand-lockup .legacy-jqe-mark { display: none; }
+.sidebar-surfaces .collapsed .jqe-mark > span { display: none; }
+.workspace-utility-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 8px; min-height: 38px; padding: 4px 14px; border-bottom: 1px solid var(--border-card); }
+.workspace-execution-status { margin-right: auto; color: var(--text-secondary); font-size: 10px; }
+.workspace-refresh, .workspace-account-action { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 4px 8px; border: 1px solid var(--border-card); border-radius: 6px; background: var(--surface); color: var(--text-primary); cursor: pointer; }
+@media (max-width: 768px) { .workspace-utility-bar { padding: 4px 12px; } }

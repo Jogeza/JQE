@@ -27,3 +27,5 @@
 .notification-facts dt { color: #6b7280; }
 .notification-facts dd { margin: 0; font-weight: 600; text-align: right; }
 .notification-facts small { font-size: 10px; color: #6b7280; }
+.workspace-utility-bar .notification-center { position: relative; top: auto; right: auto; }
+.workspace-utility-bar .notification-trigger { color: var(--text-primary); background: var(--surface); border-color: var(--border-card); }

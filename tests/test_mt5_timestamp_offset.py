@@ -34,7 +34,7 @@ class TestMT5TimestampUTCOffset:
 
     Three invariants that must hold after the fix:
     1. _mt5_ts_to_utc subtracts exactly _MT5_SERVER_UTC_OFFSET_SECONDS.
-    2. Both get_candles code paths (copy_rates_from_pos and copy_rates_from) use
+    2. Both get_candles code paths (copy_rates_from_pos and copy_rates_range) use
        the helper so their Candle.time values are corrected.
     3. No cached weltrade candle has a timestamp in the future (offline check).
     """
@@ -98,14 +98,14 @@ class TestMT5TimestampUTCOffset:
     async def test_get_candles_with_end_applies_utc_offset(
         self, mock_connect: MagicMock, mock_mt5: MagicMock, gateway: MT5Gateway
     ) -> None:
-        """get_candles (copy_rates_from path) also applies the UTC offset."""
+        """End-anchored get_candles (copy_rates_range path) applies the UTC offset."""
         configure_sdk(mock_mt5)
         await gateway.connect()
         gateway._resolve_symbol = MagicMock(return_value="FX Vol 40")
         mock_mt5.TIMEFRAME_M5 = 5
 
         raw_ts = 1_800_010_000
-        mock_mt5.copy_rates_from.return_value = [
+        mock_mt5.copy_rates_range.return_value = [
             {"time": raw_ts, "open": 2.0, "high": 2.5, "low": 1.8, "close": 2.2,
              "tick_volume": 7}
         ]
