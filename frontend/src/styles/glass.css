@@ -1,0 +1,84 @@
+/* Shared glass surfaces; keep layout ancestors unfiltered so fixed dialogs
+   and the mobile notification panel remain anchored to the viewport. */
+:root {
+  --glass-surface: rgba(255, 255, 255, .72);
+  --glass-border: rgba(255, 255, 255, .86);
+  --glass-fallback: #f6f9fc;
+  --glass-shadow: 0 8px 28px rgba(39, 65, 103, .08), inset 0 1px 0 rgba(255, 255, 255, .8);
+  --glass-blur: 18px;
+}
+
+.app-container {
+  background: radial-gradient(ellipse at 12% 0%, rgba(107, 177, 247, .25), transparent 55%),
+    radial-gradient(ellipse at 100% 85%, rgba(155, 140, 226, .18), transparent 55%),
+    #eaf0f7;
+}
+.app-container[data-theme='dark'] {
+  --glass-surface: rgba(24, 34, 52, .77);
+  --glass-border: rgba(167, 193, 232, .17);
+  --glass-fallback: #182234;
+  --glass-shadow: 0 8px 28px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(205, 223, 255, .07);
+  background: radial-gradient(ellipse at 12% 0%, rgba(34, 100, 160, .29), transparent 55%),
+    radial-gradient(ellipse at 100% 85%, rgba(94, 66, 151, .22), transparent 55%),
+    #0b1220;
+}
+.app-container :is(.main-content-wrapper, .dashboard-page-container, .workspace-page, .settings-composite-view) {
+  background: transparent;
+}
+.app-container[data-theme] :is(.workspace-card, .quant-panel, .metric-card, .settings-card, .research-chart-workspace, .syntx-card, .syntx-controls, .notification-panel, .workspace-palette) {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+}
+.app-container[data-theme] :is(.desktop-sidebar, .mobile-navigation-header, .mobile-nav-drawer, .syntx-hero) {
+  background: rgba(12, 21, 35, .9);
+  border-color: rgba(182, 204, 236, .15);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+.app-container .workspace-utility-bar { background: rgba(255, 255, 255, .24); }
+.app-container[data-theme='dark'] .workspace-utility-bar { background: rgba(13, 22, 38, .25); }
+.app-container[data-theme] .notification-heading { background: var(--glass-fallback); }
+.app-container[data-theme] .workspace-state { background: var(--glass-fallback); }
+.app-container[data-theme] :is(.workspace-refresh, .workspace-account-action, .notification-trigger, .workspace-command) {
+  background: var(--glass-surface);
+  border-color: var(--border-card);
+}
+.app-container[data-theme] .workspace-ai-panel:not(.workspace-ai-dark) {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.auth-page, .auth-landing {
+  background: radial-gradient(ellipse at 0% 0%, rgba(128, 186, 239, .2), transparent 55%),
+    radial-gradient(ellipse at 100% 85%, rgba(170, 158, 219, .16), transparent 55%), #edf3f6;
+}
+:is(.auth-panel, .auth-hero-visual) {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+}
+.auth-path-card { background: rgba(255, 255, 255, .5); border-radius: 10px; }
+
+@media (max-width: 768px) { :root { --glass-blur: 12px; } }
+@supports not (backdrop-filter: blur(1px)) {
+  .app-container[data-theme] :is(.workspace-card, .quant-panel, .metric-card, .settings-card, .research-chart-workspace, .syntx-card, .syntx-controls, .notification-panel, .workspace-palette),
+  :is(.auth-panel, .auth-hero-visual) { background: var(--glass-fallback); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .app-container[data-theme] :is(.workspace-card, .quant-panel, .metric-card, .settings-card, .research-chart-workspace, .syntx-card, .syntx-controls, .notification-panel, .workspace-palette, .workspace-ai-panel),
+  :is(.auth-panel, .auth-hero-visual) {
+    background: var(--glass-fallback);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
