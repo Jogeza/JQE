@@ -178,7 +178,7 @@ describe('AuthShell hosted access flows', () => {
     assignValue(host.querySelector('#account-password') as HTMLInputElement, 'jqe-password-123');
     await click('Sign in');
     expect(mocks.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'member@example.com', password: 'jqe-password-123' });
-    expect(host.textContent).toContain('Start your JQE trial.');
+    expect(host.textContent).toContain('Choose your JQE access.');
     await click('Sign out');
     expect(mocks.auth.signOut).toHaveBeenCalled();
     expect(host.textContent).toContain('See the evidence.');
@@ -202,15 +202,26 @@ describe('AuthShell hosted access flows', () => {
     expect(host.textContent).toContain('Your JQE password was updated');
   });
 
-  it('starts a single trial only after explicit activation and then protects the dashboard by returned access', async () => {
+  it('opens paid access plans without activating a free trial', async () => {
     mocks.emit(mocks.testSession);
     await render('/onboarding');
-    await click('Activate 24-hour trial');
-    expect(requests.some(item => item.path === '/api/onboarding/trial/activate' && item.method === 'POST')).toBe(true);
-    expect(requests.filter(item => item.path === '/api/onboarding/trial/activate')).toHaveLength(1);
-    expect(host.textContent).toContain('Protected dashboard');
-    expect(host.querySelector('[data-authenticated="true"]')).not.toBeNull();
-    expect(host.querySelector('.hosted-access-strip')).toBeNull();
+    await click('View access plans');
+    expect(requests.filter(item => item.path === '/api/onboarding/trial/activate')).toHaveLength(0);
+    expect(host.textContent).toContain('JQE PREMIUM ACCESS');
+  });
+
+  it('shows server catalog prices with checkout disabled', async () => {
+    access.plans = [
+      { key: 'trial', name: '24-hour access', price: 20, currency: 'USD', status: 'NOT_CONFIGURED' },
+      { key: 'subscription', name: 'Monthly', price: 1500, currency: 'USD', status: 'NOT_CONFIGURED' },
+      { key: 'lifetime', name: 'Lifetime', price: 5000, currency: 'USD', status: 'NOT_CONFIGURED' },
+    ];
+    mocks.emit(mocks.testSession);
+    await render('/upgrade');
+    for (const price of ['$20', '$1,500', '$5,000']) expect(host.textContent).toContain(price);
+    const checkout = Array.from(host.querySelectorAll('button')).filter(button => button.textContent === 'Checkout coming soon');
+    expect(checkout).toHaveLength(3);
+    expect(checkout.every(button => button.disabled)).toBe(true);
   });
 
   it('shows the expired trial upgrade state without inventing prices or payments', async () => {
@@ -219,8 +230,8 @@ describe('AuthShell hosted access flows', () => {
     await render('/onboarding');
     expect(host.textContent).toContain('Your one-time trial expired');
     await click('View plans');
-    expect(host.textContent).toContain('No price or payment method has been approved');
-    expect(host.textContent).toContain('Pricing not announced');
+    expect(host.textContent).toContain('Payments are not collected until checkout is configured.');
+    expect(host.textContent).toContain('Price unavailable');
   });
 
   it('denies the admin route to a normal authenticated user', async () => {

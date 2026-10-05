@@ -53,8 +53,12 @@ class handler(BaseHTTPRequestHandler):
         if operation == "referral":
             return self._run(lambda token, _user: rpc(token, "jqe_submit_referral", {"p_note": str(payload.get("note", ""))[:500]}))
         if operation == "trial-activate":
-            return self._run(lambda token, _user: rpc(token, "jqe_activate_existing_trial"))
+            return self._run(self._paid_access_unavailable)
         write_json(self, 404, {"detail": "Not found."})
+
+    @staticmethod
+    def _paid_access_unavailable(_token, _user):
+        raise SecurityError(403, "Paid access checkout is not configured.", "PAID_ACCESS_CHECKOUT_UNAVAILABLE")
 
     def do_PATCH(self):
         operation = self._operation()

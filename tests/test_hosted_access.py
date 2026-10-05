@@ -78,15 +78,16 @@ def test_admin_mutation_uses_database_role_check(monkeypatch):
     assert calls == [("signed-user-jwt", "jqe_review_referral", {"p_id": "ref-1", "p_status": "APPROVED"})]
 
 
-def test_trial_and_referral_are_distinct_server_rpcs(monkeypatch):
+def test_paid_trial_cannot_activate_through_legacy_free_route(monkeypatch):
     calls = []
     monkeypatch.setattr(hosted_auth, "authenticate", lambda _headers: ("signed-user-jwt", {"id": "user-1"}))
     monkeypatch.setattr(hosted_auth, "rpc", lambda token, name, payload=None: calls.append((token, name, payload)) or {"status": "PENDING"})
     referral_request = dispatch(hosted_auth.handler, "do_POST", RequestHarness("/api/hosted_auth?operation=referral", method="POST", body={"note": "receipt reference"}))
-    dispatch(hosted_auth.handler, "do_POST", RequestHarness("/api/hosted_auth?operation=trial-activate", method="POST", body={}))
+    trial_request = dispatch(hosted_auth.handler, "do_POST", RequestHarness("/api/hosted_auth?operation=trial-activate", method="POST", body={}))
+    assert trial_request.status == 403
+    assert trial_request.json()["reason_code"] == "PAID_ACCESS_CHECKOUT_UNAVAILABLE"
     assert calls == [
         ("signed-user-jwt", "jqe_submit_referral", {"p_note": "receipt reference"}),
-        ("signed-user-jwt", "jqe_activate_existing_trial", None),
     ]
 
 
