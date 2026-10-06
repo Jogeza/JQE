@@ -175,3 +175,14 @@ TypeScript and Vite production build passed (1,940 modules; the pre-existing
 large-bundle warning remains). No trade, risk limit, execution gate, quota,
 authentication rule, permission, paid checkout or persisted safety state was
 changed by this follow-up.
+
+Production deployment for the privacy follow-up:
+https://jqe-898939ftt-joki-holdings.vercel.app reached READY (38 s) and is
+aliased to https://jqe.vercel.app. Deployed from the repository root with
+`vercel --prod --scope joki-holdings` (the project root directory is
+`frontend`). The served bundle was verified after deployment: index 200 and JS
+bundle 200 (829,629 bytes) containing "Source and observation details" and
+zero "Snapshot details"/"Observation details"; the only remaining "Safety
+evidence" string is the actionable blocked-execution alert in Notifications.
+The CSS asset hash matches the local build; the JS hash differs because Vercel
+inlines its environment values at remote build time.
