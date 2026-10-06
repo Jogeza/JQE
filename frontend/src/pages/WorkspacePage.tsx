@@ -302,7 +302,7 @@ export const WorkspacePage: React.FC<Props> = ({
   useEffect(() => { aiThreadEnd.current?.scrollIntoView({ block: 'end' }); }, [aiThread, aiOpen]);
 
   const PageRoot = configurationOnly ? 'section' : 'main';
-  return <InternalDetailsContext.Provider value={internalDetails}><PageRoot className={`workspace-page${aiDocked ? ' workspace-studio' : ''}`}>
+  return <InternalDetailsContext.Provider value={internalDetails && configurationOnly}><PageRoot className={`workspace-page${aiDocked ? ' workspace-studio' : ''}`}>
     {configurationOnly && <>
       <div className="workspace-topbar-facts" aria-label="Broker and execution status">
         <div><span>Live broker connection</span><strong>{liveConnection}</strong></div>
@@ -351,7 +351,14 @@ export const WorkspacePage: React.FC<Props> = ({
         {liveExecution?.error && <p role="alert">Cycle failed. See Notifications.</p>}
       </div>}
     </Panel>
-    </details>}</>}
+    </details>}
+    {internalDetails && <details className="workspace-details workspace-source-observation">
+      <summary>Source and observation details</summary>
+      <p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p>
+      {assessment && <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>}
+      <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span><span>GET /watchlist/cap-usage: {capState} · observed {capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</span></div>
+    </details>}
+    </>}
 
     {!configurationOnly && <div className="workspace-grid workspace-primary">
       <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
@@ -381,11 +388,8 @@ export const WorkspacePage: React.FC<Props> = ({
           {!initialMarketLoading && <p className="workspace-empty">Active market analysis is unavailable.</p>}
           <div className="workspace-chart-overlay" role="status">{initialMarketLoading ? 'Fetching closed candles from Weltrade...' : 'No market snapshot - see Notifications'}</div>
         </div>}
-        {internalDetails && <details className="workspace-inline-details"><summary>Snapshot details</summary><p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p></details>}
       </Panel>      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><details className="workspace-inline-details"><summary>Factor availability</summary><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></details></div> : <>
-        {internalDetails && <details className="workspace-inline-details"><summary>Observation details</summary>        <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>
-</details>}
         <ol className="workspace-stages">
           <li><strong>Data freshness</strong><span>{value(assessment.data_freshness.status)}</span><small>{reasonText(assessment.data_freshness.reason_codes)}</small></li>
           <li><strong>Analysis</strong><span>{value(assessment.setup_state)}</span><small>{reasonText(assessment.reason_codes)}</small></li>
@@ -397,10 +401,9 @@ export const WorkspacePage: React.FC<Props> = ({
           </li>
           <li><strong>Risk</strong><span>{value(assessment.risk_authorization.status)}</span><small>{reasonText(assessment.risk_authorization.reason_codes)}</small></li>
           <li><strong>Execution policy</strong><span>{value(assessment.execution_authorization.status)}</span><small>{reasonText(assessment.execution_authorization.reason_codes)}</small></li>
-          <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>{internalDetails ? 'GET /watchlist/cap-usage · observed ' : 'Observed '}{capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
-          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>{internalDetails && 'GET /brokers/status · '}{brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
+          <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>Observed {capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
+          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>{brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
         </ol></>}
-        {internalDetails && <details className="workspace-inline-details"><summary>Safety evidence</summary>        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div></details>}
       </Panel>
       <Panel title="Weltrade terminal" source="Direct MT5 observation · execution disabled" state={terminalState} observed={terminal?.observed_at} className="workspace-terminal">
         <div className="workspace-supervisor" role="status" aria-label="Execution supervisor evidence" data-state={supervisorFresh && executionSupervisor?.process_alive && ['RUNNING', 'STARTING', 'BLOCKED'].includes(supervisorState) ? 'LIVE' : supervisorState}>

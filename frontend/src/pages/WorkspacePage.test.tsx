@@ -61,6 +61,8 @@ describe('Workspace and Settings evidence views', () => {
   };
   const panel = (name: string) => host.querySelector(`[aria-label="${name}"]`) as HTMLElement;
   const demoCard = () => host.querySelector('.workspace-demo-result') as HTMLElement;
+  const plain = () => host.children[0] as HTMLElement;
+  const settings = () => host.children[1] as HTMLElement;
   it('shows supervisor evidence while terminal observation is unavailable and expires its live glow', async () => {
     await render({observationHealth: resource({execution_supervisor: {state:'RUNNING', updated_at:'2026-09-20T12:01:00Z', stale:false, process_alive:true, execution_enabled:true, cycle_number:19, max_age_seconds:10}} as unknown as ObservationHealthResponse)});
     const evidence = panel('Execution supervisor evidence');
@@ -99,7 +101,7 @@ describe('Workspace and Settings evidence views', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-  it('keeps Workspace limited to decision and market views', async () => {
+  it('keeps Workspace limited to decision and market views without source details', async () => {
     await act(async () => root.render(<WorkspacePage {...baseProps()} />));
     expect(host.querySelectorAll('.workspace-card')).toHaveLength(3);
     expect(panel('Weltrade terminal')).not.toBeNull();
@@ -108,31 +110,43 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
     expect(host.querySelector('.workspace-operational-details')).toBeNull();
     expect(host.querySelector('.workspace-more-details')).toBeNull();
+    expect(host.querySelector('.workspace-provenance')).toBeNull();
+    expect(host.querySelector('.workspace-source-observation')).toBeNull();
+    expect(host.textContent).not.toContain('Source details');
+    expect(host.textContent).not.toContain('Source and observation details');
+    expect(host.textContent).not.toContain('GET /');
   });
   it('hides owner-only source and operational disclosures from non-admin users', async () => {
     await render({ internalDetails: false });
     expect(host.querySelector('.workspace-provenance')).toBeNull();
     expect(host.querySelector('.workspace-operational-details')).toBeNull();
+    expect(host.querySelector('.workspace-source-observation')).toBeNull();
     expect(host.querySelector('[aria-label="Readiness"]')).toBeNull();
     expect(host.textContent).not.toContain('Source details');
     expect(host.textContent).not.toContain('Connection and operational checks');
-    expect(host.textContent).not.toContain('Snapshot details');
-    expect(host.textContent).not.toContain('Observation details');
-    expect(host.textContent).not.toContain('Safety evidence');
+    expect(host.textContent).not.toContain('Source and observation details');
+    expect(host.textContent).not.toContain('Separate broker context');
     expect(host.textContent).not.toContain('GET /');
     expect(panel('Decision trail').textContent).toContain('NO_SIGNAL');
     expect(panel('Weltrade terminal')).not.toBeNull();
     expect(panel('Market chart')).not.toBeNull();
     expect(host.querySelector('.workspace-topbar-facts')).not.toBeNull();
   });
-  it('shows owner-only source and operational disclosures when internal details are enabled', async () => {
+  it('shows owner-only source and operational disclosures in Settings only', async () => {
     await render();
-    expect(host.querySelectorAll('.workspace-provenance').length).toBeGreaterThan(0);
-    expect(host.textContent).toContain('Source observation');
-    expect(host.textContent).toContain('Connection and operational checks');
-    expect(host.querySelector('.workspace-operational-details')).not.toBeNull();
-    expect(host.textContent).toContain('Safety evidence');
-    expect(host.textContent).toContain('GET /brokers/status');
+    expect(settings().querySelectorAll('.workspace-provenance').length).toBeGreaterThan(0);
+    expect(settings().textContent).toContain('Source details');
+    expect(settings().textContent).toContain('Source observation');
+    expect(settings().textContent).toContain('Connection and operational checks');
+    expect(settings().querySelector('.workspace-operational-details')).not.toBeNull();
+    expect(settings().textContent).toContain('Source and observation details');
+    expect(settings().textContent).toContain('Separate broker context');
+    expect(settings().textContent).toContain('GET /brokers/status');
+    expect(plain().querySelector('.workspace-provenance')).toBeNull();
+    expect(plain().querySelector('.workspace-source-observation')).toBeNull();
+    expect(plain().textContent).not.toContain('Source details');
+    expect(plain().textContent).not.toContain('Source and observation details');
+    expect(plain().textContent).not.toContain('GET /');
   });
   it('uses starting balance and separates realized P&L from the advisory target', async () => {
     await render({terminalObservation: resource({state:'CONNECTED', observed_at:observed, balance:150, positions:[],recent_trades:[],
@@ -192,7 +206,9 @@ describe('Workspace and Settings evidence views', () => {
     const details = host.querySelector('.workspace-operational-facts') as HTMLElement;
     expect(details.textContent).toContain('Research batch jobunknown · no live job telemetry');
     expect(details.textContent).toContain('Execution snapshotstale · fail closed');
-    expect(panel('Market chart').textContent).toContain('freshness unknown · MARKET_CLOCK_AHEAD');
+    expect(panel('Market chart').textContent).toContain('Weltrade · unknown · MARKET_CLOCK_AHEAD');
+    expect(panel('Market chart').textContent).not.toContain('freshness unknown');
+    expect(settings().textContent).toContain('freshness unknown · MARKET_CLOCK_AHEAD');
     expect(host.querySelector('[data-testid="market-chart"]')?.getAttribute('data-status')).toBe('UNKNOWN');
   });
   it('renders STALE state', async () => {
@@ -255,10 +271,10 @@ describe('Workspace and Settings evidence views', () => {
   });
   it('keeps broker context separate from the canonical assessment', async () => {
     await render();
-    const context = host.querySelector('.workspace-context') as HTMLElement;
+    const context = settings().querySelector('.workspace-context') as HTMLElement;
     expect(context.textContent).toContain('Separate broker context');
     expect(context.textContent).toContain('GET /brokers/status');
-    expect(context.closest('[aria-label="Decision trail"]')).toBe(panel('Decision trail'));
+    expect(panel('Decision trail').querySelector('.workspace-context')).toBeNull();
   });
   it.each([
     ['LOADING', resource<ObservationHealthResponse>(null, { loading: true })],
@@ -448,7 +464,8 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.querySelector('[data-testid="market-chart"]')).toBeNull();
     expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('see Notifications');
     expect(panel('Market chart').classList).toContain('workspace-chart-unavailable');
-    expect(panel('Market chart').textContent).toContain('strategy, setup, and candles share one observation.');
+    expect(panel('Market chart').textContent).not.toContain('share one observation');
+    expect(settings().textContent).toContain('strategy, setup, and candles share one observation.');
     expect(panel('Market chart').textContent).not.toContain('Selected FX Vol 20 / M1');
     const css = readFileSync('src/pages/WorkspacePage.css', 'utf8');
     expect(css).toContain('.workspace-chart-unavailable .workspace-chart-frame { min-height: 96px; }');

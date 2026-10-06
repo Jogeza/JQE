@@ -16,6 +16,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { SyntXMarketsPage } from './pages/SyntXMarketsPage';
+import { OwnerEvidencePanel } from './components/OwnerEvidencePanel';
 import { jqeApi } from './services/api';
 import { settleBounded } from './services/settleBounded';
 import { ObservationSchedule } from './services/observationSchedule';
@@ -399,17 +400,13 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
             setupData={setupData}
             setupLoading={resources.setup.loading}
             setupStale={resources.setup.stale}
-            monitoringData={monitoringData}
-            backendOffline={resources.monitoring.error !== null && monitoringData === null}
             telemetryLifecycle={telemetryLifecycle}
-            internalDetails={internalDetails}
             onPaperRecorded={() => fetchAllData(true, false)}
             loading={loading}
             selectedSymbol={displaySymbol}
             selectedTimeframe={displayTimeframe}
             candleError={resources.candles.error}
             telemetryStale={{ system: resources.system.stale, strategy: resources.strategy.stale, risk: resources.risk.stale }}
-            brokerStatus={resources.brokerStatus.data}
           />
         );
       case 'markets':
@@ -457,7 +454,21 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
       case 'system':
         return <SystemPage systemStatus={systemStatus} loading={loading} />;
       case 'settings':
-        return <div className="settings-composite-view"><SettingsPage assistant={resources.assistantStatus} notifications={resources.notificationStatus} broker={resources.brokerStatus} onNavigate={setActiveTab} />{renderWorkspace(true)}</div>;
+        return <div className="settings-composite-view"><SettingsPage assistant={resources.assistantStatus} notifications={resources.notificationStatus} broker={resources.brokerStatus} onNavigate={setActiveTab} />
+          {internalDetails && <OwnerEvidencePanel
+            telemetryLifecycle={telemetryLifecycle}
+            brokerStatus={resources.brokerStatus.data}
+            loading={loading}
+            systemStatus={systemStatus}
+            backendOffline={resources.monitoring.error !== null && monitoringData === null}
+            monitoringData={monitoringData}
+            candlesData={candlesData}
+            signalData={signalData}
+            setupData={setupData}
+            riskData={riskData}
+            paperRuntimeData={paperRuntimeData}
+          />}
+          {renderWorkspace(true)}</div>;
       default:
         return null;
     }

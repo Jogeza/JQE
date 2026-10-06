@@ -153,3 +153,25 @@ non-admin absence of gated strings and their presence for the owner.
 Final validation for this phase: focused workspace tests 57 passed; all
 frontend 204 passed in 34 files; TypeScript and Vite production build passed
 (1,939 modules; the pre-existing large-bundle warning remains).
+
+Privacy follow-up: source and observation details were removed from every
+normal user-facing page for every user, including the owner. The Workspace
+decision/market view no longer renders per-panel "Source details", "Snapshot
+details", "Observation details", "Safety evidence" or API path prefixes even
+when internal details are enabled; those disclosures were consolidated into
+one "Source and observation details" block that renders only inside the
+Settings configuration view and only for the owner (`internalDetails`,
+unchanged role gate). The Dashboard "Connection and data provenance" block was
+extracted into a dedicated owner evidence panel that likewise renders only in
+Settings. The SyntX market cards no longer display per-card backend provenance
+("Weltrade MT5 terminal" / "Weltrade MT5 shadow archive"); the backend DTO and
+card metrics are unchanged. Research experiment catalog provenance (dataset,
+run and result hashes) and the Markets market-data-source badge remain, as
+research metadata and product-level data transparency. Tests were refreshed to
+assert both the absence of gated strings in the plain owner view and their
+presence in the owner Settings view, and the non-admin absence. Focused
+workspace tests 57 passed; all frontend tests 204 passed in 34 files;
+TypeScript and Vite production build passed (1,940 modules; the pre-existing
+large-bundle warning remains). No trade, risk limit, execution gate, quota,
+authentication rule, permission, paid checkout or persisted safety state was
+changed by this follow-up.

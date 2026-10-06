@@ -210,7 +210,6 @@ const SyntXCard: React.FC<CardProps> = ({ card, onSelect, referralUrl }) => {
             </div>
           </div>
           <div className="syntx-card-data-meta">
-            <span title={card.provenance}>{card.provenance}</span>
             <span title={formatCandleTime(card.last_tick_time)}>
               {card.last_tick_time
                 ? "Tick " + formatCandleAge(card.last_tick_time)
