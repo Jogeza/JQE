@@ -154,7 +154,9 @@ export const WorkspacePage: React.FC<Props> = ({
   const activeCandles = activeAnalysis?.data && Array.isArray(activeAnalysis.data.candles?.candles)
     ? activeAnalysis.data.candles : null;
   const marketContext = activeAnalysis?.data?.context;
-  const marketFreshness = activeAnalysis?.error || activeAnalysis?.stale
+  const initialMarketLoading = activeAnalysis?.loading === true && activeAnalysis.data === null;
+  const initialTerminalLoading = terminalObservation?.loading === true && terminalObservation.data === null;
+  const marketFreshness = initialMarketLoading ? 'loading closed candles' : activeAnalysis?.error || activeAnalysis?.stale
     ? 'unavailable · last request failed'
     : marketContext?.freshness_state === 'FRESH' ? 'fresh · closed candles'
     : marketContext?.freshness_state
@@ -195,7 +197,7 @@ export const WorkspacePage: React.FC<Props> = ({
   const executionData = execution?.data ?? null;
   const executionState = execution ? panelState(execution) : 'UNAVAILABLE';
   const terminal = terminalObservation?.data ?? null;
-  const terminalState = terminalObservation?.error ? 'UNAVAILABLE'
+  const terminalState = initialTerminalLoading ? 'LOADING' : terminalObservation?.error ? 'UNAVAILABLE'
     : terminal?.state === 'CONNECTED' ? 'LIVE'
     : terminal?.state === 'DISCONNECTED' ? 'OFFLINE'
     : 'UNAVAILABLE';
@@ -329,7 +331,7 @@ export const WorkspacePage: React.FC<Props> = ({
     </details></>}
 
     {!configurationOnly && <div className="workspace-grid workspace-primary">
-      <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
+      <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
         <div className="workspace-chart-controls" aria-label="Chart market controls">
           <strong>{selectedSymbol}</strong>
           {['M1', 'M5', 'M15', 'H1'].map(tf => <button key={tf} type="button" aria-pressed={selectedTimeframe === tf}
@@ -348,8 +350,8 @@ export const WorkspacePage: React.FC<Props> = ({
           dataStatus={chartDataStatus}
           height={aiDocked ? 560 : 460}
         /> : <div className="workspace-chart-frame">
-          <p className="workspace-empty">Active market analysis is unavailable.</p>
-          <div className="workspace-chart-overlay" role="status">No market snapshot - see Notifications</div>
+          <p className="workspace-empty">{initialMarketLoading ? 'Loading market analysis...' : 'Active market analysis is unavailable.'}</p>
+          <div className="workspace-chart-overlay" role="status">{initialMarketLoading ? 'Fetching closed candles from Weltrade...' : 'No market snapshot - see Notifications'}</div>
         </div>}
         <details className="workspace-inline-details"><summary>Snapshot details</summary><p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p></details>
       </Panel>      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
@@ -374,7 +376,7 @@ export const WorkspacePage: React.FC<Props> = ({
       </Panel>
       <Panel title="Weltrade terminal" source="Direct MT5 observation · execution disabled" state={terminalState} observed={terminal?.observed_at} className="workspace-terminal">
         {!terminal || terminal.state !== 'CONNECTED' ? <p className="workspace-terminal-disconnected">
-          {terminal?.error ? 'Terminal unavailable - see Notifications' : 'Terminal disconnected - no current account or market values'}
+          {initialTerminalLoading ? 'Checking Weltrade terminal...' : terminalObservation?.error || terminal?.error ? 'Terminal unavailable - see Notifications' : 'Terminal disconnected - no current account or market values'}
         </p> : <>
           <div className="workspace-terminal-metrics">
             <span>Environment<strong>{terminal.environment} · {terminal.server ?? 'server unavailable'} · {terminal.account_id_masked ?? 'account unavailable'}</strong></span>
@@ -382,7 +384,8 @@ export const WorkspacePage: React.FC<Props> = ({
             <span>Equity<strong>{terminal.equity == null ? '—' : `${terminal.equity.toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
             <span>Margin / free<strong>{terminal.margin == null ? '—' : `${terminal.margin.toLocaleString()} / ${(terminal.free_margin ?? 0).toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
             <span>Account / expert / terminal permission<strong>{[terminal.account_trading_allowed, terminal.expert_trading_allowed, terminal.terminal_trading_allowed].map(value => value == null ? 'Unknown' : value ? 'Yes' : 'No').join(' / ')} · API {terminal.trade_api_disabled == null ? 'unknown' : terminal.trade_api_disabled ? 'disabled' : 'enabled'}</strong></span>
-            <span>Observation API orders<strong>{terminal.execution_enabled ? 'Enabled' : 'Disabled'}</strong></span>
+            <span>Observation API orders<strong>{terminal.execution_enabled ? 'Enabled' : 'Disabled'}</strong><small>This permission applies to the observation API only.</small></span>
+            <span>Guarded demo supervisor<strong>Status not supplied here</strong><small>The separate PC process evaluates trades through the canonical execution path. API order permissions do not report its status.</small></span>
             <span>Daily research target · 20%<strong>{typeof terminal.balance === 'number' && Number.isFinite(terminal.balance) ? `${(terminal.balance * .2).toFixed(2)} ${terminal.currency} at current balance` : 'Awaiting verified balance'}</strong><small>Aspirational target. Daily starting balance is not yet captured. Existing risk limits apply; no forced trades.</small></span>
           </div>
           <div className="workspace-terminal-observations">

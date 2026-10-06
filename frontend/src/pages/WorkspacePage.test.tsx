@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
   OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse,
-  WatchlistResponse, ExecutionStateResponse, AssistantStatusResponse,
+  WatchlistResponse, ExecutionStateResponse, AssistantStatusResponse, TerminalObservationResponse, ActiveMarketAnalysisResponse,
 } from '../types/api';
 import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
@@ -60,6 +60,17 @@ describe('Workspace and Settings evidence views', () => {
   };
   const panel = (name: string) => host.querySelector(`[aria-label="${name}"]`) as HTMLElement;
   const demoCard = () => host.querySelector('.workspace-demo-result') as HTMLElement;
+  it('shows initial market and terminal requests as loading, then failures as unavailable', async () => {
+    await render({ activeAnalysis: resource<ActiveMarketAnalysisResponse>(null, { loading: true }), terminalObservation: resource<TerminalObservationResponse>(null, { loading: true }) });
+    expect(panel('Market chart').dataset.state).toBe('LOADING');
+    expect(panel('Weltrade terminal').dataset.state).toBe('LOADING');
+    expect(host.textContent).toContain('Fetching closed candles from Weltrade');
+    expect(host.textContent).toContain('Checking Weltrade terminal');
+    await render({ activeAnalysis: resource<ActiveMarketAnalysisResponse>(null, { error: 'network failure' }), terminalObservation: resource<TerminalObservationResponse>(null, { error: 'network failure' }) });
+    expect(panel('Market chart').dataset.state).toBe('UNAVAILABLE');
+    expect(panel('Weltrade terminal').dataset.state).toBe('UNAVAILABLE');
+    expect(host.textContent).not.toContain('Checking Weltrade terminal');
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-20T12:01:00Z'));
