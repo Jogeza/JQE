@@ -12,17 +12,17 @@ reads this catalog and cannot collect payment or activate access.
 The hosted legacy trial activation route now rejects authenticated requests
 with PAID_ACCESS_CHECKOUT_UNAVAILABLE. Existing trials remain intact.
 
-IMPORTANT: migration 20261006000100_retire_free_trial.sql is prepared but has
-not been applied to production: no authorized SQL management connection was
-available. Until applied, the old direct authenticated Supabase RPC can still
-activate a free trial. The hosted route alone does not close that direct path.
+Migration 20261006000100_retire_free_trial.sql was applied successfully through
+the owner-authorized logged-in Supabase SQL Editor on 6 October 2026. Effective
+authenticated and anonymous free-activation blocks both returned true. The
+owner ACTIVE override with no expiry was separately verified intact.
 
 The migration is transactional and aborts if inherited grants still allow
 authenticated or anonymous execution. Apply it once in the configured project's
 Supabase SQL Editor, then run supabase/verify_paid_access_gate.sql. Both permission
 checks must return true, and catalog rows must retain NOT_CONFIGURED. Do not
 rerun the base migration. These SQL changes do not alter existing entitlements,
-trials, usage counters or trading state. Production SQL validation is pending.
+trials, usage counters or trading state. Production permission validation passed.
 
 The owner confirmed that payment-provider selection is deferred and checkout
 must stay disabled. No payment provider implementation is authorized yet.
@@ -40,3 +40,8 @@ and deployed premium JavaScript asset returned HTTP 200. An unauthenticated
 Python request to /upgrade returned HTTP 403; authenticated browser visual
 validation was unavailable. Existing build warnings remain: bundle size and
 the deployment's dependency audit (three moderate, one high).
+
+Production catalog verification returned trial USD 20, subscription USD 1,500,
+and lifetime USD 5,000, all NOT_CONFIGURED. Screenshot evidence is preserved in
+ignored reports/paid-access-gates-20261006.png. No application or trading code
+changed during this database permission update.
