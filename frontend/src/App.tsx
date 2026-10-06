@@ -17,6 +17,7 @@ import { WatchlistPage } from './pages/WatchlistPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { SyntXMarketsPage } from './pages/SyntXMarketsPage';
 import { jqeApi } from './services/api';
+import { settleBounded } from './services/settleBounded';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -47,9 +48,9 @@ import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry }
 import { RefreshCw } from 'lucide-react';
 
 const workspaceProfile = [
-  'brokerStatus', 'safety', 'risk', 'monitoring', 'observationHealth',
-  'watchlist', 'watchlistCapUsage', 'execution', 'activeAnalysis', 'assistantStatus', 'notificationStatus',
-  'terminalObservation',
+  'activeAnalysis', 'terminalObservation', 'observationHealth', 'risk',
+  'brokerStatus', 'safety', 'monitoring', 'watchlist', 'watchlistCapUsage',
+  'execution', 'assistantStatus', 'notificationStatus',
 ] as const;
 const legacyProfile = [
   'system', 'market', 'candles', 'strategy', 'risk', 'execution', 'safety',
@@ -125,6 +126,8 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
   const inFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  const lastRefreshContext = useRef<{ tab: TabType; symbol: string; timeframe: string } | null>(null);
+
   const fetchAllData = useCallback(async (replaceInFlight = false, resetData = false) => {
     if (inFlightRef.current && !replaceInFlight) return;
     if (replaceInFlight) abortRef.current?.abort();
@@ -134,7 +137,13 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
     inFlightRef.current = true;
     const requestedSymbol = selectedSymbol;
     const requestedTimeframe = selectedTimeframe;
-    const names: readonly (keyof Resources)[] = activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+    const previousContext = lastRefreshContext.current;
+    const marketOnly = resetData && activeTab === 'workspace' && previousContext?.tab === 'workspace'
+      && (previousContext.symbol !== requestedSymbol || previousContext.timeframe !== requestedTimeframe);
+    lastRefreshContext.current = { tab: activeTab, symbol: requestedSymbol, timeframe: requestedTimeframe };
+    const names: readonly (keyof Resources)[] = marketOnly
+      ? ['activeAnalysis', 'terminalObservation', 'risk']
+      : activeTab === 'workspace' ? workspaceProfile : legacyProfile;
     const requestFor = (name: keyof Resources): Promise<unknown> => {
       switch (name) {
         case 'system': return jqeApi.getSystemStatus(controller.signal);
@@ -174,17 +183,17 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
     });
 
     try {
-      const results = await Promise.allSettled(names.map(async name => {
+      const results = await settleBounded(names.map(name => async () => {
         const result = await requestFor(name);
         // Publish market-sensitive data promptly; unrelated monitoring may be slow.
-        if (['activeAnalysis', 'terminalObservation'].includes(name)
+        if (['activeAnalysis', 'terminalObservation', 'observationHealth'].includes(name)
             && requestId === requestIdRef.current && !controller.signal.aborted) {
           setResources(previous => ({ ...previous, [name]: {
             data: result, loading: false, error: null, lastUpdated: new Date(), stale: false,
           } }));
         }
         return result;
-      }));
+      }), controller.signal);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       if (selectedSymbol !== requestedSymbol || selectedTimeframe !== requestedTimeframe) return;
 
@@ -433,7 +442,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
           <NotificationCenter market={resources.activeAnalysis} notifications={resources.notificationStatus} safety={resources.safety} broker={resources.brokerStatus} apiError={apiError}
             resourceErrors={[...activeProfile.filter(name => resources[name].error).map(name => ({ title: name, detail: resources[name].error! })), ...(liveExecution.error ? [{ title: 'Demo cycle', detail: liveExecution.error }] : [])]}
             hosted={authenticated} /></div>;
-  const menuContent = <div className="header-menu-content">          {(workstation || authenticated) && <DemoSupervisorBadge />}
+  const menuContent = <div className="header-menu-content">          {(workstation || authenticated) && <DemoSupervisorBadge health={resources.observationHealth} />}
           <span className="workspace-execution-status" role="status">Observation API · orders disabled</span>
               {onAdmin && <button type="button" className="workspace-account-action" onClick={onAdmin}>Admin</button>}
           {onSignOut && <button type="button" className="workspace-account-action" onClick={onSignOut}>Sign out</button>}</div>;

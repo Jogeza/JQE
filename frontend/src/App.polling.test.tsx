@@ -7,10 +7,9 @@ import { App } from './App';
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const allowed = [
-  '/brokers/status', '/execution/safety', '/risk', '/monitoring/offline',
-  '/observation/health', '/watchlist', '/watchlist/cap-usage', '/execution',
-  '/market/active-analysis', '/assistant/status', '/notifications/status',
-  '/brokers/terminal-observation',
+  '/market/active-analysis', '/brokers/terminal-observation', '/observation/health', '/risk',
+  '/brokers/status', '/execution/safety', '/monitoring/offline', '/watchlist',
+  '/watchlist/cap-usage', '/execution', '/assistant/status', '/notifications/status',
 ];
 const legacyOnly = [
   '/system', '/market/summary', '/market/candles', '/signal',
@@ -112,7 +111,9 @@ describe('App polling profiles', () => {
     await mount();
     expect(host.querySelector('[aria-label="Weltrade terminal"]')?.textContent).toContain('Guarded demo supervisor');
     const button = Array.from(host.querySelectorAll('.workspace-chart-controls button')).find(button => button.textContent === 'M1') as HTMLButtonElement;
+    const beforeSwitch = urls.length;
     await act(async () => button.click());
+    expect(urls.slice(beforeSwitch).map(url => new URL(url, 'http://localhost').pathname.replace('/api/v1', ''))).toEqual(['/market/active-analysis', '/brokers/terminal-observation', '/risk']);
     expect(button.getAttribute('aria-pressed')).toBe('true');
     expect(urls.some(url => url.includes('/market/active-analysis') && url.includes('timeframe=M1'))).toBe(true);
     expect(host.querySelector('[aria-label="Weltrade terminal"]')?.textContent).toContain('Guarded demo supervisor');
@@ -238,8 +239,8 @@ describe('App polling profiles', () => {
 
   it('accounts for StrictMode by aborting its first request batch and making one replacement batch', async () => {
     await mount(true);
-    expect(paths()).toEqual([...allowed, ...allowed]);
-    expect(calls.slice(0, allowed.length).every(call => call.signal?.aborted)).toBe(true);
-    expect(calls.slice(allowed.length).every(call => !call.signal?.aborted)).toBe(true);
+    expect(paths()).toEqual([...allowed.slice(0, 4), ...allowed]);
+    expect(calls.slice(0, 4).every(call => call.signal?.aborted)).toBe(true);
+    expect(calls.slice(4).every(call => !call.signal?.aborted)).toBe(true);
   });
 });

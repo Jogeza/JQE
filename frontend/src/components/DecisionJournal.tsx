@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { jqeApi } from '../services/api';
+import type { ObservationHealthResponse, ResourceState } from '../types/api';
 
 export interface JournalEntry {
   id: number; observed_at: string; symbol: string; timeframe: string; stage: string;
@@ -18,7 +19,10 @@ export function DecisionJournal() {
   const [supervisor, setSupervisor] = useState<{ state: string; execution_enabled: boolean; cycle_number?: number; reason?: string | null }>();
   useEffect(() => {
     const controller = new AbortController();
+    let inFlight = false;
     const refresh = async () => {
+      if (inFlight || controller.signal.aborted) return;
+      inFlight = true;
       try {
         const result = await jqeApi.getJournal(controller.signal);
         if (!controller.signal.aborted) { setItems(result.items); setState(result.state); setSupervisor(result.supervisor); }
@@ -30,6 +34,8 @@ export function DecisionJournal() {
             title: 'Decision journal', detail: 'Journal evidence unavailable. Check sign-in and workstation relay connectivity.',
           } }));
         }
+      } finally {
+        inFlight = false;
       }
     };
     void refresh();
@@ -54,17 +60,15 @@ export function DecisionJournal() {
   </section>;
 }
 
-export function DemoSupervisorBadge() {
-  const [status, setStatus] = useState<{ state: string; execution_enabled: boolean; reason?: string | null } | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisStatus | null>(null);
+export function DemoSupervisorBadge({ health }: { health?: ResourceState<ObservationHealthResponse> }) {
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const controller = new AbortController();
-    const refresh = () => void jqeApi.getJournal(controller.signal)
-      .then(result => { if (!controller.signal.aborted) { setStatus(result.supervisor ?? null); setAnalysis(result.analysis ?? null); } })
-      .catch(() => { if (!controller.signal.aborted) { setStatus(null); setAnalysis(null); } });
-    refresh();
-    const timer = window.setInterval(refresh, 15000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    const timer = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(timer);
   }, []);
-  return <span className="workspace-execution-status" role="status">Analysis {analysis?.state === 'RUNNING' ? `watching ${analysis.current_pairs}/${analysis.total_pairs} fresh pairs` : analysis?.state === 'STALE' ? 'waiting for fresh data' : 'unavailable'} · Demo supervisor {status?.execution_enabled ? (status.state === 'BLOCKED' ? `enabled · waiting: ${status.reason ?? 'safety block'}` : 'armed') : status ? 'stopped or stale' : 'unavailable'}</span>;
+  const status = health?.data?.execution_supervisor;
+  const age = status?.updated_at ? (now - Date.parse(status.updated_at)) / 1000 : NaN;
+  const stale = health?.stale || !!health?.error || status?.stale || !Number.isFinite(age) || age < 0 || age > (status?.max_age_seconds ?? 0);
+  const state = !status ? 'unavailable' : stale ? 'STALE' : status.state;
+  return <span className="workspace-execution-status" role="status">Demo supervisor {state} · cycle {status?.cycle_number ?? 'unknown'} · process {status?.process_alive ? 'alive' : 'unverified'}. Monitoring only; no order authorization.</span>;
 }

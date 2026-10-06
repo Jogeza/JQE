@@ -3,6 +3,7 @@ from collections import deque
 from pathlib import Path
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -27,6 +28,7 @@ ALLOWED = {
     "/api/v1/watchlist/cap-usage": {"account_scope"},
 }
 ROOT = Path(__file__).resolve().parents[1]
+QUEUE_TIMEOUT_SECONDS = 1.0
 
 
 class AccessVerifier:
@@ -60,7 +62,7 @@ def fetch_local(path, query):
         def redirect_request(self, *args, **kwargs):
             return None
     url = "http://127.0.0.1:8000" + path + ("?" + query if query else "")
-    with urllib.request.build_opener(NoRedirect).open(url, timeout=15) as result:
+    with urllib.request.build_opener(NoRedirect).open(url, timeout=12) as result:
         content_type = result.headers.get("Content-Type", "")
         if not content_type.startswith("application/json"):
             raise ValueError("Unexpected origin response")
@@ -106,8 +108,18 @@ def create_app(verifier=None, fetcher=fetch_local):
             await asyncio.to_thread(verifier, request.headers.get("Cf-Access-Jwt-Assertion", ""))
         except Exception:
             return JSONResponse({"detail": "Valid owner sign-in required"}, 403, headers=headers)
-        async with inflight:
+        # Do not let obsolete requests wait indefinitely beyond the hosted
+        # proxy's 20-second timeout. Keep the same four origin slots and quota.
+        try:
+            await asyncio.wait_for(inflight.acquire(), timeout=QUEUE_TIMEOUT_SECONDS)
+        except TimeoutError:
+            logging.getLogger(__name__).warning('Monitor origin queue saturated: path=%s', path)
+            return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
+                                headers={**headers, 'Retry-After': '2'})
+        try:
             response = await call_next(request)
+        finally:
+            inflight.release()
         response.headers.update(headers)
         return response
 

@@ -1,4 +1,6 @@
 import time
+import asyncio
+import threading
 from unittest.mock import Mock
 
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -7,6 +9,39 @@ import jwt
 import pytest
 
 from api.monitor_relay import AccessVerifier, create_app
+
+
+def test_saturated_origin_queue_rejects_promptly_without_forwarding_extra_work(monkeypatch):
+    import httpx
+    import api.monitor_relay as relay
+    monkeypatch.setattr(relay, 'QUEUE_TIMEOUT_SECONDS', 0.05)
+    release = threading.Event()
+    calls = []
+    def fetch(path, query):
+        calls.append(path)
+        assert release.wait(3)
+        return b'{"state":"OBSERVED"}'
+    async def run():
+        transport = httpx.ASGITransport(app=create_app(lambda _: 'owner', fetch))
+        async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+            tasks = [asyncio.create_task(client.get('/api/v1/observation/health')) for _ in range(4)]
+            try:
+                for _ in range(100):
+                    if len(calls) == 4:
+                        break
+                    await asyncio.sleep(0.005)
+                assert len(calls) == 4
+                busy = await client.get('/api/v1/observation/health')
+                assert busy.status_code == 503
+                assert busy.headers['retry-after'] == '2'
+                assert busy.headers['cache-control'] == 'no-store'
+                assert len(calls) == 4
+            finally:
+                release.set()
+                replies = await asyncio.gather(*tasks)
+            assert all(reply.status_code == 200 for reply in replies)
+            assert (await client.get('/api/v1/observation/health')).status_code == 200
+    asyncio.run(run())
 
 
 def test_missing_configuration_fails_closed(monkeypatch):
