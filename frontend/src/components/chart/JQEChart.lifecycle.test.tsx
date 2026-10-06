@@ -32,15 +32,16 @@ describe('JQEChart public lifecycle', () => {
   beforeEach(() => { chartMock.reset(); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
-  it('updates compact and full price axes without recreating the chart', async () => {
+  it('keeps the price axis on the right and narrows it in compact mode without recreating the chart', async () => {
     await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} />));
     const chart = chartMock.createChart.mock.results[0].value;
+    const creation = (chartMock.createChart.mock.calls[0] as unknown[])[1] as Record<string, unknown>;
+    expect(creation.rightPriceScale).toEqual(expect.objectContaining({ minimumWidth: 58 }));
+    expect(creation).not.toHaveProperty('leftPriceScale');
     await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} compactPriceScale />));
-    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 42, visible: false}, rightPriceScale: {minimumWidth: 42, visible: true}, layout: {fontSize: 10}});
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({rightPriceScale: {minimumWidth: 40}, layout: {fontSize: 10}});
     await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} compactPriceScale={false} />));
-    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 58, visible: false}, rightPriceScale: {minimumWidth: 58, visible: true}, layout: {fontSize: 12}});
-    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} priceScaleSide="left" />));
-    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 58, visible: true}, rightPriceScale: {minimumWidth: 58, visible: false}, layout: {fontSize: 12}});
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({rightPriceScale: {minimumWidth: 58}, layout: {fontSize: 12}});
     expect(chartMock.createChart).toHaveBeenCalledTimes(1);
   });
 

@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
-  OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse,
-  WatchlistResponse, ExecutionStateResponse, AssistantStatusResponse, TerminalObservationResponse, ActiveMarketAnalysisResponse,
+  OfflineMonitoringResponse, ResourceState, RiskStatusResponse, WatchlistCapUsageResponse, TerminalObservationResponse,
+  WatchlistResponse, ExecutionStateResponse, AssistantStatusResponse, ActiveMarketAnalysisResponse,
 } from '../types/api';
 import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
@@ -50,6 +50,7 @@ const baseProps = (): Props => ({
   observationHealth: resource(null as ObservationHealthResponse | null),
   watchlist: resource(watchlist), caps: resource(caps),
   selectedSymbol: 'FX Vol 20', selectedTimeframe: 'M1', lifecycle, onNavigate: vi.fn(),
+  internalDetails: true,
 });
 
 describe('Workspace and Settings evidence views', () => {
@@ -107,6 +108,45 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
     expect(host.querySelector('.workspace-operational-details')).toBeNull();
     expect(host.querySelector('.workspace-more-details')).toBeNull();
+  });
+  it('hides owner-only source and operational disclosures from non-admin users', async () => {
+    await render({ internalDetails: false });
+    expect(host.querySelector('.workspace-provenance')).toBeNull();
+    expect(host.querySelector('.workspace-operational-details')).toBeNull();
+    expect(host.querySelector('[aria-label="Readiness"]')).toBeNull();
+    expect(host.textContent).not.toContain('Source details');
+    expect(host.textContent).not.toContain('Connection and operational checks');
+    expect(host.textContent).not.toContain('Snapshot details');
+    expect(host.textContent).not.toContain('Observation details');
+    expect(host.textContent).not.toContain('Safety evidence');
+    expect(host.textContent).not.toContain('GET /');
+    expect(panel('Decision trail').textContent).toContain('NO_SIGNAL');
+    expect(panel('Weltrade terminal')).not.toBeNull();
+    expect(panel('Market chart')).not.toBeNull();
+    expect(host.querySelector('.workspace-topbar-facts')).not.toBeNull();
+  });
+  it('shows owner-only source and operational disclosures when internal details are enabled', async () => {
+    await render();
+    expect(host.querySelectorAll('.workspace-provenance').length).toBeGreaterThan(0);
+    expect(host.textContent).toContain('Source observation');
+    expect(host.textContent).toContain('Connection and operational checks');
+    expect(host.querySelector('.workspace-operational-details')).not.toBeNull();
+    expect(host.textContent).toContain('Safety evidence');
+    expect(host.textContent).toContain('GET /brokers/status');
+  });
+  it('uses starting balance and separates realized P&L from the advisory target', async () => {
+    await render({terminalObservation: resource({state:'CONNECTED', observed_at:observed, balance:150, positions:[],recent_trades:[],
+      daily_accounting:{starting_balance:100,current_balance:150,realized_net_pnl:5,
+        advisory_target_amount:20,currency:'USD',utc_date:'2026-09-20',net_funding:45,
+        observed_at:observed,starting_balance_method:'RECONSTRUCTED_FROM_COMPLETE_BROKER_HISTORY',day_boundary:'00:00 UTC'}} as unknown as TerminalObservationResponse)});
+    expect(host.textContent).toContain('20.00 USD');
+    expect(host.textContent).toContain('100.00 USD');
+    expect(host.textContent).toContain('5.00 USD');
+  });
+  it('does not invent a daily baseline from current balance when history is unavailable', async () => {
+    await render({terminalObservation:resource({state:'CONNECTED',observed_at:observed,balance:150,positions:[],recent_trades:[]} as unknown as TerminalObservationResponse)});
+    expect(host.textContent).toContain('Awaiting complete daily broker history');
+    expect(host.textContent).not.toContain('30.00 USD');
   });
   it('docks research AI without trapping chart keyboard focus on desktop', async () => {
     await render({ assistantStatus: resource({state: 'READY', enabled: true, configured: true,

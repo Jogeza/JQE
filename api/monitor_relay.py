@@ -9,6 +9,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -83,6 +84,37 @@ def create_app(verifier=None, fetcher=fetch_local):
     # A single authorized owner; one bounded limiter avoids unbounded identity maps.
     requests = deque()
     inflight = asyncio.Semaphore(4)
+    market_inflight = asyncio.Semaphore(2)
+    chart_inflight = asyncio.Semaphore(1)
+    pending = {}
+
+    async def fetch_observation(path, query):
+        chart = path == '/api/v1/market/active-analysis'
+        slot = chart_inflight if chart else market_inflight if path != '/api/v1/observation/health' else None
+        slot_acquired = False
+        try:
+            # Reserve chart and actual health slots within the existing four.
+            # A new timeframe may briefly wait for the prior chart read; other
+            # routes cannot consume either critical observation slot.
+            if slot is not None:
+                await asyncio.wait_for(slot.acquire(), timeout=5.0 if chart else QUEUE_TIMEOUT_SECONDS)
+                slot_acquired = True
+            await asyncio.wait_for(inflight.acquire(), timeout=QUEUE_TIMEOUT_SECONDS)
+        except TimeoutError:
+            if slot_acquired:
+                slot.release()
+            logging.getLogger(__name__).warning('Monitor origin queue saturated: path=%s', path)
+            raise OriginBusy() from None
+        except BaseException:
+            if slot_acquired:
+                slot.release()
+            raise
+        try:
+            return await asyncio.to_thread(fetcher, path, query)
+        finally:
+            inflight.release()
+            if slot_acquired:
+                slot.release()
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -108,18 +140,7 @@ def create_app(verifier=None, fetcher=fetch_local):
             await asyncio.to_thread(verifier, request.headers.get("Cf-Access-Jwt-Assertion", ""))
         except Exception:
             return JSONResponse({"detail": "Valid owner sign-in required"}, 403, headers=headers)
-        # Do not let obsolete requests wait indefinitely beyond the hosted
-        # proxy's 20-second timeout. Keep the same four origin slots and quota.
-        try:
-            await asyncio.wait_for(inflight.acquire(), timeout=QUEUE_TIMEOUT_SECONDS)
-        except TimeoutError:
-            logging.getLogger(__name__).warning('Monitor origin queue saturated: path=%s', path)
-            return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
-                                headers={**headers, 'Retry-After': '2'})
-        try:
-            response = await call_next(request)
-        finally:
-            inflight.release()
+        response = await call_next(request)
         response.headers.update(headers)
         return response
 
@@ -137,9 +158,34 @@ def create_app(verifier=None, fetcher=fetch_local):
 
     @app.get("/api/v1/{resource:path}")
     async def observation(resource: str, request: Request):
+        # Share only concurrent identical reads, after each caller passed auth
+        # and quota. No completed response is cached, including heartbeat data.
+        query = urlencode(sorted(parse_qsl(request.url.query, keep_blank_values=True), key=lambda pair: pair[0]))
+        key = (request.url.path, query)
+        task = pending.get(key)
+        if task is None:
+            if len(pending) >= 32:
+                return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
+                                    headers={'Retry-After': '2'})
+            task = asyncio.create_task(fetch_observation(*key))
+            pending[key] = task
+            def finished(completed):
+                if pending.get(key) is completed:
+                    pending.pop(key, None)
+                # Consume errors even if all requesting clients disconnected.
+                if not completed.cancelled():
+                    completed.exception()
+            task.add_done_callback(finished)
         try:
-            body = await asyncio.to_thread(fetcher, request.url.path, request.url.query)
+            body = await asyncio.shield(task)
             return Response(body, media_type="application/json")
+        except OriginBusy:
+            return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
+                                headers={'Retry-After': '2'})
         except (OSError, ValueError, urllib.error.URLError):
             return JSONResponse({"detail": "Workstation evidence unavailable"}, 503)
     return app
+
+
+class OriginBusy(Exception):
+    """A bounded origin queue rejected work; no evidence was produced."""

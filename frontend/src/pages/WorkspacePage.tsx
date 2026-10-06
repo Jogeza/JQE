@@ -18,6 +18,7 @@ import { prepareAssistantImage, type AssistantImage } from '../services/assistan
 interface Props {
   hosted?: boolean;
   configurationOnly?: boolean;
+  internalDetails?: boolean;
   broker: ResourceState<BrokerStatusResponse>;
   safety: ResourceState<ExecutionSafetyResponse>;
   risk: ResourceState<RiskStatusResponse>;
@@ -51,23 +52,28 @@ const destinations: { tab: TabType; label: string }[] = [
 const factors = ['trend', 'structure', 'liquidity', 'momentum', 'volatility', 'risk'] as const;
 const value = (input: unknown) => typeof input === 'string' && input.length ? input : 'unavailable';
 
+const InternalDetailsContext = React.createContext(false);
+
 const Panel: React.FC<React.PropsWithChildren<{
   title: string; source: string; state: PanelState; observed?: unknown; className?: string;
-}>> = ({ title, source, state, observed, className = '', children }) =>
-  <section className={`workspace-card ${className}`} data-state={state} aria-label={title}>
+}>> = ({ title, source, state, observed, className = '', children }) => {
+  const internalDetails = React.useContext(InternalDetailsContext);
+  return <section className={`workspace-card ${className}`} data-state={state} aria-label={title}>
     <div className="workspace-card-heading"><h2>{title}</h2><span className="workspace-state">{state === 'ERROR' ? 'UNAVAILABLE' : state}</span></div>
-    <details className="workspace-inline-details workspace-provenance"><summary>Source details</summary><p className="workspace-eyebrow">{source}</p>
+    {internalDetails && <details className="workspace-inline-details workspace-provenance"><summary>Source details</summary><p className="workspace-eyebrow">{source}</p>
       {observed !== undefined && <p className="workspace-source-time">Source observation: {formatTime(observed)} / age {formatAge(observed)}</p>}
-    </details>
+    </details>}
     {children}
   </section>;
+};
 
 const ReadinessItem: React.FC<{ label: string; source: string; result: string; observed: unknown; age?: string; state?: PanelState }> =
   ({ label, source, result, observed, age, state }) => <li aria-label={label} data-state={state}><strong>{label}</strong><span>{result}</span><small>{source} · {formatTime(observed)} · age {age ?? formatAge(observed)}</small></li>;
 
 export const WorkspacePage: React.FC<Props> = ({
   hosted = false,
-  configurationOnly = false, broker, safety, risk, monitoring, observationHealth, watchlist, caps,
+  configurationOnly = false,
+  internalDetails = false, broker, safety, risk, monitoring, observationHealth, watchlist, caps,
   execution, terminalObservation, activeAnalysis, assistantStatus, notificationStatus,
   liveExecution, onExecuteLiveCycle,
   selectedSymbol, selectedTimeframe, onMarketChange, lifecycle, onNavigate,
@@ -77,6 +83,8 @@ export const WorkspacePage: React.FC<Props> = ({
     const timer = window.setInterval(() => setEvidenceClock(Date.now()), 5000);
     return () => window.clearInterval(timer);
   }, []);
+  const [compactPriceScale, setCompactPriceScale] = useState(false);
+  const toggleCompactPriceScale = () => setCompactPriceScale(value => !value);
   const [aiOpen, setAiOpen] = useState(false);
   const [wideWorkspace, setWideWorkspace] = useState(() => window.innerWidth >= 900);
   useEffect(() => {
@@ -206,6 +214,12 @@ export const WorkspacePage: React.FC<Props> = ({
   const executionData = execution?.data ?? null;
   const executionState = execution ? panelState(execution) : 'UNAVAILABLE';
   const terminal = terminalObservation?.data ?? null;
+  const tradingPermissions: [string, boolean | null][] = terminal ? [
+    ['Account', terminal.account_trading_allowed],
+    ['Expert', terminal.expert_trading_allowed],
+    ['Terminal', terminal.terminal_trading_allowed],
+    ['API', terminal.trade_api_disabled == null ? null : !terminal.trade_api_disabled],
+  ] : [];
   const terminalState = initialTerminalLoading ? 'LOADING' : terminalObservation?.error ? 'UNAVAILABLE'
     : terminal?.state === 'CONNECTED' ? 'LIVE'
     : terminal?.state === 'DISCONNECTED' ? 'OFFLINE'
@@ -288,7 +302,7 @@ export const WorkspacePage: React.FC<Props> = ({
   useEffect(() => { aiThreadEnd.current?.scrollIntoView({ block: 'end' }); }, [aiThread, aiOpen]);
 
   const PageRoot = configurationOnly ? 'section' : 'main';
-  return <PageRoot className={`workspace-page${aiDocked ? ' workspace-studio' : ''}`}>
+  return <InternalDetailsContext.Provider value={internalDetails}><PageRoot className={`workspace-page${aiDocked ? ' workspace-studio' : ''}`}>
     {configurationOnly && <>
       <div className="workspace-topbar-facts" aria-label="Broker and execution status">
         <div><span>Live broker connection</span><strong>{liveConnection}</strong></div>
@@ -296,7 +310,7 @@ export const WorkspacePage: React.FC<Props> = ({
         <div><span>Market data freshness</span><strong>{marketFreshness}</strong></div>
         <div><span>Broker execution</span><strong>{brokerData ? brokerData.broker_execution_enabled ? 'enabled · guarded demo only' : 'disabled' : 'unavailable'}</strong></div>
       </div>
-    <details className="workspace-details workspace-operational-details">
+    {internalDetails && <details className="workspace-details workspace-operational-details">
       <summary>Connection and operational checks</summary>
       <div className="workspace-operational-facts">
         <span>Reported active broker<strong>{brokerData?.active_broker ?? 'unavailable'}</strong></span>
@@ -337,7 +351,7 @@ export const WorkspacePage: React.FC<Props> = ({
         {liveExecution?.error && <p role="alert">Cycle failed. See Notifications.</p>}
       </div>}
     </Panel>
-    </details></>}
+    </details>}</>}
 
     {!configurationOnly && <div className="workspace-grid workspace-primary">
       <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
@@ -345,6 +359,9 @@ export const WorkspacePage: React.FC<Props> = ({
           <strong>{selectedSymbol}</strong>
           {['M1', 'M5', 'M15', 'H1'].map(tf => <button key={tf} type="button" aria-pressed={selectedTimeframe === tf}
             onClick={() => onMarketChange?.(selectedSymbol, tf)}>{tf}</button>)}
+          <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
+            title="Use smaller price labels and a narrower right price axis"
+            onClick={toggleCompactPriceScale}>{compactPriceScale ? 'Full prices' : 'Compact prices'}</button>
           <span>Weltrade · {marketFreshness}</span>
         </div>
         {activeCandles ? <MarketChart
@@ -358,19 +375,21 @@ export const WorkspacePage: React.FC<Props> = ({
           error={activeAnalysis?.error ? 'Market data unavailable. See Notifications.' : null}
           dataStatus={chartDataStatus}
           height={aiDocked ? 560 : 460}
+          compactPriceScale={compactPriceScale}
+          onToggleCompactPriceScale={toggleCompactPriceScale}
         /> : <div className="workspace-chart-frame">
-          <p className="workspace-empty">{initialMarketLoading ? 'Loading market analysis...' : 'Active market analysis is unavailable.'}</p>
+          {!initialMarketLoading && <p className="workspace-empty">Active market analysis is unavailable.</p>}
           <div className="workspace-chart-overlay" role="status">{initialMarketLoading ? 'Fetching closed candles from Weltrade...' : 'No market snapshot - see Notifications'}</div>
         </div>}
-        <details className="workspace-inline-details"><summary>Snapshot details</summary><p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p></details>
+        {internalDetails && <details className="workspace-inline-details"><summary>Snapshot details</summary><p className="workspace-source-time">Canonical snapshot: {activeCandles ? `${activeCandles.symbol} / ${activeCandles.timeframe}` : `${selectedSymbol} / ${selectedTimeframe}`} · freshness {marketFreshness} · latest closed candle {formatTime(marketContext?.latest_closed_candle_at)}. The strategy, setup, and candles share one observation.</p></details>}
       </Panel>      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><details className="workspace-inline-details"><summary>Factor availability</summary><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></details></div> : <>
-        <details className="workspace-inline-details"><summary>Observation details</summary>        <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>
-</details>
+        {internalDetails && <details className="workspace-inline-details"><summary>Observation details</summary>        <p className="workspace-note">Shared assessment-level timestamps: observed {formatTime(assessment.observed_at)} · candle close {formatTime(assessment.candle_close_time)} · expires {formatTime(assessment.expires_at)}. No per-stage timestamps are supplied.</p>
+</details>}
         <ol className="workspace-stages">
           <li><strong>Data freshness</strong><span>{value(assessment.data_freshness.status)}</span><small>{reasonText(assessment.data_freshness.reason_codes)}</small></li>
           <li><strong>Analysis</strong><span>{value(assessment.setup_state)}</span><small>{reasonText(assessment.reason_codes)}</small></li>
-          <li><strong>Strategy score</strong><span>{assessment.confidence_score ?? 'unavailable'}</span><small>{reasonText(assessment.reason_codes)}</small>
+          <li><strong>Strategy score</strong><span>{assessment.confidence_score ?? 'unavailable'}</span>
             <details className="workspace-inline-details"><summary>Six-factor breakdown</summary>            <div className="workspace-factors">{factors.map(name => {
               const factor = assessment.evidence.find(item => item.factor === name);
               return <span key={name}>{name}: {factor ? `${factor.score} / ${factor.maximum_score} · ${factor.assessment}` : 'unavailable'}</span>;
@@ -378,17 +397,17 @@ export const WorkspacePage: React.FC<Props> = ({
           </li>
           <li><strong>Risk</strong><span>{value(assessment.risk_authorization.status)}</span><small>{reasonText(assessment.risk_authorization.reason_codes)}</small></li>
           <li><strong>Execution policy</strong><span>{value(assessment.execution_authorization.status)}</span><small>{reasonText(assessment.execution_authorization.reason_codes)}</small></li>
-          <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>GET /watchlist/cap-usage · observed {capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
-          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>GET /brokers/status · {brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
+          <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>{internalDetails ? 'GET /watchlist/cap-usage · observed ' : 'Observed '}{capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
+          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>{internalDetails && 'GET /brokers/status · '}{brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
         </ol></>}
-        <details className="workspace-inline-details"><summary>Safety evidence</summary>        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div></details>
+        {internalDetails && <details className="workspace-inline-details"><summary>Safety evidence</summary>        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div></details>}
       </Panel>
       <Panel title="Weltrade terminal" source="Direct MT5 observation · execution disabled" state={terminalState} observed={terminal?.observed_at} className="workspace-terminal">
         <div className="workspace-supervisor" role="status" aria-label="Execution supervisor evidence" data-state={supervisorFresh && executionSupervisor?.process_alive && ['RUNNING', 'STARTING', 'BLOCKED'].includes(supervisorState) ? 'LIVE' : supervisorState}>
           <strong>Guarded demo supervisor · {supervisorState}</strong>
           <span>Heartbeat {formatTime(executionSupervisor?.updated_at)} · age {formatAge(executionSupervisor?.updated_at)} · cycle {executionSupervisor?.cycle_number ?? 'unknown'}</span>
           <span>Process {executionSupervisor ? executionSupervisor.process_alive ? 'alive' : 'not alive / unverified' : 'unknown'} · stale {supervisorFresh ? 'No' : 'Yes'}</span>
-          <small>Read-only monitoring evidence. Observation API permissions are separate; this does not authorize orders.</small>
+          <small>Read-only evidence; does not authorize orders.</small>
         </div>
         {!terminal || terminal.state !== 'CONNECTED' ? <p className="workspace-terminal-disconnected">
           {initialTerminalLoading ? 'Checking Weltrade terminal...' : terminalObservation?.error || terminal?.error ? 'Terminal unavailable - see Notifications' : 'Terminal disconnected - no current account or market values'}
@@ -398,10 +417,11 @@ export const WorkspacePage: React.FC<Props> = ({
             <span>Balance<strong>{terminal.balance == null ? '—' : `${terminal.balance.toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
             <span>Equity<strong>{terminal.equity == null ? '—' : `${terminal.equity.toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
             <span>Margin / free<strong>{terminal.margin == null ? '—' : `${terminal.margin.toLocaleString()} / ${(terminal.free_margin ?? 0).toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
-            <span>Account / expert / terminal permission<strong>{[terminal.account_trading_allowed, terminal.expert_trading_allowed, terminal.terminal_trading_allowed].map(value => value == null ? 'Unknown' : value ? 'Yes' : 'No').join(' / ')} · API {terminal.trade_api_disabled == null ? 'unknown' : terminal.trade_api_disabled ? 'disabled' : 'enabled'}</strong></span>
-            <span>Observation API orders<strong>{terminal.execution_enabled ? 'Enabled' : 'Disabled'}</strong><small>This permission applies to the observation API only.</small></span>
-            <span>Guarded demo supervisor<strong>{supervisorState}</strong><small>Heartbeat {formatTime(executionSupervisor?.updated_at)} · age {formatAge(executionSupervisor?.updated_at)} · cycle {executionSupervisor?.cycle_number ?? "unknown"}. Process {executionSupervisor?.process_alive ? "alive" : "unverified"}. This is monitoring evidence, not order authorization.</small></span>
-            <span>Daily research target · 20%<strong>{typeof terminal.balance === 'number' && Number.isFinite(terminal.balance) ? `${(terminal.balance * .2).toFixed(2)} ${terminal.currency} at current balance` : 'Awaiting verified balance'}</strong><small>Aspirational target. Daily starting balance is not yet captured. Existing risk limits apply; no forced trades.</small></span>
+            <span>Trading permissions<strong className="workspace-permissions">{tradingPermissions.map(([label, allowed]) => <em key={label} data-allowed={allowed == null ? 'unknown' : allowed ? 'yes' : 'no'}>{`${allowed == null ? '·' : allowed ? '✓' : '✗'} ${label}`}</em>)}</strong></span>
+            <span>Observation API orders<strong>{terminal.execution_enabled ? 'Enabled' : 'Disabled'}</strong><small>Observation API only</small></span>
+            <span>Daily research target · 20%<strong>{terminal.daily_accounting ? `${terminal.daily_accounting.advisory_target_amount.toFixed(2)} ${terminal.daily_accounting.currency}` : 'Awaiting complete daily broker history'}</strong><small>Existing risk limits apply · no forced trades</small></span>
+            <span>Starting balance · 00:00 UTC<strong>{terminal.daily_accounting ? `${terminal.daily_accounting.starting_balance.toFixed(2)} ${terminal.daily_accounting.currency}` : 'Unavailable'}</strong><small>Reconstructed from broker history</small></span>
+            <span>Realized net P&amp;L · UTC<strong>{terminal.daily_accounting ? `${terminal.daily_accounting.realized_net_pnl.toFixed(2)} ${terminal.daily_accounting.currency}` : 'Unavailable'}</strong><small>Excludes deposits &amp; floating P&amp;L</small></span>
           </div>
           <div className="workspace-terminal-observations">
             <div><span>Current tick · {terminal.tick?.symbol ?? selectedSymbol}</span><strong>{terminal.tick ? `${terminal.tick.bid} / ${terminal.tick.ask}` : 'Unavailable'}</strong><small>{terminal.tick ? `Terminal tick · ${formatTime(terminal.tick.time)}` : 'No current terminal tick'}</small></div>
@@ -419,6 +439,17 @@ export const WorkspacePage: React.FC<Props> = ({
       </Panel>
 
     </div>}
+
+    {!configurationOnly && <details className="workspace-details workspace-notes">
+      <summary>Metric definitions and platform notes</summary>
+      <ul className="workspace-notes-list">
+        <li><strong>Advisory target</strong> 20% of the reconstructed 00:00 UTC starting balance. Existing risk limits apply and no trades are forced.</li>
+        <li><strong>Starting balance</strong> reconstructed from complete broker balance movements for the current UTC day.</li>
+        <li><strong>Realized net P&amp;L</strong> includes trading fees; excludes deposits, withdrawals and floating P&amp;L.</li>
+        <li><strong>Observation API orders</strong> is a separate permission from broker execution; read-only monitoring does not authorize orders.</li>
+        <li><strong>PainX research</strong> validates with timestamp and partition audits; batch job activity is not reported by this API.</li>
+      </ul>
+    </details>}
 
     {configurationOnly && <details className="workspace-details workspace-more-details">
       <summary>Watchlist, research and operational details</summary>
@@ -458,7 +489,7 @@ export const WorkspacePage: React.FC<Props> = ({
       </Panel>
       <Panel title="PainX research" source="GET /monitoring/offline · separate research status" state={monitoring.data?.research_status ? 'LIVE' : 'UNAVAILABLE'}>
         {monitoring.data?.research_status
-          ? <><p><strong>{monitoring.data.research_status.status.replace(/_/g, ' ')}</strong></p><p>{monitoring.data.research_status.presentation_rule}</p><p>September 27 research validation pending timestamp and partition audit. Batch job activity is not reported by this API.</p><small>Execution authority: {monitoring.data.research_status.execution_authority ?? 'NONE_RESEARCH_ONLY'}</small></>
+          ? <><p><strong>{monitoring.data.research_status.status.replace(/_/g, ' ')}</strong></p><p>{monitoring.data.research_status.presentation_rule}</p><small>Execution authority: {monitoring.data.research_status.execution_authority ?? 'NONE_RESEARCH_ONLY'}</small></>
           : <p>Research status unavailable.</p>}
       </Panel>
       <Panel title="Daily digest" source="GET /notifications/status · digest telemetry" state={notificationData ? notificationState : 'UNAVAILABLE'} observed={notificationData?.observed_at}>
@@ -486,7 +517,7 @@ export const WorkspacePage: React.FC<Props> = ({
             {!aiDocked && <button ref={aiClose} type="button" className="workspace-ai-close" aria-label="Close assistant" onClick={closeAi}><X size={16} /></button>}
           </div>
         </header>
-        <p className="workspace-ai-desc">{assistantStatus?.data?.context_mode === 'generic' ? 'Generic prompts only. Workspace, account and market evidence stays local. Each question is independent.' : 'Explains the supplied Workspace evidence. It cannot approve risk, broker status or execution.'}</p>
+        <p className="workspace-ai-desc">{assistantStatus?.data?.context_mode === 'generic' ? 'Generic prompts only. Workspace, account and market evidence stays local. Each question is independent.' : 'Explains supplied evidence. Cannot approve risk, broker status or execution.'}</p>
         {assistantState === 'READY'
           ? <div className="workspace-ai-meta">
               <span className="workspace-ai-chip"><span className="workspace-ai-chip-dot" aria-hidden="true" />{assistantStatus?.data?.provider ?? 'unknown'}</span>
@@ -540,5 +571,5 @@ export const WorkspacePage: React.FC<Props> = ({
         <nav aria-label="Pages">{filteredDestinations.map(item => <button type="button" key={item.tab} onClick={() => navigate(item.tab)}>{item.label}</button>)}</nav>
         <button type="button" onClick={closePalette}>Close navigation</button>
       </div></div>}
-  </PageRoot>;
+  </PageRoot></InternalDetailsContext.Provider>;
 };

@@ -18,6 +18,7 @@ import { WorkspacePage } from './pages/WorkspacePage';
 import { SyntXMarketsPage } from './pages/SyntXMarketsPage';
 import { jqeApi } from './services/api';
 import { settleBounded } from './services/settleBounded';
+import { ObservationSchedule } from './services/observationSchedule';
 import {
   SystemStatusResponse,
   MarketSummaryResponse,
@@ -45,6 +46,7 @@ import {
 } from './types/api';
 import { useInterval } from './hooks/useApi';
 import { deriveTelemetryLifecycle, isOlderAssessment, validateOfflineTelemetry } from './services/telemetryLifecycle';
+import { QuickTour } from './components/QuickTour';
 import { RefreshCw } from 'lucide-react';
 
 const workspaceProfile = [
@@ -60,7 +62,7 @@ const legacyProfile = [
   'assistantStatus',
 ] as const;
 
-export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onSignOut?: () => void; onAdmin?: () => void }> = ({ authenticated = false, workstation = false, onSignOut, onAdmin }) => {
+export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; admin?: boolean; onSignOut?: () => void; onAdmin?: () => void }> = ({ authenticated = false, workstation = false, admin = false, onSignOut, onAdmin }) => {
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
   const [siteTheme, setSiteTheme] = useState<'light' | 'dark'>(() => {
     try { return window.localStorage.getItem('jqe-site-theme') === 'dark' ? 'dark' : 'light'; }
@@ -127,9 +129,11 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
   const abortRef = useRef<AbortController | null>(null);
 
   const lastRefreshContext = useRef<{ tab: TabType; symbol: string; timeframe: string } | null>(null);
+  const observationSchedule = useRef(new ObservationSchedule());
 
   const fetchAllData = useCallback(async (replaceInFlight = false, resetData = false) => {
     if (inFlightRef.current && !replaceInFlight) return;
+    if (!replaceInFlight && document.visibilityState === 'hidden') return;
     if (replaceInFlight) abortRef.current?.abort();
     const requestId = ++requestIdRef.current;
     const controller = new AbortController();
@@ -141,9 +145,12 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
     const marketOnly = resetData && activeTab === 'workspace' && previousContext?.tab === 'workspace'
       && (previousContext.symbol !== requestedSymbol || previousContext.timeframe !== requestedTimeframe);
     lastRefreshContext.current = { tab: activeTab, symbol: requestedSymbol, timeframe: requestedTimeframe };
-    const names: readonly (keyof Resources)[] = marketOnly
+    const profile: readonly (keyof Resources)[] = marketOnly
       ? ['activeAnalysis', 'terminalObservation', 'risk']
       : activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+    const names = profile.filter(name => replaceInFlight || activeTab !== 'workspace'
+      || observationSchedule.current.due(name, Date.now()));
+    if (!names.length) { inFlightRef.current = false; return; }
     const requestFor = (name: keyof Resources): Promise<unknown> => {
       switch (name) {
         case 'system': return jqeApi.getSystemStatus(controller.signal);
@@ -184,7 +191,23 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
 
     try {
       const results = await settleBounded(names.map(name => async () => {
-        const result = await requestFor(name);
+        let result: unknown;
+        try {
+          result = await requestFor(name);
+          if (!controller.signal.aborted && requestId === requestIdRef.current)
+            observationSchedule.current.completed(name, Date.now(), true);
+        } catch (error) {
+          if (!controller.signal.aborted && requestId === requestIdRef.current) {
+            observationSchedule.current.completed(name, Date.now(), false);
+            // Do not conceal a failed chart or heartbeat behind slower ancillary work.
+            setResources(previous => ({ ...previous, [name]: {
+              ...previous[name], loading: false,
+              error: error instanceof Error ? error.message : String(error),
+              stale: previous[name].data !== null,
+            } }));
+          }
+          throw error;
+        }
         // Publish market-sensitive data promptly; unrelated monitoring may be slow.
         if (['activeAnalysis', 'terminalObservation', 'observationHealth'].includes(name)
             && requestId === requestIdRef.current && !controller.signal.aborted) {
@@ -193,7 +216,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
           } }));
         }
         return result;
-      }), controller.signal);
+      }), controller.signal, 3);
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       if (selectedSymbol !== requestedSymbol || selectedTimeframe !== requestedTimeframe) return;
 
@@ -279,7 +302,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
     return () => abortRef.current?.abort();
   }, [fetchAllData]);
 
-  // Auto-refresh telemetry every 4 seconds
+  // Check due resources; workspace cadence/backoff prevents full-batch polling.
   useInterval(() => {
     fetchAllData(false, false);
   }, 4000);
@@ -319,9 +342,10 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
     : null;
   const feedEntries = Object.entries(resources);
   const feedIssues = feedEntries.filter(([, resource]) => resource.error || (resource.stale && !resource.loading) || !resource.data).length;
+  const internalDetails = workstation || admin;
 
   const renderWorkspace = (configurationOnly = false) => {
-    return <WorkspacePage configurationOnly={configurationOnly} hosted={authenticated}
+    return <WorkspacePage configurationOnly={configurationOnly} hosted={authenticated} internalDetails={internalDetails}
           broker={resources.brokerStatus}
           safety={resources.safety}
           risk={resources.risk}
@@ -378,6 +402,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
             monitoringData={monitoringData}
             backendOffline={resources.monitoring.error !== null && monitoringData === null}
             telemetryLifecycle={telemetryLifecycle}
+            internalDetails={internalDetails}
             onPaperRecorded={() => fetchAllData(true, false)}
             loading={loading}
             selectedSymbol={displaySymbol}
@@ -541,6 +566,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
         {/* Dynamic Page View */}
         {renderActiveTab()}
       </div>
+      {activeTab === 'workspace' && <QuickTour />}
     </div>
   );
 };

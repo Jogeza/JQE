@@ -77,8 +77,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
     window.matchMedia('(min-width: 769px) and (max-width: 1200px)').matches
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [headerRetracted, setHeaderRetracted] = useState(false);
   const drawer = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const headerScroll = useRef({ scroller: null as Element | null, y: 0, delta: 0, retracted: false });
+
+  useEffect(() => {
+    const tracking = headerScroll.current;
+    const apply = (next: boolean) => {
+      if (tracking.retracted === next) return;
+      tracking.retracted = next;
+      setHeaderRetracted(next);
+    };
+    // Scroll events do not bubble, so listen during capture to observe the
+    // workspace and dashboard scroll containers without touching their state.
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      const scroller = target instanceof Element && target.matches('.workspace-page, .dashboard-page-container')
+        ? target : null;
+      if (!scroller) return;
+      if (tracking.scroller !== scroller) { tracking.scroller = scroller; tracking.y = scroller.scrollTop; tracking.delta = 0; }
+      const y = scroller.scrollTop;
+      const step = y - tracking.y;
+      tracking.y = y;
+      if (y <= 16) { tracking.delta = 0; apply(false); return; }
+      tracking.delta += step;
+      if (tracking.delta >= 48) { tracking.delta = 0; apply(true); }
+      else if (tracking.delta <= -48) { tracking.delta = 0; apply(false); }
+    };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+  }, []);
+
+  useEffect(() => { headerScroll.current.retracted = false; setHeaderRetracted(false); }, [activeTab]);
 
   const navItems: NavItem[] = [
     { id: 'workspace',   label: 'Workspace',    icon: LayoutGrid,       group: 'Overview' },
@@ -197,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </aside>
 
       {/* ── Mobile header ────────────────────────────────────────── */}
-      <div className="mobile-navigation-header">
+      <div className={`mobile-navigation-header${headerRetracted ? ' retracted' : ''}`}>
         <span className="mobile-brand-lockup">
           <span className="legacy-jqe-mark"><Activity size={17} aria-hidden="true" /></span><span className="jqe-mark">JQE</span>
         </span>

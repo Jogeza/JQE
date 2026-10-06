@@ -23,13 +23,17 @@ interface MarketChartProps {
   indicators?: IndicatorVisibility;
   height?: number;
   fibonacciLevels?: FibonacciLevel[];
+  compactPriceScale?: boolean;
+  onToggleCompactPriceScale?: () => void;
 }
 
 export const MarketChart: React.FC<MarketChartProps> = ({
   symbol, timeframe, candles, signal = null, setup = null, priceDecimals, loading = false, error = null, dataStatus, markers = [], volumeProfile = null, indicators, height = 460, fibonacciLevels = [],
+  compactPriceScale: controlledCompactPriceScale, onToggleCompactPriceScale,
 }) => {
-  const [compactPriceScale, setCompactPriceScale] = useState(false);
-  const [priceScaleSide, setPriceScaleSide] = useState<'left' | 'right'>('left');
+  const [internalCompactPriceScale, setInternalCompactPriceScale] = useState(false);
+  const compactPriceScale = controlledCompactPriceScale ?? internalCompactPriceScale;
+  const toggleCompactPriceScale = onToggleCompactPriceScale ?? (() => setInternalCompactPriceScale(value => !value));
   return (
   <div className="quant-panel chart-panel" data-state={error ? 'ERROR' : loading ? 'LOADING' : candles.length === 0 || dataStatus === 'UNAVAILABLE' ? 'UNAVAILABLE' : dataStatus === 'CURRENT' ? 'LIVE' : dataStatus === 'CACHED' ? 'STALE' : 'UNKNOWN'} style={{ minHeight: '360px' }}>
     <div className="quant-panel-header">
@@ -45,10 +49,9 @@ export const MarketChart: React.FC<MarketChartProps> = ({
       {dataStatus === 'CACHED' && <span className="badge badge-neutral">CACHED · STALE · DEGRADED</span>}
       {dataStatus === 'UNKNOWN' && <span className="badge badge-neutral">FRESHNESS UNKNOWN</span>}
       {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
-      <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
-        title="Use smaller price labels and a narrower price axis"
-        onClick={() => setCompactPriceScale(value => !value)}>{compactPriceScale ? 'Full prices' : 'Compact prices'}</button>
-      <button type="button" className="chart-density-toggle" aria-pressed={priceScaleSide === 'left'} onClick={() => setPriceScaleSide(side => side === 'left' ? 'right' : 'left')}>Prices: {priceScaleSide}</button>
+      {!onToggleCompactPriceScale && <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
+        title="Use smaller price labels and a narrower right price axis"
+        onClick={toggleCompactPriceScale}>{compactPriceScale ? 'Full prices' : 'Compact prices'}</button>}
       <span className="badge badge-neutral" role="status">{error ? 'ERROR · retained data' : loading ? 'LOADING' : dataStatus === 'CURRENT' ? 'LIVE' : dataStatus === 'CACHED' ? 'STALE' : dataStatus ?? 'UNKNOWN'}</span>
     </div>
     {loading && candles.length === 0 ? (
@@ -58,7 +61,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
     ) : candles.length === 0 ? (
       <ChartState>NO CANDLE DATA AVAILABLE</ChartState>
     ) : (
-      <JQEChart symbol={symbol} timeframe={timeframe} drawingTools candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} compactPriceScale={compactPriceScale} priceScaleSide={priceScaleSide} />
+      <JQEChart symbol={symbol} timeframe={timeframe} drawingTools candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} compactPriceScale={compactPriceScale} />
     )}
   </div>
   );

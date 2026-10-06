@@ -145,11 +145,11 @@ export const MarketSetupPanel: React.FC<MarketSetupPanelProps> = ({ setup, loadi
                 <strong className="font-mono">{setup.direction === 'NO_TRADE' ? 'None (No Trade)' : price(setup.entry_price)}</strong>
               </div>
               <div>
-                <span>Stop</span>
+                <span>SL</span>
                 <strong className="font-mono">{setup.direction === 'NO_TRADE' ? 'None (No Trade)' : price(setup.stop_loss)}</strong>
               </div>
               <div>
-                <span>Target</span>
+                <span>TP</span>
                 <strong className="font-mono">{setup.direction === 'NO_TRADE' ? 'None (No Trade)' : price(setup.targets[0] ?? null)}</strong>
               </div>
               <div>

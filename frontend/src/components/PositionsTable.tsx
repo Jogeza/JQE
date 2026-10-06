@@ -35,8 +35,8 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
               <th>Volume</th>
               <th>Open Price</th>
               <th>Current Price</th>
-              <th>Stop Loss</th>
-              <th>Take Profit</th>
+              <th title="Stop loss">SL</th>
+              <th title="Take profit">TP</th>
               <th style={{ textAlign: 'right' }}>Unrealized P&L</th>
             </tr>
           </thead>

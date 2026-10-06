@@ -227,8 +227,8 @@ export interface ActiveMarketContext {
   strategy_evaluation_time: string;
   setup_creation_time: string;
   setup_expiry_time: string;
-  data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'UNAVAILABLE';
-  cache_status: 'REFRESHED' | 'FRESH_CACHE' | 'CACHE_ONLY' | 'EMPTY';
+  data_source: 'SIMULATION' | 'DERIV_PUBLIC' | 'BROKER' | 'UNAVAILABLE';
+  cache_status: 'REFRESHED' | 'FRESH_CACHE' | 'CACHE_ONLY' | 'EMPTY' | 'CACHE_WRITE_FAILED';
   synchronization_state: 'SYNCHRONIZED' | 'STALE' | 'FORMING' | 'UNKNOWN';
   reason_codes: string[];
   latest_closed_candle_at: string | null;
@@ -335,6 +335,13 @@ export interface ExecutionStateResponse {
 }
 
 export interface TerminalObservationResponse {
+  daily_accounting?: {
+    utc_date: string; starting_balance: number; current_balance: number;
+    realized_net_pnl: number; net_funding: number; currency: string;
+    advisory_target_amount: number; observed_at: string;
+    starting_balance_method: string; day_boundary: string;
+  } | null;
+  daily_accounting_error?: string | null;
   state: 'CONNECTED' | 'DISCONNECTED' | 'UNAVAILABLE';
   broker: string;
   observed_at: string;

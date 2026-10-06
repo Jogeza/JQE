@@ -35,7 +35,7 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
 
   return (
     <div className="dashboard-page-container markets-page">
-      <div className="editorial-heading"><div><span className="editorial-kicker">Market observatory</span><h1>{symbol}<span>.</span></h1></div><p>{timeframe}<small>Latest market snapshot</small></p></div>
+      <header className="markets-heading"><div><span className="editorial-kicker">Weltrade markets</span><h1>{symbol}</h1></div><span className="markets-timeframe">{timeframe}<small>Closed-candle analysis</small></span></header>
       <div role="status" style={{ display: 'flex', gap: '7px', alignItems: 'center', minHeight: '22px' }}>
         <span className={`badge ${candles?.degraded ? 'badge-neutral' : 'badge-cyan'}`}>
           {candles?.market_data_source?.replace('_', ' ') ?? 'UNAVAILABLE'}
@@ -47,6 +47,7 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
       </div>
       {/* Header Snapshot Row */}
       <div
+        className="markets-snapshot"
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
@@ -137,11 +138,11 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
           <strong>{levelsValid && plan?.entry != null ? formatInstrumentPrice(plan.entry, candles?.price_decimals) : '—'}</strong>
         </div>
         <div className="market-strategy-level market-strategy-stop">
-          <span>Stop loss</span>
+          <span>SL</span>
           <strong>{levelsValid && plan?.stop_loss != null ? formatInstrumentPrice(plan.stop_loss, candles?.price_decimals) : '—'}</strong>
         </div>
         <div className="market-strategy-level market-strategy-target">
-          <span>Take profit</span>
+          <span>TP</span>
           <strong>{levelsValid && plan?.take_profit != null ? formatInstrumentPrice(plan.take_profit, candles?.price_decimals) : '—'}</strong>
         </div>
         <div className="market-strategy-validity">

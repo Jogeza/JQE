@@ -23,6 +23,31 @@
   border-radius: 4px;
 }
 
+.chart-drawing-selection {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  right: 65px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100% - 75px);
+  background: #101723ed;
+  color: #e5edf8;
+  border: 1px solid #38bdf84d;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 10px;
+}
+.chart-drawing-selection span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-drawing-selection button { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 30px; padding: 3px 9px; border: 0; border-radius: 4px; background: #ffffff12; color: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
+.chart-drawing-selection button:hover { background: #38bdf826; color: #38bdf8; }
+.chart-drawing-selection button[aria-label="Delete selected drawing"] { color: #f87171; }
+.chart-drawing-selection button[aria-label="Delete selected drawing"]:hover { background: #f8717126; color: #f87171; }
+.chart-drawing-selection .drawing-deselect { padding: 3px 6px; }
+
 @media (max-width: 768px) {
   .chart-drawing-host { margin-left: 0; padding-bottom: 54px; }
   .chart-drawing-rail { left: 0; top: auto; bottom: 0; width: 100%; height: 50px; box-sizing: border-box; flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding: 3px; border-right: 0; border-top: 1px solid var(--border-card); }
@@ -30,4 +55,6 @@
   .chart-drawing-rail input[type=color] { width: 44px; height: 40px; }
   .drawing-divider { width: 1px; height: 24px; border-left: 1px solid #ffffff22; margin: 0 3px; }
   .chart-drawing-session-status { bottom: 56px; left: 5px; }
+  .chart-drawing-selection { left: 5px; right: 52px; max-width: calc(100% - 60px); }
+  .chart-drawing-selection button { min-height: 36px; padding: 4px 10px; }
 }

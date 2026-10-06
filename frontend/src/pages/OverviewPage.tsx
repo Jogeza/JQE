@@ -65,6 +65,7 @@ interface OverviewPageProps {
   candleError: string | null;
   telemetryStale: { system: boolean; strategy: boolean; risk: boolean };
   brokerStatus?: BrokerStatusResponse | null;
+  internalDetails?: boolean;
 }
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({
@@ -98,6 +99,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   candleError,
   telemetryStale,
   brokerStatus,
+  internalDetails = false,
 }) => {
   const assessmentIsLive = telemetryLifecycle.state === 'LIVE';
   const assessmentIsStale = !assessmentIsLive;
@@ -123,7 +125,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}<small>Account, market & system health</small></p>
       </div>
 
-      <details className="dashboard-details">
+      {internalDetails && <details className="dashboard-details">
       <summary>Connection and data provenance</summary>
       <TelemetryLifecyclePanel lifecycle={telemetryLifecycle} />
 
@@ -216,7 +218,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       </div>
 
       {/* Top Command Metric Grid */}
-      </details>
+      </details>}
       <div className="grid-metrics">
         <MetricCard
           label="Account Equity"

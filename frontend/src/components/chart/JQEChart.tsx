@@ -25,7 +25,6 @@ interface JQEChartProps {
   height?: number;
   fibonacciLevels?: FibonacciLevel[];
   compactPriceScale?: boolean;
-  priceScaleSide?: 'left' | 'right';
   drawingTools?: boolean;
   timeframe?: string;
 }
@@ -47,7 +46,6 @@ export const JQEChart: React.FC<JQEChartProps> = ({
   indicators = { ema50: true, ema200: true, rsi: true, volume: true },
   height = 460,
   fibonacciLevels = [], compactPriceScale = false,
-  priceScaleSide = 'right',
   drawingTools = false,
   timeframe = '',
 }) => {
@@ -65,7 +63,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
       layout: { background: { type: ColorType.Solid, color: palette.background }, textColor: palette.text, fontFamily: 'Poppins, sans-serif', attributionLogo: true, panes: { separatorColor: palette.axis, separatorHoverColor: palette.crosshair, enableResize: true } },
       grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
       crosshair: { mode: CrosshairMode.Normal, vertLine: { color: palette.crosshair, labelBackgroundColor: palette.accent }, horzLine: { color: palette.crosshair, labelBackgroundColor: palette.accent } },
-      rightPriceScale: { borderColor: palette.axis, minimumWidth: compactPriceScale ? 42 : 58 },
+      rightPriceScale: { borderColor: palette.axis, minimumWidth: compactPriceScale ? 40 : 58 },
       timeScale: { borderColor: palette.axis, timeVisible: true, secondsVisible: false, rightOffset: 4 },
       localization: { priceFormatter: (price: number) => price.toFixed(priceDecimals) },
     });
@@ -91,12 +89,10 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     const handles = handlesRef.current;
     if (!handles) return;
     handles.chart.applyOptions({
-      leftPriceScale: { visible: priceScaleSide === 'left', minimumWidth: compactPriceScale ? 42 : 58 },
-      rightPriceScale: { visible: priceScaleSide === 'right', minimumWidth: compactPriceScale ? 42 : 58 },
+      rightPriceScale: { minimumWidth: compactPriceScale ? 40 : 58 },
       layout: { fontSize: compactPriceScale ? 10 : 12 },
     });
-    [handles.candles, handles.ema50, handles.ema200, handles.rsi].forEach(series => series.applyOptions({priceScaleId: priceScaleSide}));
-  }, [compactPriceScale, priceScaleSide, priceDecimals, height]);
+  }, [compactPriceScale]);
 
   useEffect(() => {
     const handles = handlesRef.current;
@@ -129,12 +125,12 @@ export const JQEChart: React.FC<JQEChartProps> = ({
       }
       if (annotation.stopLoss !== null) {
         handles.priceLines.push(handles.candles.createPriceLine({
-          price: annotation.stopLoss, color: palette.bear, title: 'STOP LOSS', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+          price: annotation.stopLoss, color: palette.bear, title: 'SL', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
         }));
       }
       if (annotation.takeProfit !== null) {
         handles.priceLines.push(handles.candles.createPriceLine({
-          price: annotation.takeProfit, color: palette.bull, title: 'TAKE PROFIT', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
+          price: annotation.takeProfit, color: palette.bull, title: 'TP', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true,
         }));
       }
       if (annotation.levels) {

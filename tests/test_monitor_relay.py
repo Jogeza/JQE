@@ -24,14 +24,16 @@ def test_saturated_origin_queue_rejects_promptly_without_forwarding_extra_work(m
     async def run():
         transport = httpx.ASGITransport(app=create_app(lambda _: 'owner', fetch))
         async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
-            tasks = [asyncio.create_task(client.get('/api/v1/observation/health')) for _ in range(4)]
+            tasks = [asyncio.create_task(client.get(f'/api/v1/market/candles?symbol=S{index}')) for index in range(2)]
+            tasks.append(asyncio.create_task(client.get('/api/v1/market/active-analysis?symbol=S2')))
+            tasks.append(asyncio.create_task(client.get('/api/v1/observation/health')))
             try:
                 for _ in range(100):
                     if len(calls) == 4:
                         break
                     await asyncio.sleep(0.005)
                 assert len(calls) == 4
-                busy = await client.get('/api/v1/observation/health')
+                busy = await client.get('/api/v1/market/candles?symbol=extra')
                 assert busy.status_code == 503
                 assert busy.headers['retry-after'] == '2'
                 assert busy.headers['cache-control'] == 'no-store'
@@ -44,11 +46,139 @@ def test_saturated_origin_queue_rejects_promptly_without_forwarding_extra_work(m
     asyncio.run(run())
 
 
+def test_identical_concurrent_reads_share_work_but_never_cache_or_skip_auth():
+    import httpx
+    release = threading.Event()
+    calls = []
+    def fetch(path, query):
+        calls.append((path, query))
+        assert release.wait(3)
+        return b'{"state":"OBSERVED"}'
+    def verify(token):
+        if token != 'valid':
+            raise ValueError()
+        return 'owner'
+    async def run():
+        transport = httpx.ASGITransport(app=create_app(verify, fetch))
+        async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+            headers = {'Cf-Access-Jwt-Assertion': 'valid'}
+            tasks = [asyncio.create_task(client.get('/api/v1/observation/health', headers=headers)) for _ in range(8)]
+            try:
+                for _ in range(100):
+                    if calls:
+                        break
+                    await asyncio.sleep(0.005)
+                await asyncio.sleep(0.05)
+                assert len(calls) == 1
+                assert (await client.get('/api/v1/observation/health')).status_code == 403
+                tasks[0].cancel()
+                await asyncio.gather(tasks[0], return_exceptions=True)
+            finally:
+                release.set()
+            replies = await asyncio.gather(*tasks[1:])
+            assert all(reply.status_code == 200 and reply.headers['cache-control'] == 'no-store' for reply in replies)
+            assert len(calls) == 1
+            assert (await client.get('/api/v1/observation/health', headers=headers)).status_code == 200
+            assert len(calls) == 2
+    asyncio.run(run())
+
+
+def test_market_contention_preserves_one_of_four_origin_slots_for_health():
+    import httpx
+    release = threading.Event()
+    calls = []
+    def fetch(path, query):
+        calls.append(path)
+        if path != '/api/v1/observation/health':
+            assert release.wait(3)
+        return b'{"state":"OBSERVED"}'
+    async def run():
+        transport = httpx.ASGITransport(app=create_app(lambda _: 'owner', fetch))
+        async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+            tasks = [asyncio.create_task(client.get(f'/api/v1/market/candles?symbol=S{index}')) for index in range(2)]
+            tasks.append(asyncio.create_task(client.get('/api/v1/market/active-analysis?symbol=S2')))
+            try:
+                for _ in range(100):
+                    if len(calls) == 3:
+                        break
+                    await asyncio.sleep(0.005)
+                assert len(calls) == 3
+                assert (await client.get('/api/v1/observation/health')).status_code == 200
+                assert len(calls) == 4
+            finally:
+                release.set()
+                await asyncio.gather(*tasks)
+    asyncio.run(run())
+
+
+def test_background_contention_cannot_consume_the_chart_slot():
+    import httpx
+    release = threading.Event()
+    calls = []
+    def fetch(path, query):
+        calls.append(path)
+        if path != '/api/v1/market/active-analysis':
+            assert release.wait(3)
+        return b'{"state":"OBSERVED"}'
+    async def run():
+        transport = httpx.ASGITransport(app=create_app(lambda _: 'owner', fetch))
+        async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+            tasks = [asyncio.create_task(client.get(f'/api/v1/market/candles?symbol=S{index}')) for index in range(2)]
+            try:
+                for _ in range(100):
+                    if len(calls) == 2:
+                        break
+                    await asyncio.sleep(0.005)
+                assert len(calls) == 2
+                assert (await client.get('/api/v1/market/active-analysis?timeframe=M1')).status_code == 200
+                assert len(calls) == 3
+            finally:
+                release.set()
+                await asyncio.gather(*tasks)
+    asyncio.run(run())
+
+
 def test_missing_configuration_fails_closed(monkeypatch):
     for key in ("JQE_MONITOR_ISSUER", "JQE_MONITOR_AUDIENCE", "JQE_MONITOR_EMAIL"):
         monkeypatch.delenv(key, raising=False)
     with pytest.raises(ValueError):
         create_app()
+
+
+def test_coalescing_keeps_timeframes_separate_and_normalizes_query_order():
+    import httpx
+    release = threading.Event()
+    calls = []
+    def fetch(path, query):
+        calls.append(query)
+        assert release.wait(3)
+        return b'{"state":"OBSERVED"}'
+    async def run():
+        transport = httpx.ASGITransport(app=create_app(lambda _: 'owner', fetch))
+        async with httpx.AsyncClient(transport=transport, base_url='http://testserver') as client:
+            urls = ['/api/v1/market/candles?symbol=FX+Vol+20&timeframe=M1',
+                    '/api/v1/market/candles?timeframe=M1&symbol=FX%20Vol%2020',
+                    '/api/v1/market/candles?symbol=FX+Vol+20&timeframe=M5']
+            tasks = [asyncio.create_task(client.get(url)) for url in urls]
+            try:
+                for _ in range(100):
+                    if len(calls) == 2:
+                        break
+                    await asyncio.sleep(0.005)
+                await asyncio.sleep(0.05)
+                assert sorted(calls) == ['symbol=FX+Vol+20&timeframe=M1', 'symbol=FX+Vol+20&timeframe=M5']
+            finally:
+                release.set()
+            assert all(reply.status_code == 200 for reply in await asyncio.gather(*tasks))
+    asyncio.run(run())
+
+
+def test_failed_shared_work_is_evicted_and_can_recover():
+    fetch = Mock(side_effect=[OSError(), b'{"state":"OBSERVED"}'])
+    client = TestClient(create_app(lambda _: 'owner', fetch))
+    assert client.get('/api/v1/observation/health').status_code == 503
+    assert client.get('/api/v1/observation/health').status_code == 200
+    assert fetch.call_count == 2
 
 
 def test_authentication_and_routes_never_forward_mutations():

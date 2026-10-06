@@ -144,11 +144,42 @@ describe('App polling profiles', () => {
     expect(paths()).not.toContain(path);
   });
 
-  it('keeps two four-second ticks inside the connected endpoint allowlist with GET only', async () => {
+  it('avoids full workspace batches on four-second ticks and refreshes hot resources when due', async () => {
     await mount();
     await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
-    expect(paths()).toEqual([...allowed, ...allowed, ...allowed]);
+    expect(paths()).toEqual(allowed);
+    await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+    expect(paths().slice(allowed.length)).toEqual(allowed.filter(path => [
+      '/market/active-analysis', '/brokers/terminal-observation', '/observation/health',
+      '/risk', '/execution/safety', '/execution',
+    ].includes(path)));
     expect(calls.every(call => call.method === 'GET')).toBe(true);
+  });
+
+  it('pauses automatic polling in hidden tabs and resumes due work when visible', async () => {
+    await mount();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => { await vi.advanceTimersByTimeAsync(64000); });
+    expect(paths()).toEqual(allowed);
+    visibility.mockReturnValue('visible');
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths()).toEqual([...allowed, ...allowed]);
+    visibility.mockRestore();
+  });
+
+  it('backs off failed observations while allowing an immediate manual refresh', async () => {
+    rejectedPaths.add('/market/active-analysis');
+    await mount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(16000); });
+    expect(paths().filter(path => path === '/market/active-analysis')).toHaveLength(1);
+    const refresh = host.querySelector('button[aria-label="Retry data refresh"]') as HTMLButtonElement;
+    await act(async () => refresh.click());
+    expect(paths().filter(path => path === '/market/active-analysis')).toHaveLength(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(56000); });
+    expect(paths().filter(path => path === '/market/active-analysis')).toHaveLength(2);
+    rejectedPaths.clear();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().filter(path => path === '/market/active-analysis')).toHaveLength(3);
   });
 
   it('aborts Workspace and starts the full legacy profile on navigation', async () => {
@@ -173,7 +204,7 @@ describe('App polling profiles', () => {
     expect(legacySystem?.signal?.aborted).toBe(true);
     expect(paths().slice(before)).toEqual(allowed);
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
-    expect(paths().slice(before)).toEqual([...allowed, ...allowed]);
+    expect(paths().slice(before)).toEqual(allowed);
     expect(host.querySelector('[aria-label="Market chart"]')?.textContent).not.toContain('Rendered chart');
   });
 
@@ -239,8 +270,8 @@ describe('App polling profiles', () => {
 
   it('accounts for StrictMode by aborting its first request batch and making one replacement batch', async () => {
     await mount(true);
-    expect(paths()).toEqual([...allowed.slice(0, 4), ...allowed]);
-    expect(calls.slice(0, 4).every(call => call.signal?.aborted)).toBe(true);
-    expect(calls.slice(4).every(call => !call.signal?.aborted)).toBe(true);
+    expect(paths()).toEqual([...allowed.slice(0, 3), ...allowed]);
+    expect(calls.slice(0, 3).every(call => call.signal?.aborted)).toBe(true);
+    expect(calls.slice(3).every(call => !call.signal?.aborted)).toBe(true);
   });
 });

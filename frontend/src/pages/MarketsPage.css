@@ -96,3 +96,13 @@
   .market-strategy-level > strong { font-size: 14px; }
   .markets-page .chart-panel [aria-label$="candlestick chart"] { height: 480px !important; }
 }
+.markets-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.markets-heading h1 { margin: 4px 0 0; font-size: clamp(20px, 3vw, 28px); line-height: 1.2; }
+.markets-timeframe { display: grid; text-align: right; gap: 3px; font-weight: 700; }
+.markets-timeframe small { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.markets-page .market-strategy-strip { padding: 10px 12px; gap: 12px; border-radius: 8px; }
+.markets-page .market-strategy-decision > strong { font-size: 20px; }
+.markets-snapshot { min-width: 0; }
+@media (max-width: 600px) {
+  .markets-page .markets-snapshot { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

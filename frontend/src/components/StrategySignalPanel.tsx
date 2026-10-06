@@ -166,11 +166,11 @@ export const StrategySignalPanel: React.FC<StrategySignalPanelProps> = ({ signal
                 <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plan.entry === null ? '—' : formatInstrumentPrice(plan.entry, signal?.price_decimals)}</div>
               </div>
               <div>
-                <span style={{ color: 'var(--quant-red)', fontSize: '10px' }}>STOP LOSS</span>
+                <span style={{ color: 'var(--quant-red)', fontSize: '10px' }}>SL</span>
                 <div style={{ fontWeight: 600, color: 'var(--quant-red)' }}>{plan.stop_loss === null ? '—' : formatInstrumentPrice(plan.stop_loss, signal?.price_decimals)}</div>
               </div>
               <div>
-                <span style={{ color: 'var(--quant-green)', fontSize: '10px' }}>TAKE PROFIT</span>
+                <span style={{ color: 'var(--quant-green)', fontSize: '10px' }}>TP</span>
                 <div style={{ fontWeight: 600, color: 'var(--quant-green)' }}>{plan.take_profit === null ? '—' : formatInstrumentPrice(plan.take_profit, signal?.price_decimals)}</div>
               </div>
             </div>
