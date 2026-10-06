@@ -439,6 +439,8 @@ export interface OfflineMonitoringResponse {
 }
 
 export interface ObservationHealthResponse {
+  execution_supervisor?: { state: string; updated_at: string | null; age_seconds: number | null;
+    stale: boolean; process_alive: boolean; execution_enabled: boolean; cycle_number: number | null; max_age_seconds: number };
   running: boolean;
   healthy: boolean;
   updated_at: string;

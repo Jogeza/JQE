@@ -72,6 +72,11 @@ export const WorkspacePage: React.FC<Props> = ({
   liveExecution, onExecuteLiveCycle,
   selectedSymbol, selectedTimeframe, onMarketChange, lifecycle, onNavigate,
 }) => {
+  const [evidenceClock, setEvidenceClock] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setEvidenceClock(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [aiOpen, setAiOpen] = useState(false);
   const [wideWorkspace, setWideWorkspace] = useState(() => window.innerWidth >= 900);
   useEffect(() => {
@@ -190,6 +195,10 @@ export const WorkspacePage: React.FC<Props> = ({
   const healthValid = validHealth(observationHealth.data);
   const healthState = observationHealth.data && !healthValid ? 'UNAVAILABLE'
     : observationState(observationHealth, observationHealth.data?.updated_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.observationHealth);
+  const executionSupervisor = observationHealth.data?.execution_supervisor;
+  const supervisorAge = executionSupervisor?.updated_at ? (evidenceClock - Date.parse(executionSupervisor.updated_at)) / 1000 : null;
+  const supervisorFresh = !observationHealth.error && !observationHealth.stale && executionSupervisor?.stale === false && supervisorAge !== null && supervisorAge >= 0 && supervisorAge <= executionSupervisor.max_age_seconds;
+  const supervisorState = !executionSupervisor ? 'UNAVAILABLE' : !supervisorFresh ? 'STALE' : executionSupervisor.state;
   const health = healthValid && healthState === 'LIVE' ? observationHealth.data : null;
   const watchlistState = watchlist.data && !validWatchlist(watchlist.data) ? 'UNAVAILABLE' : panelState(watchlist);
   const capState = caps.data && !validCaps(caps.data) ? 'UNAVAILABLE'
@@ -385,7 +394,7 @@ export const WorkspacePage: React.FC<Props> = ({
             <span>Margin / free<strong>{terminal.margin == null ? '—' : `${terminal.margin.toLocaleString()} / ${(terminal.free_margin ?? 0).toLocaleString()} ${terminal.currency ?? ''}`}</strong></span>
             <span>Account / expert / terminal permission<strong>{[terminal.account_trading_allowed, terminal.expert_trading_allowed, terminal.terminal_trading_allowed].map(value => value == null ? 'Unknown' : value ? 'Yes' : 'No').join(' / ')} · API {terminal.trade_api_disabled == null ? 'unknown' : terminal.trade_api_disabled ? 'disabled' : 'enabled'}</strong></span>
             <span>Observation API orders<strong>{terminal.execution_enabled ? 'Enabled' : 'Disabled'}</strong><small>This permission applies to the observation API only.</small></span>
-            <span>Guarded demo supervisor<strong>Status not supplied here</strong><small>The separate PC process evaluates trades through the canonical execution path. API order permissions do not report its status.</small></span>
+            <span>Guarded demo supervisor<strong>{supervisorState}</strong><small>Heartbeat {formatTime(executionSupervisor?.updated_at)} · age {formatAge(executionSupervisor?.updated_at)} · cycle {executionSupervisor?.cycle_number ?? "unknown"}. Process {executionSupervisor?.process_alive ? "alive" : "unverified"}. This is monitoring evidence, not order authorization.</small></span>
             <span>Daily research target · 20%<strong>{typeof terminal.balance === 'number' && Number.isFinite(terminal.balance) ? `${(terminal.balance * .2).toFixed(2)} ${terminal.currency} at current balance` : 'Awaiting verified balance'}</strong><small>Aspirational target. Daily starting balance is not yet captured. Existing risk limits apply; no forced trades.</small></span>
           </div>
           <div className="workspace-terminal-observations">

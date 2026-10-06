@@ -164,17 +164,27 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; onS
       const next = { ...previous };
       names.forEach(name => {
         const resource = previous[name] as ResourceState<unknown>;
-        const clear = resetData && ['market', 'candles', 'strategy', 'risk', 'setup'].includes(name);
+        const clear = resetData && ['market', 'candles', 'strategy', 'risk', 'setup', 'activeAnalysis', 'terminalObservation'].includes(name);
         next[name] = {
           ...resource, data: clear ? null : resource.data, loading: true,
-          stale: clear ? false : resource.stale,
+          stale: clear ? false : resource.stale, error: clear ? null : resource.error,
         } as never;
       });
       return next;
     });
 
     try {
-      const results = await Promise.allSettled(names.map(requestFor));
+      const results = await Promise.allSettled(names.map(async name => {
+        const result = await requestFor(name);
+        // Publish market-sensitive data promptly; unrelated monitoring may be slow.
+        if (['activeAnalysis', 'terminalObservation'].includes(name)
+            && requestId === requestIdRef.current && !controller.signal.aborted) {
+          setResources(previous => ({ ...previous, [name]: {
+            data: result, loading: false, error: null, lastUpdated: new Date(), stale: false,
+          } }));
+        }
+        return result;
+      }));
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       if (selectedSymbol !== requestedSymbol || selectedTimeframe !== requestedTimeframe) return;
 

@@ -98,6 +98,26 @@ describe('App polling profiles', () => {
     expect(host.querySelector('[role="status"]')?.textContent).not.toContain('OFFLINE SIMULATION');
   });
 
+  it('updates timeframe and terminal evidence while unrelated monitoring is pending', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      urls.push(url);
+      const path = new URL(url, 'http://localhost').pathname.replace('/api/v1', '');
+      if (path === '/notifications/status') return new Promise(() => {});
+      const body = path === '/brokers/terminal-observation'
+        ? { state: 'CONNECTED', environment: 'demo', positions: [], recent_trades: [], execution_enabled: false }
+        : bodyFor(path);
+      return Promise.resolve({ ok: true, json: async () => body });
+    }));
+    await mount();
+    expect(host.querySelector('[aria-label="Weltrade terminal"]')?.textContent).toContain('Guarded demo supervisor');
+    const button = Array.from(host.querySelectorAll('.workspace-chart-controls button')).find(button => button.textContent === 'M1') as HTMLButtonElement;
+    await act(async () => button.click());
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(urls.some(url => url.includes('/market/active-analysis') && url.includes('timeframe=M1'))).toBe(true);
+    expect(host.querySelector('[aria-label="Weltrade terminal"]')?.textContent).toContain('Guarded demo supervisor');
+  });
+
   it('renders four sidebar groups with every existing destination', async () => {
     await mount();
     expect(Array.from(host.querySelectorAll('.desktop-sidebar .nav-section-label')).map(node => node.textContent)).toEqual(['Overview', 'Markets', 'Analysis', 'System']);

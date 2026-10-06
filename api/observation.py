@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from core.processes import is_process_alive
+from monitoring.execution_heartbeat import read_execution_heartbeat
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -52,6 +53,7 @@ class ObservationComponentResponse(BaseModel):
 
 
 class ObservationHealthResponse(BaseModel):
+    execution_supervisor: dict | None = None
     running: bool
     healthy: bool
     updated_at: str
@@ -217,6 +219,9 @@ def get_observation_health() -> ObservationHealthResponse:
     ]
     all_healthy = supervisor.healthy and collector.healthy
     return ObservationHealthResponse(
+        execution_supervisor=read_execution_heartbeat(
+            'state/weltrade_execution_supervisor_heartbeat.json',
+            max_age_seconds=maximum_age.total_seconds()),
         running=supervisor.running and collector.running,
         healthy=all_healthy,
         updated_at=latest.isoformat(),

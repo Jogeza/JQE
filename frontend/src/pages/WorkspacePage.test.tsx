@@ -60,6 +60,15 @@ describe('Workspace and Settings evidence views', () => {
   };
   const panel = (name: string) => host.querySelector(`[aria-label="${name}"]`) as HTMLElement;
   const demoCard = () => host.querySelector('.workspace-demo-result') as HTMLElement;
+  it('expires retained supervisor evidence on the clock without a new response', async () => {
+    await render({ terminalObservation: resource({state:'CONNECTED',positions:[],recent_trades:[]} as unknown as TerminalObservationResponse),
+      observationHealth: resource({execution_supervisor: {state:'RUNNING', updated_at:'2026-09-20T12:01:00Z',
+        stale:false, process_alive:true, execution_enabled:true, cycle_number:9, max_age_seconds:10}} as unknown as ObservationHealthResponse) });
+    expect(panel('Weltrade terminal').textContent).toContain('RUNNING');
+    await act(async () => vi.advanceTimersByTime(15000));
+    expect(panel('Weltrade terminal').textContent).toContain('STALE');
+    expect(panel('Weltrade terminal').textContent).not.toContain('RUNNING');
+  });
   it('shows initial market and terminal requests as loading, then failures as unavailable', async () => {
     await render({ activeAnalysis: resource<ActiveMarketAnalysisResponse>(null, { loading: true }), terminalObservation: resource<TerminalObservationResponse>(null, { loading: true }) });
     expect(panel('Market chart').dataset.state).toBe('LOADING');
