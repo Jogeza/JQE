@@ -149,7 +149,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
     const profile: readonly (keyof Resources)[] = marketOnly
       ? ['activeAnalysis', 'terminalObservation', 'risk']
       : activeTab === 'workspace' ? workspaceProfile : legacyProfile;
-    const names = profile.filter(name => replaceInFlight || activeTab !== 'workspace'
+    const names = profile.filter(name => replaceInFlight
       || observationSchedule.current.due(name, Date.now()));
     if (!names.length) { inFlightRef.current = false; return; }
     const requestFor = (name: keyof Resources): Promise<unknown> => {
@@ -303,7 +303,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
     return () => abortRef.current?.abort();
   }, [fetchAllData]);
 
-  // Check due resources; workspace cadence/backoff prevents full-batch polling.
+  // Check due resources; cadence/backoff prevents full-batch polling on every tab.
   useInterval(() => {
     fetchAllData(false, false);
   }, 4000);

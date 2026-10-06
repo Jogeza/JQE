@@ -162,6 +162,19 @@ describe('App polling profiles', () => {
     expect(calls.every(call => call.method === 'GET')).toBe(true);
   });
 
+  it('staggers legacy profile ticks instead of refiring the whole cohort', async () => {
+    await mount();
+    await nav('Overview');
+    await act(async () => pending.get('/system')?.resolve({ ok: true, json: async () => ({}) }));
+    const before = calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+    expect(paths().slice(before)).toEqual([]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().slice(before)).toEqual(['/observation/health']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().slice(before)).toEqual(['/observation/health', '/risk', '/execution/safety']);
+  });
+
   it('pauses automatic polling in hidden tabs and resumes due work when visible', async () => {
     await mount();
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
