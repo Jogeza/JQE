@@ -24,6 +24,8 @@ interface JQEChartProps {
   indicators?: IndicatorVisibility;
   height?: number;
   fibonacciLevels?: FibonacciLevel[];
+  compactPriceScale?: boolean;
+  priceScaleSide?: 'left' | 'right';
   drawingTools?: boolean;
   timeframe?: string;
 }
@@ -44,7 +46,8 @@ export const JQEChart: React.FC<JQEChartProps> = ({
   volumeProfile = null,
   indicators = { ema50: true, ema200: true, rsi: true, volume: true },
   height = 460,
-  fibonacciLevels = [],
+  fibonacciLevels = [], compactPriceScale = false,
+  priceScaleSide = 'right',
   drawingTools = false,
   timeframe = '',
 }) => {
@@ -61,7 +64,8 @@ export const JQEChart: React.FC<JQEChartProps> = ({
       autoSize: true, height,
       layout: { background: { type: ColorType.Solid, color: palette.background }, textColor: palette.text, fontFamily: 'Poppins, sans-serif', attributionLogo: true, panes: { separatorColor: palette.axis, separatorHoverColor: palette.crosshair, enableResize: true } },
       grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: palette.crosshair, labelBackgroundColor: palette.accent }, horzLine: { color: palette.crosshair, labelBackgroundColor: palette.accent } }, rightPriceScale: { borderColor: palette.axis },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: palette.crosshair, labelBackgroundColor: palette.accent }, horzLine: { color: palette.crosshair, labelBackgroundColor: palette.accent } },
+      rightPriceScale: { borderColor: palette.axis, minimumWidth: compactPriceScale ? 42 : 58 },
       timeScale: { borderColor: palette.axis, timeVisible: true, secondsVisible: false, rightOffset: 4 },
       localization: { priceFormatter: (price: number) => price.toFixed(priceDecimals) },
     });
@@ -82,6 +86,17 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     setDrawingHandles(handlesRef.current);
     return () => { handlesRef.current = null; hasFitContentRef.current = false; chart.remove(); };
   }, [priceDecimals, height]);
+
+  useEffect(() => {
+    const handles = handlesRef.current;
+    if (!handles) return;
+    handles.chart.applyOptions({
+      leftPriceScale: { visible: priceScaleSide === 'left', minimumWidth: compactPriceScale ? 42 : 58 },
+      rightPriceScale: { visible: priceScaleSide === 'right', minimumWidth: compactPriceScale ? 42 : 58 },
+      layout: { fontSize: compactPriceScale ? 10 : 12 },
+    });
+    [handles.candles, handles.ema50, handles.ema200, handles.rsi].forEach(series => series.applyOptions({priceScaleId: priceScaleSide}));
+  }, [compactPriceScale, priceScaleSide, priceDecimals, height]);
 
   useEffect(() => {
     const handles = handlesRef.current;
@@ -128,7 +143,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
           const isResistance = lvl.levelType === 'RESISTANCE' || lvl.levelType === 'RANGE_HIGH';
           const color = isSupport ? palette.bullSoft : isResistance ? palette.bearSoft : palette.axis;
           handles.priceLines.push(handles.candles.createPriceLine({
-            price: lvl.price, color, title: lvl.name, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true,
+            price: lvl.price, color, title: ({SUPPORT: 'S', RESISTANCE: 'R', RANGE_LOW: 'Range low', RANGE_HIGH: 'Range high'} as Record<string, string>)[lvl.levelType] ?? 'Level', lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false,
           }));
         });
       }

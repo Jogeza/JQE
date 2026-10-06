@@ -13,7 +13,7 @@ const chartMock = vi.hoisted(() => {
     const id = ++nextId; live.add(id);
     const series = () => ({ setData: vi.fn(), applyOptions: vi.fn(), priceScale: () => ({ applyOptions: vi.fn() }),
       createPriceLine: vi.fn(() => ({})), removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn() });
-    return { id, addSeries: vi.fn(series), remove: remove.bind({ id }), timeScale: () => ({ fitContent: vi.fn() }) };
+    return { id, applyOptions: vi.fn(), addSeries: vi.fn(series), remove: remove.bind({ id }), timeScale: () => ({ fitContent: vi.fn() }) };
   });
   return { live, createChart, remove, reset: () => { live.clear(); nextId = 0; createChart.mockClear(); remove.mockClear(); } };
 });
@@ -31,6 +31,18 @@ describe('JQEChart public lifecycle', () => {
   let host: HTMLDivElement; let root: Root;
   beforeEach(() => { chartMock.reset(); host = document.createElement('div'); document.body.append(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+
+  it('updates compact and full price axes without recreating the chart', async () => {
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} />));
+    const chart = chartMock.createChart.mock.results[0].value;
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} compactPriceScale />));
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 42, visible: false}, rightPriceScale: {minimumWidth: 42, visible: true}, layout: {fontSize: 10}});
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} compactPriceScale={false} />));
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 58, visible: false}, rightPriceScale: {minimumWidth: 58, visible: true}, layout: {fontSize: 12}});
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} priceScaleSide="left" />));
+    expect(chart.applyOptions).toHaveBeenLastCalledWith({leftPriceScale: {minimumWidth: 58, visible: true}, rightPriceScale: {minimumWidth: 58, visible: false}, layout: {fontSize: 12}});
+    expect(chartMock.createChart).toHaveBeenCalledTimes(1);
+  });
 
   it('creates one chart, updates replay and visibility without recreation, and removes it on unmount', async () => {
     await act(async () => root.render(<JQEChart symbol="XAUUSD" candles={[candle]} signal={null} />));

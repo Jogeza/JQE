@@ -60,6 +60,17 @@ describe('Workspace and Settings evidence views', () => {
   };
   const panel = (name: string) => host.querySelector(`[aria-label="${name}"]`) as HTMLElement;
   const demoCard = () => host.querySelector('.workspace-demo-result') as HTMLElement;
+  it('shows supervisor evidence while terminal observation is unavailable and expires its live glow', async () => {
+    await render({observationHealth: resource({execution_supervisor: {state:'RUNNING', updated_at:'2026-09-20T12:01:00Z', stale:false, process_alive:true, execution_enabled:true, cycle_number:19, max_age_seconds:10}} as unknown as ObservationHealthResponse)});
+    const evidence = panel('Execution supervisor evidence');
+    expect(evidence.dataset.state).toBe('LIVE');
+    expect(evidence.textContent).toContain('cycle 19');
+    expect(evidence.textContent).toContain('stale No');
+    expect(evidence.textContent).toContain('does not authorize orders');
+    await act(async () => vi.advanceTimersByTime(15000));
+    expect(evidence.dataset.state).toBe('STALE');
+    expect(evidence.textContent).toContain('stale Yes');
+  });
   it('expires retained supervisor evidence on the clock without a new response', async () => {
     await render({ terminalObservation: resource({state:'CONNECTED',positions:[],recent_trades:[]} as unknown as TerminalObservationResponse),
       observationHealth: resource({execution_supervisor: {state:'RUNNING', updated_at:'2026-09-20T12:01:00Z',

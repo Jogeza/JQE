@@ -1,11 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MousePointer2, Minus, MoveUpRight, Square, Circle, Ruler, Type, Undo2, Trash2, LockKeyhole, UnlockKeyhole, ZoomIn, ZoomOut, Maximize2, Eraser } from 'lucide-react';
-import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import { readDrawings, saveDrawings, type Tool, type Anchor, type Drawing } from './drawingStorage';
 import './ChartDrawingTools.css';
 
-type Tool = 'cursor' | 'line' | 'horizontal' | 'arrow' | 'rectangle' | 'ellipse' | 'measure' | 'text' | 'erase';
-type Anchor = { time: Time; price: number };
-type Drawing = { id: number; tool: Tool; a: Anchor; b: Anchor; color: string; text: string };
 const tools = [
   ['cursor', MousePointer2, 'Cursor / pan'], ['line', Minus, 'Trend line'],
   ['horizontal', Minus, 'Horizontal level'], ['arrow', MoveUpRight, 'Arrow'],
@@ -26,7 +24,21 @@ export function ChartDrawingTools({ chart, series, scope, decimals }: {
   const overlay = useRef<SVGSVGElement>(null);
   const pending = useRef<Drawing | null>(null);
   const nextId = useRef(0);
-  useEffect(() => { setDrawings([]); setDraft(null); pending.current = null; setTool('cursor'); }, [scope]);
+  const loadedScope = useRef<string | null>(null);
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  useEffect(() => {
+    const restored = readDrawings(scope);
+    loadedScope.current = scope;
+    nextId.current = Math.max(0, ...restored.map(item => item.id));
+    setDrawings(restored); setDraft(null); pending.current = null; setTool('cursor'); setLocked(false);
+  }, [scope]);
+  const drawingScope = useRef(scope);
+  useEffect(() => {
+    // Skip the render that changes scope: its drawings still belong to the
+    // previous market, and must never be written into the new market's key.
+    if (drawingScope.current !== scope) { drawingScope.current = scope; return; }
+    if (loadedScope.current === scope) setStorageAvailable(saveDrawings(scope, drawings));
+  }, [drawings, scope]);
   useEffect(() => {
     const refresh = () => repaint(value => value + 1);
     chart.timeScale().subscribeVisibleLogicalRangeChange(refresh);
@@ -116,10 +128,11 @@ export function ChartDrawingTools({ chart, series, scope, decimals }: {
       <button type="button" title={locked ? 'Unlock drawings' : 'Lock drawings'} aria-label={locked ? 'Unlock drawings' : 'Lock drawings'} aria-pressed={locked} onClick={() => { setLocked(value => !value); setTool('cursor'); pending.current = null; setDraft(null); }}>{locked ? <LockKeyhole size={17} /> : <UnlockKeyhole size={17} />}</button>
       <button type="button" title="Clear drawings" aria-label="Clear drawings" disabled={locked || !drawings.length} onClick={() => { setDrawings([]); pending.current = null; setDraft(null); }}><Trash2 size={17} /></button>
     </div>
+    <span className="chart-drawing-session-status" role="status">{drawings.length} drawings · {storageAvailable ? 'Saved in this tab' : 'Storage unavailable; drawings temporary'}</span>
     {tool !== 'cursor' && !locked && <div className="chart-drawing-hint" role="status">{tool === 'erase' ? 'Tap a drawing to remove it' : tool === 'text' || tool === 'horizontal' ? 'Tap chart to place · Esc cancels' : 'Drag on chart to draw · Esc cancels'}{drawings.length >= 50 ? ' · 50 drawing limit' : ''}
       {tool === 'text' && <input aria-label="Chart note text" value={note} maxLength={80} onChange={event => setNote(event.target.value)} />}
     </div>}
-    <svg ref={overlay} className="chart-drawing-overlay" width={width} height={height} aria-label="Chart annotations" style={{ pointerEvents: !locked && tool !== 'cursor' ? 'auto' : 'none', touchAction: 'none' }} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => { pending.current = null; setDraft(null); }}>
+    <svg ref={overlay} className="chart-drawing-overlay" width={width} height={height} aria-label="Chart annotations" style={{ left: chart.priceScale('left').width(), pointerEvents: !locked && tool !== 'cursor' ? 'auto' : 'none', touchAction: 'none' }} onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => { pending.current = null; setDraft(null); }}>
       {drawings.map(renderDrawing)}{draft && renderDrawing(draft)}
     </svg>
   </>;

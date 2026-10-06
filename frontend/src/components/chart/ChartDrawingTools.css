@@ -11,3 +11,23 @@
 .chart-drawing-hint { position: absolute; left: 8px; top: 6px; right: 65px; z-index: 4; width: fit-content; max-width: calc(100% - 75px); background: #101723ed; color: #e5edf8; border: 1px solid #38bdf84d; border-radius: 5px; padding: 5px 8px; font-size: 10px; pointer-events: none; }
 .chart-drawing-hint input { display: block; width: 150px; max-width: 100%; margin-top: 5px; pointer-events: auto; background: #0b1019; border: 1px solid #526072; color: white; border-radius: 4px; padding: 5px; }
 @media (max-width: 768px) { .chart-drawing-host { margin-left: 36px; } .chart-drawing-rail { left: -36px; width: 36px; } .chart-drawing-rail button { width: 32px; height: 32px; } }
+.chart-drawing-session-status {
+  position: absolute;
+  bottom: 5px;
+  left: 52px;
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  background: var(--bg-surface);
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .chart-drawing-host { margin-left: 0; padding-bottom: 54px; }
+  .chart-drawing-rail { left: 0; top: auto; bottom: 0; width: 100%; height: 50px; box-sizing: border-box; flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding: 3px; border-right: 0; border-top: 1px solid var(--border-card); }
+  .chart-drawing-rail button { width: 44px; height: 44px; touch-action: manipulation; }
+  .chart-drawing-rail input[type=color] { width: 44px; height: 40px; }
+  .drawing-divider { width: 1px; height: 24px; border-left: 1px solid #ffffff22; margin: 0 3px; }
+  .chart-drawing-session-status { bottom: 56px; left: 5px; }
+}

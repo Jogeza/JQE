@@ -384,6 +384,12 @@ export const WorkspacePage: React.FC<Props> = ({
         <details className="workspace-inline-details"><summary>Safety evidence</summary>        <div className="workspace-context"><strong>Separate broker context</strong><span>GET /brokers/status: {brokerState}</span><span>GET /execution/safety: {safetyState} · {safetyState === 'LIVE' ? value(safety.data?.execution_authorization) : 'unavailable'}</span><span>GET /risk: {riskState} · {riskState === 'LIVE' ? value(risk.data?.observation_status) : 'unavailable'}</span></div></details>
       </Panel>
       <Panel title="Weltrade terminal" source="Direct MT5 observation · execution disabled" state={terminalState} observed={terminal?.observed_at} className="workspace-terminal">
+        <div className="workspace-supervisor" role="status" aria-label="Execution supervisor evidence" data-state={supervisorFresh && executionSupervisor?.process_alive && ['RUNNING', 'STARTING', 'BLOCKED'].includes(supervisorState) ? 'LIVE' : supervisorState}>
+          <strong>Guarded demo supervisor · {supervisorState}</strong>
+          <span>Heartbeat {formatTime(executionSupervisor?.updated_at)} · age {formatAge(executionSupervisor?.updated_at)} · cycle {executionSupervisor?.cycle_number ?? 'unknown'}</span>
+          <span>Process {executionSupervisor ? executionSupervisor.process_alive ? 'alive' : 'not alive / unverified' : 'unknown'} · stale {supervisorFresh ? 'No' : 'Yes'}</span>
+          <small>Read-only monitoring evidence. Observation API permissions are separate; this does not authorize orders.</small>
+        </div>
         {!terminal || terminal.state !== 'CONNECTED' ? <p className="workspace-terminal-disconnected">
           {initialTerminalLoading ? 'Checking Weltrade terminal...' : terminalObservation?.error || terminal?.error ? 'Terminal unavailable - see Notifications' : 'Terminal disconnected - no current account or market values'}
         </p> : <>

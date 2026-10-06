@@ -9,11 +9,12 @@ import { ChartDrawingTools } from './ChartDrawingTools';
 
 it('anchors drawings to chart prices, reprojects after scaling, locks edits and isolates markets', async () => {
   vi.useFakeTimers();
+  sessionStorage.clear();
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
   let scale = 1;
   const timeScale = { width: () => 400, coordinateToTime: (x: number) => x + 1000, timeToCoordinate: (time: number) => (time - 1000) * scale,
     subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(), fitContent: vi.fn(), getVisibleLogicalRange: () => ({ from: 0, to: 100 }), setVisibleLogicalRange: vi.fn() };
-  const chart = { timeScale: () => timeScale, panes: () => [{ getHeight: () => 300 }] } as unknown as IChartApi;
+  const chart = { priceScale: () => ({width: () => 58}), timeScale: () => timeScale, panes: () => [{ getHeight: () => 300 }] } as unknown as IChartApi;
   const series = { coordinateToPrice: (y: number) => 100 - y / 10, priceToCoordinate: (price: number) => (100 - price) * 10 * scale } as unknown as ISeriesApi<'Candlestick'>;
   const button = (label: string) => host.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
   try {
@@ -31,5 +32,12 @@ it('anchors drawings to chart prices, reprojects after scaling, locks edits and 
     expect(button('Clear drawings').disabled).toBe(true);
     await act(async () => root.render(<ChartDrawingTools chart={chart} series={series} scope="FX40:M5" decimals={2} />));
     expect(svg.querySelector('rect')).toBeNull();
-  } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); }
+    await act(async () => root.render(<ChartDrawingTools chart={chart} series={series} scope="FX20:M5" decimals={2} />));
+    expect(svg.querySelector('rect')?.getAttribute('width')).toBe('80');
+    expect(button('Clear drawings').disabled).toBe(false);
+    await act(async () => root.render(<ChartDrawingTools key="reload" chart={chart} series={series} scope="FX20:M5" decimals={2} />));
+    expect(host.querySelector('svg.chart-drawing-overlay rect')).not.toBeNull();
+    await act(async () => button('Clear drawings').click());
+    expect(host.querySelector('svg.chart-drawing-overlay rect')).toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); sessionStorage.clear(); vi.useRealTimers(); }
 });
