@@ -1,5 +1,6 @@
 import time
 import asyncio
+import logging
 import threading
 from unittest.mock import Mock
 
@@ -179,6 +180,18 @@ def test_failed_shared_work_is_evicted_and_can_recover():
     assert client.get('/api/v1/observation/health').status_code == 503
     assert client.get('/api/v1/observation/health').status_code == 200
     assert fetch.call_count == 2
+
+
+def test_timings_and_queue_waits_are_logged_for_every_observed_route(caplog):
+    fetch = Mock(return_value=b'{"state":"OBSERVED"}')
+    client = TestClient(create_app(lambda _: 'owner', fetch))
+    with caplog.at_level(logging.INFO, logger='api.monitor_relay'):
+        assert client.get('/api/v1/observation/health').status_code == 200
+    lines = [record.getMessage() for record in caplog.records if record.name == 'api.monitor_relay']
+    origin = [line for line in lines if line.startswith('origin fetch path=/api/v1/observation/health')]
+    assert origin and 'queue_ms=' in origin[0] and 'fetch_ms=' in origin[0]
+    assert any(line.startswith('request path=/api/v1/observation/health status=200 shared=False')
+               and 'total_ms=' in line for line in lines)
 
 
 def test_authentication_and_routes_never_forward_mutations():

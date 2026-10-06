@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ObservationSchedule } from './observationSchedule';
+import { ObservationSchedule, RESOURCE_OFFSETS_MS } from './observationSchedule';
 
 describe('observation cadence', () => {
   it('keeps chart/heartbeat current without repeatedly fetching ancillary resources', () => {
@@ -11,8 +11,9 @@ describe('observation cadence', () => {
     }
     expect(schedule.due('activeAnalysis', 15000)).toBe(true);
     expect(schedule.due('observationHealth', 15000)).toBe(true);
-    expect(schedule.due('watchlist', 59999)).toBe(false);
-    expect(schedule.due('watchlist', 60000)).toBe(true);
+    const watchlistNext = 60_000 + RESOURCE_OFFSETS_MS.watchlist;
+    expect(schedule.due('watchlist', watchlistNext - 1)).toBe(false);
+    expect(schedule.due('watchlist', watchlistNext)).toBe(true);
   });
   it('backs off failures to two minutes and resets after recovery', () => {
     const schedule = new ObservationSchedule();
@@ -24,5 +25,21 @@ describe('observation cadence', () => {
     expect(schedule.due('activeAnalysis', 209999)).toBe(false);
     schedule.completed('activeAnalysis', 210000, true);
     expect(schedule.due('activeAnalysis', 225000)).toBe(true);
+  });
+  it('staggers steady-state refreshes across distinct four-second ticks', () => {
+    const critical = ['activeAnalysis', 'terminalObservation', 'observationHealth', 'risk', 'safety', 'execution'];
+    const ancillary = ['brokerStatus', 'watchlist', 'monitoring', 'watchlistCapUsage', 'notificationStatus', 'assistantStatus'];
+    const schedule = new ObservationSchedule();
+    const nextOf = (name: string) => (critical.includes(name) ? 15_000 : 60_000) + (RESOURCE_OFFSETS_MS[name] ?? 0);
+    for (const name of [...critical, ...ancillary]) {
+      schedule.completed(name, 0, true);
+      expect(schedule.due(name, nextOf(name) - 1)).toBe(false);
+      expect(schedule.due(name, nextOf(name))).toBe(true);
+    }
+    const tick = (name: string) => Math.ceil(nextOf(name) / 4000);
+    expect(new Set(ancillary.map(tick)).size).toBe(ancillary.length);
+    const grouped = new Map<number, string[]>();
+    for (const name of [...critical, ...ancillary]) grouped.set(tick(name), [...(grouped.get(tick(name)) ?? []), name]);
+    for (const group of grouped.values()) expect(group.length).toBeLessThanOrEqual(2);
   });
 });

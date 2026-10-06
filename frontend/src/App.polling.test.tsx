@@ -144,15 +144,21 @@ describe('App polling profiles', () => {
     expect(paths()).not.toContain(path);
   });
 
-  it('avoids full workspace batches on four-second ticks and refreshes hot resources when due', async () => {
+  it('avoids full workspace batches on four-second ticks and staggers due resources', async () => {
     await mount();
     await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
     expect(paths()).toEqual(allowed);
     await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
-    expect(paths().slice(allowed.length)).toEqual(allowed.filter(path => [
-      '/market/active-analysis', '/brokers/terminal-observation', '/observation/health',
-      '/risk', '/execution/safety', '/execution',
-    ].includes(path)));
+    expect(paths().slice(allowed.length)).toEqual(['/market/active-analysis', '/observation/health']);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().slice(allowed.length)).toEqual([
+      '/market/active-analysis', '/observation/health', '/risk', '/execution/safety',
+    ]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().slice(allowed.length)).toEqual([
+      '/market/active-analysis', '/observation/health', '/risk', '/execution/safety',
+      '/brokers/terminal-observation', '/execution',
+    ]);
     expect(calls.every(call => call.method === 'GET')).toBe(true);
   });
 
@@ -163,7 +169,12 @@ describe('App polling profiles', () => {
     expect(paths()).toEqual(allowed);
     visibility.mockReturnValue('visible');
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
-    expect(paths()).toEqual([...allowed, ...allowed]);
+    expect(paths().slice(allowed.length)).toEqual([
+      '/market/active-analysis', '/brokers/terminal-observation', '/observation/health',
+      '/risk', '/brokers/status', '/execution/safety', '/monitoring/offline', '/watchlist', '/execution',
+    ]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(paths().slice(allowed.length + 9)).toEqual(['/watchlist/cap-usage']);
     visibility.mockRestore();
   });
 

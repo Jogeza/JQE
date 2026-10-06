@@ -31,6 +31,13 @@ ALLOWED = {
 ROOT = Path(__file__).resolve().parents[1]
 QUEUE_TIMEOUT_SECONDS = 1.0
 
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
 
 class AccessVerifier:
     def __init__(self, issuer, audience, email, service_client_id=""):
@@ -92,6 +99,7 @@ def create_app(verifier=None, fetcher=fetch_local):
         chart = path == '/api/v1/market/active-analysis'
         slot = chart_inflight if chart else market_inflight if path != '/api/v1/observation/health' else None
         slot_acquired = False
+        started = time.perf_counter()
         try:
             # Reserve chart and actual health slots within the existing four.
             # A new timeframe may briefly wait for the prior chart read; other
@@ -103,18 +111,27 @@ def create_app(verifier=None, fetcher=fetch_local):
         except TimeoutError:
             if slot_acquired:
                 slot.release()
-            logging.getLogger(__name__).warning('Monitor origin queue saturated: path=%s', path)
+            logger.warning('Monitor origin queue saturated: path=%s queue_ms=%.0f',
+                           path, (time.perf_counter() - started) * 1000)
             raise OriginBusy() from None
         except BaseException:
             if slot_acquired:
                 slot.release()
             raise
+        queued = time.perf_counter()
         try:
-            return await asyncio.to_thread(fetcher, path, query)
+            body = await asyncio.to_thread(fetcher, path, query)
+        except Exception:
+            logger.warning('Origin fetch failed: path=%s queue_ms=%.0f fetch_ms=%.0f',
+                           path, (queued - started) * 1000, (time.perf_counter() - queued) * 1000)
+            raise
         finally:
             inflight.release()
             if slot_acquired:
                 slot.release()
+        logger.info('origin fetch path=%s queue_ms=%.0f fetch_ms=%.0f query=%s',
+                    path, (queued - started) * 1000, (time.perf_counter() - queued) * 1000, query)
+        return body
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -162,9 +179,13 @@ def create_app(verifier=None, fetcher=fetch_local):
         # and quota. No completed response is cached, including heartbeat data.
         query = urlencode(sorted(parse_qsl(request.url.query, keep_blank_values=True), key=lambda pair: pair[0]))
         key = (request.url.path, query)
+        started = time.perf_counter()
         task = pending.get(key)
+        shared = task is not None
         if task is None:
             if len(pending) >= 32:
+                logger.warning('request path=%s status=503 shared=False total_ms=%.0f reason=pending-full',
+                               request.url.path, (time.perf_counter() - started) * 1000)
                 return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
                                     headers={'Retry-After': '2'})
             task = asyncio.create_task(fetch_observation(*key))
@@ -178,11 +199,17 @@ def create_app(verifier=None, fetcher=fetch_local):
             task.add_done_callback(finished)
         try:
             body = await asyncio.shield(task)
+            logger.info('request path=%s status=200 shared=%s total_ms=%.0f',
+                        request.url.path, shared, (time.perf_counter() - started) * 1000)
             return Response(body, media_type="application/json")
         except OriginBusy:
+            logger.warning('request path=%s status=503 shared=%s total_ms=%.0f reason=origin-queue',
+                           request.url.path, shared, (time.perf_counter() - started) * 1000)
             return JSONResponse({'detail': 'Workstation monitor is busy; retry shortly'}, 503,
                                 headers={'Retry-After': '2'})
         except (OSError, ValueError, urllib.error.URLError):
+            logger.warning('request path=%s status=503 shared=%s total_ms=%.0f reason=origin-error',
+                           request.url.path, shared, (time.perf_counter() - started) * 1000)
             return JSONResponse({"detail": "Workstation evidence unavailable"}, 503)
     return app
 
