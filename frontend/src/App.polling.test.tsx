@@ -20,7 +20,10 @@ type Call = { path: string; method: string; signal?: AbortSignal };
 
 vi.mock('./pages/OverviewPage', () => ({ OverviewPage: () => <div>Legacy overview</div> }));
 vi.mock('./pages/MarketsPage', () => ({ MarketsPage: ({ candles }: { candles: unknown }) => <div>Legacy candles: {candles ? 'available' : 'unavailable'}</div> }));
-vi.mock('./components/MarketChart', () => ({ MarketChart: () => <div>Rendered chart</div> }));
+vi.mock('./components/MarketChart', () => ({
+  MarketChart: ({ symbolControls, candles, emptyMessage }: { symbolControls?: React.ReactNode; candles?: unknown[]; emptyMessage?: React.ReactNode }) =>
+    <div>Rendered chart{symbolControls}{(candles?.length ?? 0) === 0 ? <>{emptyMessage ?? null}</> : null}</div>,
+}));
 vi.mock('./components/Header', () => ({ Header: () => <header>Legacy header</header> }));
 
 const bodyFor = (path: string): unknown => {
@@ -92,7 +95,7 @@ describe('App polling profiles', () => {
   it('starts synchronously with the connected Workspace profile', async () => {
     await mount();
     expect(paths()).toEqual(allowed);
-    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Active market analysis is unavailable.');
+    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('Rendered chart');
     expect(host.querySelector('[role="status"]')?.textContent).toContain('Observation API · orders disabled');
     expect(host.querySelector('[role="status"]')?.textContent).not.toContain('OFFLINE SIMULATION');
   });
@@ -110,7 +113,7 @@ describe('App polling profiles', () => {
     }));
     await mount();
     expect(host.querySelector('[aria-label="Weltrade terminal"]')?.textContent).toContain('Guarded demo supervisor');
-    const button = Array.from(host.querySelectorAll('.workspace-chart-controls button')).find(button => button.textContent === 'M1') as HTMLButtonElement;
+    const button = Array.from(host.querySelectorAll('.chart-symbol-controls button')).find(button => button.textContent === 'M1') as HTMLButtonElement;
     const beforeSwitch = urls.length;
     await act(async () => button.click());
     expect(urls.slice(beforeSwitch).map(url => new URL(url, 'http://localhost').pathname.replace('/api/v1', ''))).toEqual(['/market/active-analysis', '/brokers/terminal-observation', '/risk']);
@@ -229,7 +232,7 @@ describe('App polling profiles', () => {
     expect(paths().slice(before)).toEqual(allowed);
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
     expect(paths().slice(before)).toEqual(allowed);
-    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).not.toContain('Rendered chart');
+    expect(host.querySelector('[aria-label="Market chart"]')?.textContent).toContain('No market snapshot. See Notifications.');
   });
 
   it('ignores late legacy failures and keeps their errors out of Workspace', async () => {

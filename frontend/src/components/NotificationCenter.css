@@ -27,20 +27,19 @@
 .notification-facts dt { color: #6b7280; }
 .notification-facts dd { margin: 0; font-weight: 600; text-align: right; }
 .notification-facts small { font-size: 10px; color: #6b7280; }
-.workspace-utility-bar .notification-center { position: relative; top: auto; right: auto; }
-.workspace-utility-bar .notification-trigger { color: var(--text-primary); background: var(--surface); border-color: var(--border-card); }
-
-@media (max-width: 700px) {
-  .workspace-utility-bar .notification-panel {
+@media (max-width: 768px) {
+  /* Fixed under the 64px mobile header; the header keeps the panel visible while open. */
+  .compact-header-actions .notification-panel {
     position: fixed;
-    top: 112px;
+    top: 70px;
     left: 12px;
     right: 12px;
     width: auto;
-    max-height: calc(100dvh - 128px);
+    max-height: calc(100dvh - 84px);
     overscroll-behavior: contain;
     overflow-wrap: anywhere;
   }
+  .compact-header-actions .notification-trigger { min-width: 44px; min-height: 44px; }
   .notification-heading { position: sticky; top: 0; z-index: 1; background: #fff; }
   .notification-heading button { min-width: 44px; min-height: 44px; }
 }

@@ -27,6 +27,7 @@ interface JQEChartProps {
   compactPriceScale?: boolean;
   drawingTools?: boolean;
   timeframe?: string;
+  fill?: boolean;
 }
 interface ChartHandles {
   chart: IChartApi; candles: ISeriesApi<'Candlestick'>; ema50: ISeriesApi<'Line'>;
@@ -48,6 +49,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
   fibonacciLevels = [], compactPriceScale = false,
   drawingTools = false,
   timeframe = '',
+  fill = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef<ChartHandles | null>(null);
@@ -165,8 +167,8 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     if (handles.volumeProfile) handles.candles.attachPrimitive(handles.volumeProfile);
   }, [volumeProfile]);
 
-  return <div className={drawingTools ? 'chart-drawing-host' : undefined}>
-    <div ref={containerRef} style={{ width: '100%', height: `${height}px`, backgroundColor: 'var(--chart-bg)' }} aria-label={`${symbol} candlestick chart`} />
+  return <div className={drawingTools ? 'chart-drawing-host' : 'chart-host-plain'}>
+    <div ref={containerRef} style={{ width: '100%', height: fill ? '100%' : `${height}px`, backgroundColor: 'var(--chart-bg)' }} aria-label={`${symbol} candlestick chart`} />
     {drawingTools && drawingHandles && <ChartDrawingTools key={`${priceDecimals}:${height}`} chart={drawingHandles.chart} series={drawingHandles.candles} scope={`${symbol}:${timeframe}`} decimals={priceDecimals} />}
   </div>;
 };

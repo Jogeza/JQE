@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Moon, Paperclip, SendHorizontal, Sun, X } from 'lucide-react';
 import { jqeApi } from '../services/api';
 import { MarketChart } from '../components/MarketChart';
+import { SymbolSearchPicker } from '../components/SymbolSearchPicker';
+import { ChartDecisionCard } from '../components/ChartDecisionCard';
 import type { TabType } from '../components/Sidebar';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
@@ -209,6 +211,7 @@ export const WorkspacePage: React.FC<Props> = ({
   const supervisorState = !executionSupervisor ? 'UNAVAILABLE' : !supervisorFresh ? 'STALE' : executionSupervisor.state;
   const health = healthValid && healthState === 'LIVE' ? observationHealth.data : null;
   const watchlistState = watchlist.data && !validWatchlist(watchlist.data) ? 'UNAVAILABLE' : panelState(watchlist);
+  const watchlistSymbols = watchlistState === 'LIVE' ? watchlist.data?.items.map(item => item.symbol) ?? [] : [];
   const capState = caps.data && !validCaps(caps.data) ? 'UNAVAILABLE'
     : observationState(caps, caps.data?.observed_at, WORKSPACE_FRESHNESS_THRESHOLDS_MS.watchlistCapUsage);
   const executionData = execution?.data ?? null;
@@ -361,33 +364,33 @@ export const WorkspacePage: React.FC<Props> = ({
     </>}
 
     {!configurationOnly && <div className="workspace-grid workspace-primary">
-      <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className={`workspace-chart${activeCandles ? '' : ' workspace-chart-unavailable'}`}>
-        <div className="workspace-chart-controls" aria-label="Chart market controls">
-          <strong>{selectedSymbol}</strong>
-          {['M1', 'M5', 'M15', 'H1'].map(tf => <button key={tf} type="button" aria-pressed={selectedTimeframe === tf}
-            onClick={() => onMarketChange?.(selectedSymbol, tf)}>{tf}</button>)}
-          <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
-            title="Use smaller price labels and a narrower right price axis"
-            onClick={toggleCompactPriceScale}>{compactPriceScale ? 'Full prices' : 'Compact prices'}</button>
-          <span>Weltrade · {marketFreshness}</span>
-        </div>
-        {activeCandles ? <MarketChart
-          symbol={activeCandles.symbol}
-          timeframe={activeCandles.timeframe}
-          candles={activeCandles.candles}
+      <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className="workspace-chart">
+        <MarketChart
+          symbol={activeCandles?.symbol ?? selectedSymbol}
+          timeframe={activeCandles?.timeframe ?? selectedTimeframe}
+          candles={activeCandles?.candles ?? []}
           signal={activeSignal}
           setup={activeSetup}
-          priceDecimals={activeCandles.price_decimals}
+          priceDecimals={activeCandles?.price_decimals}
           loading={activeAnalysis?.loading}
           error={activeAnalysis?.error ? 'Market data unavailable. See Notifications.' : null}
           dataStatus={chartDataStatus}
           height={aiDocked ? 560 : 460}
           compactPriceScale={compactPriceScale}
           onToggleCompactPriceScale={toggleCompactPriceScale}
-        /> : <div className="workspace-chart-frame">
-          {!initialMarketLoading && <p className="workspace-empty">Active market analysis is unavailable.</p>}
-          <div className="workspace-chart-overlay" role="status">{initialMarketLoading ? 'Fetching closed candles from Weltrade...' : 'No market snapshot - see Notifications'}</div>
-        </div>}
+          symbolControls={<div className="chart-symbol-controls" aria-label="Chart market controls">
+            <SymbolSearchPicker selectedSymbol={selectedSymbol} watchedSymbols={watchlistSymbols}
+              onSelect={symbol => onMarketChange?.(symbol, selectedTimeframe)} />
+            <span className="chart-timeframes" role="group" aria-label="Chart timeframe">
+              {['M1', 'M5', 'M15', 'H1'].map(tf => <button key={tf} type="button" aria-pressed={selectedTimeframe === tf}
+                onClick={() => onMarketChange?.(selectedSymbol, tf)}>{tf}</button>)}
+            </span>
+          </div>}
+          sourceLabel={`Weltrade · ${marketFreshness}`}
+          emptyMessage="No market snapshot. See Notifications."
+          overlay={<ChartDecisionCard signal={activeSignal} setup={activeSetup} priceDecimals={activeCandles?.price_decimals}
+            freshness={marketFreshness} latestClosedCandle={marketContext?.latest_closed_candle_at ? formatTime(marketContext.latest_closed_candle_at) : null} />}
+        />
       </Panel>      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><details className="workspace-inline-details"><summary>Factor availability</summary><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></details></div> : <>
         <ol className="workspace-stages">

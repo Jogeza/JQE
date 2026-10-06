@@ -108,10 +108,6 @@
 .workspace-context { border-top: 1px solid var(--border-card); padding-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; font-size: 11px; }
 .workspace-context strong { width: 100%; }
 .workspace-context span { border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: var(--space-2); }
-.workspace-chart-frame { position: relative; min-height: 300px; }
-.workspace-chart-frame .chart-panel { min-height: 300px !important; }
-.workspace-chart-unavailable .workspace-chart-frame { min-height: 96px; }
-.workspace-chart-overlay { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); border: 1px solid var(--border-card-strong); border-radius: var(--radius-sm); background: var(--surface); padding: var(--space-2); font-size: 11px; text-align: center; pointer-events: none; }
 .workspace-list { max-height: 300px; overflow: auto; }
 .workspace-list li { border-top: 1px solid var(--border-card); padding: var(--space-2) 0; display: flex; flex-direction: column; gap: var(--space-1); font-size: 12px; }
 .workspace-market-select { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; display: flex; flex-direction: column; gap: var(--space-1); cursor: pointer; }
@@ -267,14 +263,14 @@
 .sidebar-surfaces .collapsed .jqe-mark > span { display: none; }
 .workspace-utility-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 8px; min-height: 38px; padding: 4px 14px; border-bottom: 1px solid var(--border-card); }
 .workspace-execution-status { margin-right: auto; color: var(--text-secondary); font-size: 10px; }
-.workspace-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-.workspace-chart-controls button { border: 1px solid var(--border-card); background: var(--surface); color: var(--text-secondary); padding: 6px 9px; border-radius: 7px; cursor: pointer; }
-.workspace-chart-controls button[aria-pressed="true"] { background: var(--brand-cyan-dim); border-color: var(--brand-cyan-border); color: var(--brand-cyan); }
-.workspace-chart-controls > span { margin-left: auto; font-size: 10px; color: var(--text-secondary); }
+.chart-symbol-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.chart-timeframes { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.chart-timeframes button { border: 1px solid var(--border-dark-medium); background: transparent; color: var(--text-dark-secondary); padding: 5px 9px; border-radius: 7px; font-size: 10px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
+.chart-timeframes button[aria-pressed="true"] { background: var(--brand-cyan-dim); border-color: var(--brand-cyan-border); color: var(--brand-cyan); }
+.chart-timeframes button:not([aria-pressed="true"]):hover { color: var(--text-dark-primary); }
 .chart-density-toggle { margin-left: auto; border: 1px solid var(--border-card); background: var(--surface); color: var(--text-secondary); border-radius: 7px; padding: 5px 8px; font-size: 10px; cursor: pointer; }
 .chart-density-toggle[aria-pressed="true"] { color: var(--brand-cyan); border-color: var(--brand-cyan-border); }
-.workspace-chart-controls .chart-density-toggle { margin-left: 0; }
-@media (max-width: 768px) { .workspace-chart .quant-panel-header { padding: 6px 8px; } .workspace-chart .chart-legend { display: none; } .workspace-chart .quant-panel-title { min-width: 0; } .workspace-chart .quant-panel-title > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+@media (max-width: 768px) { .workspace-chart .quant-panel-header { padding: 6px 8px; } .workspace-chart .chart-legend { display: none; } .workspace-chart .quant-panel-title { min-width: 0; } }
 .workspace-ai-prompts { display: grid; gap: 8px; margin-bottom: 20px; }
 .workspace-ai-prompts button { text-align: left; border: 1px solid var(--border-card); background: var(--surface-raised, var(--surface)); padding: 10px; border-radius: 8px; color: inherit; cursor: pointer; }
 .workspace-ai-prompts button:hover { border-color: var(--brand-cyan-border); }
@@ -305,7 +301,6 @@
   .desktop-top-actions { display: none; }
   .mobile-navigation-header { gap: 8px !important; }
   .mobile-navigation-header .compact-header-actions { gap: 4px; }
-  .compact-header-actions .notification-panel { position: fixed; top: 70px; left: 12px; right: 12px; width: auto; }
 }
 
 .compact-header-actions .notification-trigger { color: var(--text-primary); background: var(--surface); border-color: var(--border-card); }
@@ -328,15 +323,9 @@
 .workspace-supervisor[data-state="STALE"], .chart-panel[data-state="STALE"] { border-color: var(--quant-amber); }
 .chart-panel[data-state="ERROR"], .chart-panel[data-state="UNAVAILABLE"] { border-color: var(--quant-red); }
 .chart-panel[data-state="LOADING"] { border-style: dashed; }
-.workspace-chart-controls button, .chart-density-toggle { min-height: 44px; min-width: 44px; touch-action: manipulation; }
-.workspace-chart-controls > strong { flex-basis: 100%; }
+.chart-density-toggle { min-height: 44px; min-width: 44px; touch-action: manipulation; }
 .chart-panel .quant-panel-header { flex-wrap: wrap; gap: 8px; }
 @media (max-width: 768px) {
-  .workspace-chart-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-  .workspace-chart-controls > strong { flex: 1 1 auto; min-width: 0; align-self: center; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .workspace-chart-controls button { min-height: 34px; min-width: 38px; padding: 3px 9px; font-size: 11px; }
-  .workspace-chart-controls .chart-density-toggle { margin-left: auto; min-width: 0; font-size: 10px; }
-  .workspace-chart-controls > span { display: none; }
   .workspace-chart { padding: 8px; }
   .chart-panel .chart-legend { display: none; }
 }

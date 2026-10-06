@@ -71,4 +71,13 @@ describe('JQEChart public lifecycle', () => {
     await act(async () => root.render(render('EURUSD'))); expect(chartMock.createChart).toHaveBeenCalledTimes(2);
     await act(async () => root.render(render('GBPUSD'))); expect(chartMock.createChart).toHaveBeenCalledTimes(3); expect(chartMock.live.size).toBe(2);
   });
+
+  it('fills the host height in fill mode without recreating the chart', async () => {
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} />));
+    const canvas = () => host.querySelector('[aria-label$="candlestick chart"]') as HTMLElement;
+    expect(canvas().style.height).toBe('460px');
+    await act(async () => root.render(<JQEChart symbol="FX Vol 20" candles={[candle]} fill />));
+    expect(canvas().style.height).toBe('100%');
+    expect(chartMock.createChart).toHaveBeenCalledTimes(1);
+  });
 });

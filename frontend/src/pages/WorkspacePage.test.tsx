@@ -12,7 +12,18 @@ import type { TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { WorkspacePage } from './WorkspacePage';
 import { formatAge, panelState, validAssessment, validBroker, WORKSPACE_FRESHNESS_THRESHOLDS_MS } from './workspaceEvidence';
 
-vi.mock('../components/MarketChart', () => ({ MarketChart: ({ dataStatus }: { dataStatus?: string }) => <div data-testid="market-chart" data-status={dataStatus}>Chart</div> }));
+vi.mock('../components/MarketChart', () => ({
+  MarketChart: ({ candles, loading, dataStatus, emptyMessage, overlay, symbolControls, sourceLabel }: {
+    candles?: unknown[]; loading?: boolean; dataStatus?: string; emptyMessage?: React.ReactNode;
+    overlay?: React.ReactNode; symbolControls?: React.ReactNode; sourceLabel?: React.ReactNode;
+  }) => <div data-testid="market-chart" data-status={dataStatus}>
+    Chart{symbolControls}{sourceLabel}
+    {loading === true && (candles?.length ?? 0) === 0
+      ? 'Loading JQE market telemetry…'
+      : (candles?.length ?? 0) === 0 ? <>{emptyMessage ?? 'NO CANDLE DATA AVAILABLE'}</> : null}
+    {overlay}
+  </div>,
+}));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const observed = '2026-09-20T12:00:00Z';
@@ -87,7 +98,7 @@ describe('Workspace and Settings evidence views', () => {
     await render({ activeAnalysis: resource<ActiveMarketAnalysisResponse>(null, { loading: true }), terminalObservation: resource<TerminalObservationResponse>(null, { loading: true }) });
     expect(panel('Market chart').dataset.state).toBe('LOADING');
     expect(panel('Weltrade terminal').dataset.state).toBe('LOADING');
-    expect(host.textContent).toContain('Fetching closed candles from Weltrade');
+    expect(host.textContent).toContain('Loading JQE market telemetry…');
     expect(host.textContent).toContain('Checking Weltrade terminal');
     await render({ activeAnalysis: resource<ActiveMarketAnalysisResponse>(null, { error: 'network failure' }), terminalObservation: resource<TerminalObservationResponse>(null, { error: 'network failure' }) });
     expect(panel('Market chart').dataset.state).toBe('UNAVAILABLE');
@@ -175,7 +186,7 @@ describe('Workspace and Settings evidence views', () => {
   it('routes timeframe selection through the selected-market callback', async () => {
     const change = vi.fn();
     await render({ onMarketChange: change });
-    const h1 = Array.from(host.querySelectorAll('.workspace-chart-controls button')).find(b => b.textContent === 'H1') as HTMLButtonElement;
+    const h1 = Array.from(host.querySelectorAll('.chart-symbol-controls button')).find(b => b.textContent === 'H1') as HTMLButtonElement;
     await act(async () => h1.click());
     expect(change).toHaveBeenCalledWith(baseProps().selectedSymbol, 'H1');
   });
@@ -457,18 +468,18 @@ describe('Workspace and Settings evidence views', () => {
     await render({ caps: resource<WatchlistCapUsageResponse>(null) });
     expect(panel('Instrument caps').textContent).toContain('Cap data unavailable');
   });
-  it('shows an unavailable chart when active analysis has no candles', async () => {
+  it('keeps chart controls and an empty snapshot message when active analysis has no candles', async () => {
     await render();
     expect(panel('Market chart').dataset.state).toBe('UNAVAILABLE');
-    expect(panel('Market chart').textContent).toContain('Active market analysis is unavailable.');
-    expect(host.querySelector('[data-testid="market-chart"]')).toBeNull();
-    expect(host.querySelector('.workspace-chart-overlay')?.textContent).toContain('see Notifications');
-    expect(panel('Market chart').classList).toContain('workspace-chart-unavailable');
-    expect(panel('Market chart').textContent).not.toContain('share one observation');
+    const chart = host.querySelector('[data-testid="market-chart"]') as HTMLElement;
+    expect(chart).not.toBeNull();
+    expect(chart.textContent).toContain('No market snapshot. See Notifications.');
+    expect(chart.textContent).not.toContain('share one observation');
+    expect(chart.querySelector('.chart-symbol-controls button')).not.toBeNull();
     expect(settings().textContent).toContain('strategy, setup, and candles share one observation.');
     expect(panel('Market chart').textContent).not.toContain('Selected FX Vol 20 / M1');
     const css = readFileSync('src/pages/WorkspacePage.css', 'utf8');
-    expect(css).toContain('.workspace-chart-unavailable .workspace-chart-frame { min-height: 96px; }');
+    expect(css).toContain('.chart-symbol-controls { display: flex;');
   });
   it('limits quick actions to frontend navigation', async () => {
     const onNavigate = vi.fn();
