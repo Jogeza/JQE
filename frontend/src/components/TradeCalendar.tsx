@@ -129,7 +129,7 @@ export const TradeCalendar: React.FC<TradeCalendarProps> = ({ trades, currency, 
               : `${monthTrades} closed trade${monthTrades === 1 ? '' : 's'} · broker close date (UTC)`}
           </span>
           {onSelectDay && monthTrades > 0 && (
-            <span className="trade-calendar-summary-hint">Select a day to filter execution history</span>
+            <span className="trade-calendar-summary-hint">Click a day to filter history</span>
           )}
         </div>
       </div>

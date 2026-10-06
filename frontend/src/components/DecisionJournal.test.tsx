@@ -60,9 +60,18 @@ it('shows decision reasons in UTC and reports a separately armed supervisor', as
   const host = document.createElement('div'); const root = createRoot(host);
   try {
     await act(async () => root.render(<DecisionJournal />));
+    expect(host.textContent).toContain('armed · guarded demo');
+    expect(host.textContent).toContain('10-04 17:15:00');
+    expect(host.textContent).not.toContain('NO_TRADE_SIGNAL');
+    const row = host.querySelector('.journal-row') as HTMLElement;
+    await act(async () => { row.click(); });
+    expect(row.getAttribute('aria-expanded')).toBe('true');
     expect(host.textContent).toContain('NO_TRADE_SIGNAL');
     expect(host.textContent).toContain('2026-10-04 17:15:00 UTC');
-    expect(host.textContent).toContain('armed · guarded demo');
+    await act(async () => { row.click(); });
+    expect(host.textContent).not.toContain('NO_TRADE_SIGNAL');
+    await act(async () => { row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    expect(host.textContent).toContain('NO_TRADE_SIGNAL');
   } finally { await act(async () => root.unmount()); spy.mockRestore(); }
 });
 

@@ -82,7 +82,7 @@ it('exposes keyboard-accessible day selection only for days with trades', async 
     const buttons = host.querySelectorAll('[role="button"]');
     expect(buttons).toHaveLength(1);
     expect(buttons[0].getAttribute('aria-label')).toBe('5 October 2026: 1 closed trade, +$12.50');
-    expect(host.textContent).toContain('Select a day to filter execution history');
+    expect(host.textContent).toContain('Click a day to filter history');
 
     await act(async () => { (buttons[0] as HTMLElement).click(); });
     expect(onSelectDay).toHaveBeenCalledWith('2026-10-05');

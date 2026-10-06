@@ -190,7 +190,7 @@ export function ResearchPage() {
     return (
       <div className="dashboard-page-container research-terminal">
         <div className="research-context-bar">
-          <div><span className="research-eyebrow">Research workspace</span><strong>Explore historical market behaviour</strong><span>Charts and durable experiment observations remain separate research views.</span></div>
+          <div><span className="research-eyebrow">Research workspace</span><strong>Explore historical market behaviour</strong></div>
         </div>
         <nav className="research-view-tabs" aria-label="Research views">
           <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>

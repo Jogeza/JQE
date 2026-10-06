@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { BookOpen } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
+import { BookOpen, ChevronRight } from 'lucide-react';
 import { jqeApi } from '../services/api';
+import { formatUtcDateTime } from '../utils/format';
 import type { ObservationHealthResponse, ResourceState } from '../types/api';
 
 export interface JournalEntry {
@@ -14,11 +15,17 @@ export interface AnalysisStatus {
   state: string; current_pairs: number; total_pairs: number; updated_at?: string;
 }
 
+const shortUtc = (iso: string): string => {
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(5, 19).replace('T', ' ') : iso || '—';
+};
+
 export function DecisionJournal() {
   const [items, setItems] = useState<JournalEntry[]>([]);
   const [state, setState] = useState('Loading');
   const [analysis, setAnalysis] = useState<AnalysisStatus>();
   const [supervisor, setSupervisor] = useState<{ state: string; execution_enabled: boolean; cycle_number?: number; reason?: string | null }>();
+  const [openEntry, setOpenEntry] = useState<number | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     let inFlight = false;
@@ -56,23 +63,67 @@ export function DecisionJournal() {
     </div>
     <div className="quant-panel-body journal-body">
       <div className="journal-status" role="status">
-        <span>Weltrade demo · UTC</span>
-        <span className={supervisor?.execution_enabled ? 'journal-status-armed' : undefined}>
-          Demo supervisor: {supervisor?.state ?? 'Unavailable'} · {supervisor?.execution_enabled ? 'armed · guarded demo' : 'not verified as armed'} · {supervisor?.cycle_number ?? 0} cycles{supervisor?.reason ? ` · ${supervisor.reason}` : ''}
-        </span>
-        {analysis && <span>Analysis {analysis.state} · {analysis.current_pairs}/{analysis.total_pairs} pairs</span>}
+        {supervisor ? (
+          <span className={supervisor.execution_enabled ? 'journal-status-armed' : undefined}>
+            Demo supervisor {supervisor.state} · {supervisor.execution_enabled ? 'armed · guarded demo' : 'not verified as armed'} · {supervisor.cycle_number ?? 0} cycles{supervisor.reason ? ` · ${supervisor.reason}` : ''}
+          </span>
+        ) : (
+          <span>Demo supervisor unavailable</span>
+        )}
+        {analysis && <span>Pairs {analysis.current_pairs}/{analysis.total_pairs}</span>}
       </div>
-      <p className="journal-note">Analysis and decisions are evidence for review. Broker fills appear in trade history below. Strategy changes require separate research validation.</p>
       {!items.length && <p className="journal-empty">No recorded decisions yet.</p>}
-      <div className="journal-scroll">
-        {items.map(item => <details key={item.id} className="journal-entry">
-          <summary>{item.symbol} · {item.timeframe} · {item.facts.status ?? item.facts.signal ?? item.stage} · {new Date(item.observed_at).toISOString().replace('T', ' ').slice(0, 19)} UTC</summary>
-          <p>{item.facts.decision_code ?? item.facts.reasons?.join(' · ') ?? 'No reason supplied'}</p>
-          {item.stage === 'ANALYSIS' && <p>Confidence {item.facts.confidence ?? 'unavailable'} · {item.facts.quality} · {item.facts.regime}</p>}
-          {item.facts.order_id && <p>Broker order {item.facts.order_id}</p>}
-          {item.facts.factors && <pre>{JSON.stringify(item.facts.factors, null, 2)}</pre>}
-        </details>)}
-      </div>
+      {items.length > 0 && (
+        <div className="journal-scroll">
+          <table className="quant-table journal-table">
+            <thead>
+              <tr>
+                <th>Time (UTC)</th>
+                <th>Symbol</th>
+                <th>TF</th>
+                <th>Decision</th>
+                <th className="journal-chevron" aria-label="Details" />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => {
+                const open = openEntry === item.id;
+                const toggle = () => setOpenEntry(open ? null : item.id);
+                return (
+                  <Fragment key={item.id}>
+                    <tr
+                      className={`journal-row${open ? ' is-open' : ''}`}
+                      tabIndex={0}
+                      aria-expanded={open}
+                      onClick={toggle}
+                      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } }}
+                    >
+                      <td className="journal-time">{shortUtc(item.observed_at)}</td>
+                      <td>{item.symbol}</td>
+                      <td>{item.timeframe}</td>
+                      <td>{item.facts.status ?? item.facts.signal ?? item.stage}</td>
+                      <td className="journal-chevron"><ChevronRight size={12} /></td>
+                    </tr>
+                    {open && (
+                      <tr className="journal-detail-row">
+                        <td colSpan={5}>
+                          <div className="journal-detail">
+                            <p>{formatUtcDateTime(item.observed_at)}</p>
+                            <p>{item.facts.decision_code ?? item.facts.reasons?.join(' · ') ?? 'No reason supplied'}</p>
+                            {item.stage === 'ANALYSIS' && <p>Confidence {item.facts.confidence ?? 'unavailable'} · {item.facts.quality} · {item.facts.regime}</p>}
+                            {item.facts.order_id && <p>Broker order {item.facts.order_id}</p>}
+                            {item.facts.factors && <pre>{JSON.stringify(item.facts.factors, null, 2)}</pre>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   </section>;
 }

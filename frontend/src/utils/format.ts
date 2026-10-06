@@ -18,3 +18,10 @@ export function utcDayKey(iso: string): string | null {
   const parsed = Date.parse(iso);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
 }
+
+export function formatUtcDateTime(iso: string): string {
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed)
+    ? `${new Date(parsed).toISOString().slice(0, 19).replace('T', ' ')} UTC`
+    : iso || '—';
+}

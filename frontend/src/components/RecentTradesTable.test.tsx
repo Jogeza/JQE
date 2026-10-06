@@ -50,3 +50,23 @@ it('filters execution history to a selected UTC day with a clear control', async
     expect(host.textContent).toContain('NO CLOSED TRADES ON 2026-10-07 (UTC)');
   } finally { await act(async () => root.unmount()); }
 });
+
+it('reveals full UTC trade details when a row is clicked', async () => {
+  const trades: TradeHistoryDTO[] = [{ id: '501', symbol: 'FX Vol 20', side: 'BUY', volume: 0.1,
+    open_price: 1000, close_price: 1001, profit: 12.5,
+    open_time: '2026-10-05T08:45:00Z', close_time: '2026-10-05T09:00:00Z', price_decimals: 2 }];
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<RecentTradesTable trades={trades} currency="USD" broker="weltrade" />));
+    expect(host.textContent).not.toContain('2026-10-05 08:45:00 UTC');
+    const row = host.querySelector('.trade-row') as HTMLElement;
+    await act(async () => { row.click(); });
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(host.textContent).toContain('2026-10-05 08:45:00 UTC');
+    expect(host.textContent).toContain('2026-10-05 09:00:00 UTC');
+    expect(host.textContent).toContain('+$12.50');
+    await act(async () => { row.click(); });
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    expect(host.textContent).not.toContain('2026-10-05 08:45:00 UTC');
+  } finally { await act(async () => root.unmount()); }
+});

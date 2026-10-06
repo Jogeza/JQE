@@ -480,13 +480,6 @@
 
 .journal-status-armed { color: var(--quant-amber); }
 
-.journal-note {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
 .journal-empty {
   margin: 0;
   font-size: 12px;
@@ -494,46 +487,113 @@
 }
 
 .journal-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   max-height: 60vh;
   overflow-y: auto;
 }
 
-.journal-entry {
-  padding: 8px 10px;
-  border: 1px solid var(--border-card-subtle);
-  border-radius: 8px;
+.journal-row {
+  cursor: pointer;
+}
+
+.journal-row:focus-visible {
+  outline: 1px solid var(--quant-cyan-border);
+  outline-offset: -1px;
+}
+
+.journal-row.is-open td {
   background: var(--bg-card-subtle);
-  font-size: 11px;
+}
+
+.journal-time {
   color: var(--text-secondary);
 }
 
-.journal-entry > summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
+.journal-chevron {
+  width: 18px;
+  padding-right: 8px !important;
+  padding-left: 0 !important;
+  color: var(--text-muted);
+  text-align: right;
 }
 
-.journal-entry[open] > summary { margin-bottom: 6px; }
-
-.journal-entry p {
-  margin: 4px 0;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+.journal-chevron svg {
+  transition: transform 0.15s ease;
 }
 
-.journal-entry pre {
-  margin: 6px 0 2px;
-  padding: 8px;
+.journal-row.is-open .journal-chevron svg {
+  transform: rotate(90deg);
+}
+
+.journal-detail-row td {
+  white-space: normal;
   background: var(--bg-card-inset);
+}
+
+.journal-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.journal-detail p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.journal-detail pre {
+  margin: 2px 0;
+  padding: 8px;
+  background: var(--bg-card);
   border-radius: 6px;
   font-size: 10px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.trade-row {
+  cursor: pointer;
+}
+
+.trade-row:focus-visible {
+  outline: 1px solid var(--quant-cyan-border);
+  outline-offset: -1px;
+}
+
+.trade-row.is-open td {
+  background: var(--bg-card-subtle);
+}
+
+.trade-detail-row td {
+  padding: 8px 12px 10px;
+  white-space: normal;
+  background: var(--bg-card-inset);
+}
+
+.trade-detail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.trade-detail span {
+  min-width: 0;
+}
+
+.trade-detail em {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 /* ==========================================================================
@@ -582,6 +642,7 @@
   .trade-calendar-value { font-size: 9px; }
   .pnl-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .journal-scroll { max-height: none; }
+  .trade-detail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ==========================================================================

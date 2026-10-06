@@ -65,7 +65,7 @@ export const NotificationCenter: React.FC<Props> = ({ notifications, safety, bro
     </button>
     {open && <section className="notification-panel" role="dialog" aria-label="System notifications">
       <div className="notification-heading"><div><strong>Notifications</strong><small>Current system evidence</small></div><button type="button" aria-label="Close notifications" onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} /></button></div>
-      <>{hosted && <p className="notification-empty">Authenticated workstation monitoring. Guarded demo execution runs on the PC; this dashboard is read-only.</p>}</>
+      <>{hosted && <p className="notification-empty">Read-only dashboard; guarded demo execution runs on the PC.</p>}</>
       <div className="notification-facts" aria-label="Workspace status"><strong>Workspace status</strong><dl>
         <div><dt>Live broker connection</dt><dd>{broker.data?.live_connection_state === 'CONNECTED' ? 'Yes - live' : broker.data?.live_connection_state === 'DISCONNECTED' ? 'No - live' : 'Unavailable'}</dd></div>
         <div><dt>Demo verified</dt><dd>{verified ? `Yes - age ${formatAge(identity?.verified_at)}` : 'Unverified'}</dd></div>
@@ -77,7 +77,7 @@ export const NotificationCenter: React.FC<Props> = ({ notifications, safety, bro
       <div className="notification-channels"><strong>Channels</strong>
         {notifications.data ? <ul>{channels.map(channel => <li key={channel.channel}><span>{channel.channel}</span><strong>{channel.state}</strong></li>)}</ul>
           : <p>Channel status unavailable.</p>}
-        <small>Configuration status only; delivery reachability is not tested.</small>
+        <small>Configuration status only; delivery not tested.</small>
       </div>
     </section>}
   </div>;
