@@ -276,6 +276,8 @@ class TerminalObservationResponse(BaseModel):
     symbol_specification: TerminalSymbolSpecificationDTO | None = None
     positions: list[PositionDTO] = Field(default_factory=list)
     recent_trades: list[TradeHistoryDTO] = Field(default_factory=list)
+    daily_accounting: dict[str, Any] | None = None
+    daily_accounting_error: str | None = None
 
 
 class LiveExecutionResponse(BaseModel):

@@ -128,3 +128,16 @@ def test_unreadable_history_never_recommends_rejection(recovery_case, capsys) ->
     assert "HALT" in capsys.readouterr().out
     assert _state(settings, "target") == "UNKNOWN"
     assert not (settings.intent_store_path.parent / "backups").exists()
+
+
+def test_server_clock_history_match_prevents_false_absence(recovery_case):
+    settings, terminal = recovery_case
+    now = datetime.now(timezone.utc)
+    raw_time = now.timestamp() + 10800 - 30
+    record = SimpleNamespace(ticket=99, symbol="SFX Vol 99")
+    terminal.history_deals_get.side_effect = lambda start, end: (
+        (record,) if start.timestamp() <= raw_time <= end.timestamp() else ())
+    finding = resolve_intent.inspect_intent('target', settings, terminal=terminal, now=now)
+    assert finding.recommendation == 'HALT'
+    assert finding.historical_deals == ('99',)
+    assert _state(settings, 'target') == 'UNKNOWN'

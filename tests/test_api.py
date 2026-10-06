@@ -182,6 +182,10 @@ class TestApplicationService:
             stop_loss=99.0, take_profit=102.0,
         )])
         gateway.get_candles = AsyncMock(return_value=[closed])
+        gateway.get_daily_accounting = AsyncMock(return_value={
+            'currency':'USD','current_balance':321.0,'starting_balance':300.0,
+            'realized_net_pnl':21.0,'advisory_target_amount':60.0,
+        })
         gateway.get_terminal_permissions = AsyncMock(return_value={
             "connected": True, "terminal_trading_allowed": False,
             "trade_api_disabled": True,
@@ -199,6 +203,7 @@ class TestApplicationService:
         assert response.state == "CONNECTED"
         assert response.environment == "DEMO"
         assert response.execution_enabled is False
+        assert response.daily_accounting['starting_balance'] == 300.0
         assert response.tick is not None and response.tick.bid == 100.9
         assert response.candle is not None
         assert response.candle.source == "CURRENT_TERMINAL"

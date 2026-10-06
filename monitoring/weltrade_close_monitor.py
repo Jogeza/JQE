@@ -66,6 +66,7 @@ async def monitor_weltrade_closes(
     settings, *, terminal=mt5, ledger: SQLitePositionLedger | None = None,
     records: SQLiteIntentRecordStore | None = None,
     events: JQENotificationEvents | None = None,
+    notify: bool = True,
 ) -> None:
     """Observe broker positions/deals only; never call an order mutation API."""
     ledger = ledger or SQLitePositionLedger(settings.execution_position_ledger_path)
@@ -103,7 +104,8 @@ async def monitor_weltrade_closes(
             if row.volume is None or not math.isfinite(row.volume) or row.volume <= 0:
                 try:
                     ledger.mark_close_unconfirmed(broker="weltrade", position_id=row.position_id)
-                    await _alert_unconfirmed(ledger, events, row)
+                    if notify:
+                        await _alert_unconfirmed(ledger, events, row)
                 except Exception:
                     _halt(records, "CLOSE_LEDGER_WRITE_FAILED")
                 _halt(records, "CLOSE_UNCONFIRMED")
@@ -133,7 +135,8 @@ async def monitor_weltrade_closes(
             if not valid:
                 try:
                     ledger.mark_close_unconfirmed(broker="weltrade", position_id=row.position_id)
-                    await _alert_unconfirmed(ledger, events, row)
+                    if notify:
+                        await _alert_unconfirmed(ledger, events, row)
                 except Exception:
                     _halt(records, "CLOSE_LEDGER_WRITE_FAILED")
                 _halt(records, "CLOSE_UNCONFIRMED")
@@ -169,7 +172,8 @@ async def monitor_weltrade_closes(
             except Exception:
                 _halt(records, "CLOSE_LEDGER_WRITE_FAILED")
         try:
-            await _send_pending_closes(ledger, events, str(account.currency))
+            if notify:
+                await _send_pending_closes(ledger, events, str(account.currency))
         except Exception:
             _halt(records, "CLOSE_LEDGER_WRITE_FAILED")
         if records.post_fill_integrity_halt() is not None:

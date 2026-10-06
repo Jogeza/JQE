@@ -100,6 +100,17 @@ def test_evaluator_has_no_order_gateway_or_mutation_call() -> None:
     assert "broker.factory" not in Path(preflight.__file__).read_text(encoding="utf-8")
 
 
+def test_preflight_reports_persisted_halt_without_clearing_it(tmp_path):
+    configured = _settings(tmp_path)
+    store = SQLiteIntentRecordStore(configured.intent_store_path)
+    store.record_post_fill_integrity_halt('CLOSE_UNCONFIRMED')
+    snapshot = preflight.evaluate(configured, terminal=ReadOnlyTerminal(configured.weltrade_terminal_path))
+    assert snapshot.execution_authorization is ExecutionAuthorization.BLOCKED
+    assert 'PERSISTED_INTEGRITY_HALT' in snapshot.reason_codes
+    assert 'CLOSE_UNCONFIRMED' in snapshot.reason_codes
+    assert store.post_fill_integrity_halt() == 'CLOSE_UNCONFIRMED'
+
+
 def test_read_only_run_replaces_stale_snapshot_with_fresh_blocked_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

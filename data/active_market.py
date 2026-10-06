@@ -25,7 +25,7 @@ class ActiveMarketContext(BaseModel):
     setup_creation_time: datetime
     setup_expiry_time: datetime
     data_source: Literal["SIMULATION", "DERIV_PUBLIC", "BROKER", "UNAVAILABLE"]
-    cache_status: Literal["REFRESHED", "FRESH_CACHE", "CACHE_ONLY", "EMPTY"]
+    cache_status: Literal["REFRESHED", "FRESH_CACHE", "CACHE_ONLY", "EMPTY", "CACHE_WRITE_FAILED"]
     synchronization_state: Literal["SYNCHRONIZED", "STALE", "FORMING", "UNKNOWN"]
     reason_codes: list[str] = Field(default_factory=list)
     latest_closed_candle_at: datetime | None = None
