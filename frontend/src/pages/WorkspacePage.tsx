@@ -4,6 +4,7 @@ import { jqeApi } from '../services/api';
 import { MarketChart } from '../components/MarketChart';
 import { SymbolSearchPicker } from '../components/SymbolSearchPicker';
 import { ChartDecisionCard } from '../components/ChartDecisionCard';
+import { ExecutionToolbox } from '../components/ExecutionToolbox';
 import type { TabType } from '../components/Sidebar';
 import type {
   BrokerStatusResponse, ExecutionSafetyResponse, ObservationHealthResponse,
@@ -249,6 +250,11 @@ export const WorkspacePage: React.FC<Props> = ({
     liveSetup?.setup_state === 'READY' &&
     liveSetup.direction !== 'NO_TRADE'
   );
+  const toolboxPositions = terminal ? terminal.positions : executionData?.positions ?? [];
+  const toolboxTrades = terminal ? terminal.recent_trades : executionData?.recent_trades ?? [];
+  const toolboxState: PanelState = terminal ? terminalState : executionState;
+  const toolboxObservedAt = terminal ? terminal.observed_at : executionData?.observed_at ?? null;
+  const toolboxCurrency = terminal ? terminal.currency : executionData?.currency ?? null;
   const filteredDestinations = destinations.filter(item => item.label.toLowerCase().includes(query.trim().toLowerCase()));
 
   const closeAi = () => { setAiOpen(false); aiLauncher.current?.focus(); };
@@ -391,7 +397,14 @@ export const WorkspacePage: React.FC<Props> = ({
           overlay={<ChartDecisionCard signal={activeSignal} setup={activeSetup} priceDecimals={activeCandles?.price_decimals}
             freshness={marketFreshness} latestClosedCandle={marketContext?.latest_closed_candle_at ? formatTime(marketContext.latest_closed_candle_at) : null} />}
         />
-      </Panel>      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
+      </Panel>
+      <aside className="workspace-rail" aria-label="Decision and execution rail">
+        <ChartDecisionCard signal={activeSignal} setup={activeSetup} priceDecimals={activeCandles?.price_decimals}
+          freshness={marketFreshness} latestClosedCandle={marketContext?.latest_closed_candle_at ? formatTime(marketContext.latest_closed_candle_at) : null} />
+        <ExecutionToolbox positions={toolboxPositions} trades={toolboxTrades} state={toolboxState}
+          currency={toolboxCurrency} observedAt={toolboxObservedAt} />
+      </aside>
+      <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><details className="workspace-inline-details"><summary>Factor availability</summary><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></details></div> : <>
         <ol className="workspace-stages">
           <li><strong>Data freshness</strong><span>{value(assessment.data_freshness.status)}</span><small>{reasonText(assessment.data_freshness.reason_codes)}</small></li>
@@ -434,13 +447,6 @@ export const WorkspacePage: React.FC<Props> = ({
             <div><span>Latest closed candle · {terminal.candle?.symbol ?? selectedSymbol} {terminal.candle?.timeframe ?? selectedTimeframe}</span><strong>{terminal.candle?.close ?? 'Unavailable'}</strong><small>{terminal.candle ? `Direct terminal read · closed ${formatTime(terminal.candle.closed_at)}` : 'No closed candle returned'}</small></div>
             <div><span>Contract economics · {terminal.symbol_specification?.name ?? selectedSymbol}</span><strong>{terminal.symbol_specification ? `Tick ${terminal.symbol_specification.trade_tick_size ?? '—'} · value ${terminal.symbol_specification.trade_tick_value ?? '—'}` : 'Unavailable'}</strong><small>{terminal.symbol_specification ? `Volume ${terminal.symbol_specification.volume_min ?? '—'}–${terminal.symbol_specification.volume_max ?? '—'} · step ${terminal.symbol_specification.volume_step ?? '—'}` : 'No terminal symbol specification'}</small></div>
           </div>
-          <details className="workspace-inline-details">
-            <summary>Terminal positions ({terminal.positions.length}) and recent history ({terminal.recent_trades.length})</summary>
-            <div className="workspace-terminal-records">
-              <div><strong>Open positions</strong>{terminal.positions.length ? terminal.positions.map(position => <span key={position.id}>{position.symbol} {position.side} {position.volume} · P/L {position.profit}</span>) : <span>None reported</span>}</div>
-              <div><strong>Recent closed trades</strong>{terminal.recent_trades.length ? terminal.recent_trades.slice(-5).reverse().map(trade => <span key={trade.id}>{trade.symbol} {trade.side} {trade.volume} · P/L {trade.profit} · {formatTime(trade.close_time)}</span>) : <span>None in returned history window</span>}</div>
-            </div>
-          </details>
         </>}
       </Panel>
 

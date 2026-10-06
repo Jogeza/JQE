@@ -31,7 +31,7 @@ interface JQEChartProps {
 }
 interface ChartHandles {
   chart: IChartApi; candles: ISeriesApi<'Candlestick'>; ema50: ISeriesApi<'Line'>;
-  ema200: ISeriesApi<'Line'>; rsi: ISeriesApi<'Line'>; volume: ISeriesApi<'Histogram'>;
+  ema200: ISeriesApi<'Line'>; rsi: ISeriesApi<'Line'> | null; volume: ISeriesApi<'Histogram'>;
   markers: ISeriesMarkersPluginApi<Time>; priceLines: IPriceLine[];
   volumeProfile: VolumeProfilePrimitive | null;
 }
@@ -53,6 +53,7 @@ export const JQEChart: React.FC<JQEChartProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const handlesRef = useRef<ChartHandles | null>(null);
+  const adaptedRef = useRef<ReturnType<typeof adaptCandles> | null>(null);
   const hasFitContentRef = useRef(false);
   const [drawingHandles, setDrawingHandles] = useState<ChartHandles | null>(null);
 
@@ -78,11 +79,8 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     const ema50Series = chart.addSeries(LineSeries, { color: palette.accent, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     const ema200Series = chart.addSeries(LineSeries, { color: palette.accentSecondary, lineStyle: LineStyle.Dashed, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    const rsiSeries = chart.addSeries(LineSeries, { color: palette.accent, lineWidth: 1, priceLineVisible: false, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } }, 1);
-    rsiSeries.createPriceLine({ price: 70, color: palette.axis, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '70' });
-    rsiSeries.createPriceLine({ price: 30, color: palette.axis, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '30' });
     const markers = createSeriesMarkers(candleSeries, []);
-    handlesRef.current = { chart, candles: candleSeries, ema50: ema50Series, ema200: ema200Series, rsi: rsiSeries, volume: volumeSeries, markers, priceLines: [], volumeProfile: null };
+    handlesRef.current = { chart, candles: candleSeries, ema50: ema50Series, ema200: ema200Series, rsi: null, volume: volumeSeries, markers, priceLines: [], volumeProfile: null };
     setDrawingHandles(handlesRef.current);
     return () => { handlesRef.current = null; hasFitContentRef.current = false; chart.remove(); };
   }, [priceDecimals, height]);
@@ -101,18 +99,29 @@ export const JQEChart: React.FC<JQEChartProps> = ({
     if (!handles) return;
     handles.ema50.applyOptions({ visible: indicators.ema50 });
     handles.ema200.applyOptions({ visible: indicators.ema200 });
-    handles.rsi.applyOptions({ visible: indicators.rsi });
     handles.volume.applyOptions({ visible: indicators.volume });
-  }, [indicators.ema50, indicators.ema200, indicators.rsi, indicators.volume]);
+    if (indicators.rsi && !handles.rsi) {
+      const palette = getChartPalette(containerRef.current ?? undefined);
+      const series = handles.chart.addSeries(LineSeries, { color: palette.accent, lineWidth: 1, priceLineVisible: false, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } }, 1);
+      series.createPriceLine({ price: 70, color: palette.axis, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '70' });
+      series.createPriceLine({ price: 30, color: palette.axis, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '30' });
+      if (adaptedRef.current) series.setData(toLineData(adaptedRef.current, 'rsi'));
+      handles.rsi = series;
+    } else if (!indicators.rsi && handles.rsi) {
+      handles.chart.removeSeries(handles.rsi);
+      handles.rsi = null;
+    }
+  }, [indicators.ema50, indicators.ema200, indicators.rsi, indicators.volume, drawingHandles]);
 
   useEffect(() => {
     const handles = handlesRef.current;
     if (!handles) return;
     const adapted = adaptCandles(candles);
+    adaptedRef.current = adapted;
     const palette = getChartPalette(containerRef.current ?? undefined);
     handles.candles.setData(toCandlestickData(adapted, palette)); handles.volume.setData(toVolumeData(adapted, palette));
     handles.ema50.setData(toLineData(adapted, 'ema50')); handles.ema200.setData(toLineData(adapted, 'ema200'));
-    handles.rsi.setData(toLineData(adapted, 'rsi'));
+    if (handles.rsi) handles.rsi.setData(toLineData(adapted, 'rsi'));
 
     const annotation = setup ? adaptMarketSetup(setup, symbol) : adaptSignal(signal, symbol);
     const fallbackTime = adapted.length > 0 ? adapted[adapted.length - 1].time : null;

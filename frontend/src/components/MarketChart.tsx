@@ -3,6 +3,7 @@ import { EmptyStateIllustration } from './EmptyStateIllustration';
 import { CandlestickChart as ChartIcon, Maximize2, Minimize2 } from 'lucide-react';
 import type { CandleItemDTO, MarketSetup, SignalResponse } from '../types/api';
 import { JQEChart } from './chart/JQEChart';
+import { ChartIndicatorPicker } from './ChartIndicatorPicker';
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import type { VolumeProfileSnapshotDTO } from '../types/research';
 import type { IndicatorVisibility } from './chart/JQEChart';
@@ -37,8 +38,10 @@ export const MarketChart: React.FC<MarketChartProps> = ({
 }) => {
   const [internalCompactPriceScale, setInternalCompactPriceScale] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [internalIndicators, setInternalIndicators] = useState<IndicatorVisibility>({ ema50: true, ema200: true, rsi: false, volume: false });
   const compactPriceScale = controlledCompactPriceScale ?? internalCompactPriceScale;
   const toggleCompactPriceScale = onToggleCompactPriceScale ?? (() => setInternalCompactPriceScale(value => !value));
+  const effectiveIndicators = indicators ?? internalIndicators;
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -58,12 +61,15 @@ export const MarketChart: React.FC<MarketChartProps> = ({
         <ChartIcon size={14} color="var(--chart-accent)" />
         {symbolControls ?? <span>{symbol} / {timeframe}</span>}
         <span className="chart-legend" style={{ fontSize: '10px', color: 'var(--text-dark-muted)', marginLeft: '6px' }}>
-          <span>JQE DATA</span><span className="chart-legend-item ema50"><i className="chart-legend-dot" />EMA50</span>
-          <span className="chart-legend-item ema200"><i className="chart-legend-dot" />EMA200</span>
-          <span className="chart-legend-item rsi"><i className="chart-legend-dot" />RSI(14)</span>
+          <span>JQE DATA</span>
+          {effectiveIndicators.ema50 && <span className="chart-legend-item ema50"><i className="chart-legend-dot" />EMA50</span>}
+          {effectiveIndicators.ema200 && <span className="chart-legend-item ema200"><i className="chart-legend-dot" />EMA200</span>}
+          {effectiveIndicators.rsi && <span className="chart-legend-item rsi"><i className="chart-legend-dot" />RSI(14)</span>}
+          {effectiveIndicators.volume && <span className="chart-legend-item volume"><i className="chart-legend-dot" />VOL</span>}
         </span>
         {sourceLabel && <span className="chart-source-label">{sourceLabel}</span>}
       </div>
+      {!indicators && <ChartIndicatorPicker indicators={internalIndicators} onChange={setInternalIndicators} />}
       {dataStatus === 'CACHED' && <span className="badge badge-neutral">CACHED · STALE · DEGRADED</span>}
       {dataStatus === 'UNKNOWN' && <span className="badge badge-neutral">FRESHNESS UNKNOWN</span>}
       {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
@@ -86,7 +92,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
     ) : candles.length === 0 ? (
       <ChartState>{emptyMessage ?? 'NO CANDLE DATA AVAILABLE'}</ChartState>
     ) : (
-      <JQEChart symbol={symbol} timeframe={timeframe} drawingTools candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={indicators} height={height} fibonacciLevels={fibonacciLevels} compactPriceScale={compactPriceScale} fill={fullscreen} />
+      <JQEChart symbol={symbol} timeframe={timeframe} drawingTools candles={candles} signal={signal} setup={setup} markers={markers} priceDecimals={priceDecimals} volumeProfile={volumeProfile} indicators={effectiveIndicators} height={height} fibonacciLevels={fibonacciLevels} compactPriceScale={compactPriceScale} fill={fullscreen} />
     )}
   </div>
   );

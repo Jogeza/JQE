@@ -194,6 +194,7 @@ svg { flex-shrink: 0; }
 .chart-legend-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .chart-legend-item.ema50, .chart-legend-item.rsi { color: var(--chart-accent); }
 .chart-legend-item.ema200 { color: var(--chart-accent-secondary); }
+.chart-legend-item.volume { color: var(--chart-neutral); }
 .operations-metadata { overflow-wrap: anywhere; }
 .operations-metadata span { min-width: 0; }
 .risk-notice { border-left: 3px solid currentColor; }

@@ -155,6 +155,87 @@
   border-color: var(--brand-cyan-border);
 }
 
+/* Chart indicator picker */
+.chart-indicator-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.chart-indicator-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border-card);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.chart-indicator-toggle:hover {
+  color: var(--text-primary);
+}
+
+.chart-indicator-picker.is-open .chart-indicator-toggle {
+  color: var(--brand-cyan);
+  border-color: var(--brand-cyan-border);
+}
+
+.chart-indicator-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 172px;
+  padding: 8px;
+  border: 1px solid var(--border-card-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-card-elevated, var(--shadow-card));
+}
+
+.chart-indicator-popover legend {
+  padding: 0 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.chart-indicator-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chart-indicator-option:hover {
+  background: var(--bg-card-subtle);
+}
+
+.chart-indicator-option input {
+  margin: 0;
+  accent-color: var(--brand-cyan);
+}
+
+.chart-indicator-popover small {
+  margin-top: 4px;
+  max-width: 156px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
 body.chart-fullscreen-lock {
   overflow: hidden;
 }
@@ -191,7 +272,8 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
 }
 
 @media (max-width: 700px) {
-  .chart-fullscreen-toggle {
+  .chart-fullscreen-toggle,
+  .chart-indicator-toggle {
     min-height: 44px;
     min-width: 44px;
   }

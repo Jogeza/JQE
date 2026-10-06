@@ -248,8 +248,36 @@
   .workspace-page { padding: 12px; padding-bottom: 72px; }
 }
 
-/* Reflow cards with the available workspace width, including beside the sidebar. */
-.workspace-primary { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: start; }
+/* Chart with a decision/execution rail; cards stack whenever the canvas narrows. */
+.workspace-primary { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'chart' 'rail' 'decision' 'terminal'; align-items: start; }
+.workspace-chart { grid-area: chart; min-width: 0; }
+.workspace-rail { grid-area: rail; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.workspace-decision { grid-area: decision; min-width: 0; }
+.workspace-terminal { grid-area: terminal; }
+@media (min-width: 1100px) {
+  .workspace-primary { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); grid-template-areas: 'chart rail' 'decision rail' 'terminal terminal'; }
+}
+.workspace-toolbox { display: flex; flex-direction: column; gap: 8px; }
+.workspace-toolbox-tabs { display: flex; gap: 4px; }
+.workspace-toolbox-tabs button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-card); background: var(--surface); color: var(--text-secondary); border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.workspace-toolbox-tabs button[aria-selected="true"] { color: var(--brand-cyan); border-color: var(--brand-cyan-border); background: var(--brand-cyan-dim); }
+.workspace-toolbox-tabs em { font-style: normal; font-size: 10px; padding: 0 5px; border-radius: 999px; background: var(--surface-strong); color: var(--text-secondary); }
+.workspace-toolbox-tabs button[aria-selected="true"] em { color: var(--brand-cyan); }
+.workspace-toolbox-rows { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 320px; overflow-y: auto; }
+.workspace-toolbox-rows li { display: grid; gap: 3px; border: 1px solid var(--border-card); border-radius: 8px; padding: 8px 10px; font-size: 12px; min-width: 0; }
+.workspace-toolbox-row-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.workspace-toolbox-row-top strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-toolbox-side { flex: 0 0 auto; font-style: normal; font-size: 9px; font-weight: 700; letter-spacing: .06em; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border-card-strong); color: var(--text-secondary); }
+.workspace-toolbox-side.is-buy { color: var(--quant-green); border-color: var(--status-green-border); }
+.workspace-toolbox-side.is-sell { color: var(--quant-red); border-color: currentColor; }
+.workspace-toolbox-volume { color: var(--text-muted); font-size: 10px; }
+.workspace-toolbox-profit { margin-left: auto; font-variant-numeric: tabular-nums; }
+.workspace-toolbox-profit.is-profit { color: var(--quant-green); }
+.workspace-toolbox-profit.is-loss { color: var(--quant-red); }
+.workspace-toolbox-rows small { color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; }
+.workspace-toolbox-rows li.workspace-toolbox-empty { border: 0; padding: 6px 0; color: var(--text-secondary); }
+.workspace-toolbox-source { color: var(--text-muted); font-size: 10px; }
+@media (max-width: 700px) { .workspace-toolbox-tabs button { min-height: 44px; } }
 .workspace-card-heading h2 { margin: 0; font-size: 15px; }
 .workspace-provenance { margin: 6px 0 10px; }
 .workspace-provenance > summary { font-size: 10px; font-weight: 400; }
@@ -280,8 +308,9 @@
   .workspace-studio .workspace-primary { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; margin-top: 0; }
   .workspace-studio .workspace-primary > .workspace-card { width: 100%; box-sizing: border-box; }
   .workspace-studio .workspace-chart { order: 0; }
-  .workspace-studio .workspace-decision { order: 1; }
-  .workspace-studio .workspace-terminal { order: 2; }
+  .workspace-studio .workspace-rail { order: 1; width: 100%; }
+  .workspace-studio .workspace-decision { order: 2; }
+  .workspace-studio .workspace-terminal { order: 3; }
   .workspace-ai-dock { grid-column: 2; grid-row: 1; position: sticky; top: 0; min-width: 0; }
   .workspace-ai-dock .workspace-ai-panel { width: 100%; height: min(760px, calc(100dvh - 140px)); min-height: 500px; box-sizing: border-box; border-radius: 14px; padding: 16px; }
   .workspace-studio .workspace-ai-launcher { display: none; }

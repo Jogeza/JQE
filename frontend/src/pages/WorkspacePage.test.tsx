@@ -114,10 +114,11 @@ describe('Workspace and Settings evidence views', () => {
 
   it('keeps Workspace limited to decision and market views without source details', async () => {
     await act(async () => root.render(<WorkspacePage {...baseProps()} />));
-    expect(host.querySelectorAll('.workspace-card')).toHaveLength(3);
+    expect(host.querySelectorAll('.workspace-card')).toHaveLength(4);
     expect(panel('Weltrade terminal')).not.toBeNull();
     expect(panel('Decision trail')).not.toBeNull();
     expect(panel('Market chart')).not.toBeNull();
+    expect(panel('Execution and history')).not.toBeNull();
     expect(host.querySelector('.workspace-topbar-facts')).toBeNull();
     expect(host.querySelector('.workspace-operational-details')).toBeNull();
     expect(host.querySelector('.workspace-more-details')).toBeNull();
@@ -126,6 +127,35 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.textContent).not.toContain('Source details');
     expect(host.textContent).not.toContain('Source and observation details');
     expect(host.textContent).not.toContain('GET /');
+  });
+  it('docks the decision card and MT5-style execution toolbox beside the chart', async () => {
+    await render({ terminalObservation: resource({ state: 'CONNECTED', observed_at: observed, currency: 'USD',
+      positions: [{ id: '1', symbol: 'FX Vol 20', side: 'BUY', volume: 0.1, open_price: 1, current_price: 1.1, stop_loss: 0.9, take_profit: 1.2, profit: 1.5, price_decimals: 2 }],
+      recent_trades: [{ id: '2', symbol: 'FX Vol 20', side: 'SELL', volume: 0.2, open_price: 1, close_price: 1.1, profit: -0.5, open_time: observed, close_time: observed, price_decimals: 2 }],
+    } as unknown as TerminalObservationResponse) });
+    const rail = plain().querySelector('.workspace-rail') as HTMLElement;
+    expect(rail.querySelector('[aria-label="Decision card"]')).not.toBeNull();
+    const toolbox = panel('Execution and history');
+    expect(toolbox.closest('.workspace-rail')).toBe(rail);
+    expect(toolbox.dataset.state).toBe('LIVE');
+    expect(toolbox.textContent).toContain('#1');
+    expect(toolbox.textContent).toContain('+1.50 USD');
+    const historyTab = Array.from(toolbox.querySelectorAll('button[role="tab"]')).find(b => b.textContent?.startsWith('History')) as HTMLButtonElement;
+    expect(historyTab.textContent).toContain('1');
+    await act(async () => historyTab.click());
+    expect(toolbox.textContent).toContain('#2');
+    expect(toolbox.textContent).toContain('-0.50 USD');
+    expect(toolbox.textContent).toContain('Weltrade terminal · observed');
+  });
+  it('collapses the decision rail card to a pill and reopens it', async () => {
+    await render();
+    const rail = () => plain().querySelector('.workspace-rail') as HTMLElement;
+    await act(async () => (rail().querySelector('.chart-decision-collapse') as HTMLButtonElement).click());
+    expect(rail().querySelector('[aria-label="Decision card"]')).toBeNull();
+    const pill = rail().querySelector('button.chart-decision-pill') as HTMLButtonElement;
+    expect(pill.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => pill.click());
+    expect(rail().querySelector('[aria-label="Decision card"]')).not.toBeNull();
   });
   it('hides owner-only source and operational disclosures from non-admin users', async () => {
     await render({ internalDetails: false });

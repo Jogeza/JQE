@@ -13,7 +13,7 @@ const chartMock = vi.hoisted(() => {
     const id = ++nextId; live.add(id);
     const series = () => ({ setData: vi.fn(), applyOptions: vi.fn(), priceScale: () => ({ applyOptions: vi.fn() }),
       createPriceLine: vi.fn(() => ({})), removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn() });
-    return { id, applyOptions: vi.fn(), addSeries: vi.fn(series), remove: remove.bind({ id }), timeScale: () => ({ fitContent: vi.fn() }) };
+    return { id, applyOptions: vi.fn(), addSeries: vi.fn(series), removeSeries: vi.fn(), remove: remove.bind({ id }), timeScale: () => ({ fitContent: vi.fn() }) };
   });
   return { live, createChart, remove, reset: () => { live.clear(); nextId = 0; createChart.mockClear(); remove.mockClear(); } };
 });
@@ -53,6 +53,22 @@ describe('JQEChart public lifecycle', () => {
     expect(chartMock.createChart).toHaveBeenCalledTimes(1); expect(chartMock.live.size).toBe(1);
     await act(async () => root.unmount()); expect(chartMock.live.size).toBe(0);
     root = createRoot(host);
+  });
+
+  it('adds and removes the RSI pane series when the indicator toggles without recreating the chart', async () => {
+    const off = { ema50: true, ema200: true, rsi: false, volume: false };
+    await act(async () => root.render(<JQEChart symbol="XAUUSD" candles={[candle]} indicators={off} />));
+    const chart = chartMock.createChart.mock.results[0].value;
+    expect(chart.addSeries).toHaveBeenCalledTimes(4);
+    expect(chart.removeSeries).not.toHaveBeenCalled();
+    await act(async () => root.render(<JQEChart symbol="XAUUSD" candles={[candle]} indicators={{ ...off, rsi: true }} />));
+    expect(chart.addSeries).toHaveBeenCalledTimes(5);
+    const rsiSeries = chart.addSeries.mock.results[4].value;
+    expect(rsiSeries.createPriceLine).toHaveBeenCalledTimes(2);
+    expect(rsiSeries.setData).toHaveBeenCalled();
+    await act(async () => root.render(<JQEChart symbol="XAUUSD" candles={[candle]} indicators={off} />));
+    expect(chart.removeSeries).toHaveBeenCalledWith(rsiSeries);
+    expect(chartMock.createChart).toHaveBeenCalledTimes(1);
   });
 
   it('keeps exactly one or two live instances across repeated comparison cycles', async () => {

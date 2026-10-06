@@ -37,6 +37,10 @@ const bodyFor = (path: string): unknown => {
     simulation_submissions: { utc_count: 0, limit: 20, reset_at: '2026-09-21T00:00:00Z' },
   };
   if (path === '/market/candles') return { symbol: 'R_75', timeframe: 'H1', candles: [] };
+  if (path === '/brokers/terminal-observation') return {
+    state: 'CONNECTED', environment: 'demo', observed_at: '2026-09-20T12:00:00Z',
+    positions: [], recent_trades: [], execution_enabled: false,
+  };
   if (path === '/execution') return { open_positions_count: 3 };
   return {};
 };

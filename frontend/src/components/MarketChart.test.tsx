@@ -30,8 +30,36 @@ it('keeps prices on the right (no side toggle) and narrows the axis through the 
     expect(toggle().getAttribute('aria-pressed')).toBe('true');
     await act(async () => toggle().click());
     expect(captured.latest?.compactPriceScale).toBe(false);
-    expect(host.querySelectorAll('button')).toHaveLength(2);
+    expect(host.querySelectorAll('button')).toHaveLength(3);
     expect(host.querySelector('button.chart-fullscreen-toggle')).not.toBeNull();
+    expect(host.querySelector('button.chart-indicator-toggle')).not.toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it('lets the user choose synthetic-index chart indicators from a picker', async () => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<MarketChart symbol="FX Vol 20" timeframe="M5" candles={[candle]} dataStatus="CURRENT" />));
+    expect(captured.latest?.indicators).toEqual({ ema50: true, ema200: true, rsi: false, volume: false });
+    await act(async () => (host.querySelector('button.chart-indicator-toggle') as HTMLButtonElement).click());
+    const boxes = () => Array.from(host.querySelectorAll('.chart-indicator-popover input')) as HTMLInputElement[];
+    expect(boxes().map(box => box.checked)).toEqual([true, true, false, false]);
+    await act(async () => boxes()[2].click());
+    expect(captured.latest?.indicators).toEqual({ ema50: true, ema200: true, rsi: true, volume: false });
+    await act(async () => boxes()[3].click());
+    expect(captured.latest?.indicators).toEqual({ ema50: true, ema200: true, rsi: true, volume: true });
+    await act(async () => boxes()[0].click());
+    expect(captured.latest?.indicators).toEqual({ ema50: false, ema200: true, rsi: true, volume: true });
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it('hides the picker and honours caller-controlled indicators', async () => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<MarketChart symbol="FX Vol 20" timeframe="M5" candles={[candle]} dataStatus="CURRENT"
+      indicators={{ ema50: true, ema200: true, rsi: true, volume: false }} />));
+    expect(host.querySelector('button.chart-indicator-toggle')).toBeNull();
+    expect(captured.latest?.indicators).toEqual({ ema50: true, ema200: true, rsi: true, volume: false });
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
