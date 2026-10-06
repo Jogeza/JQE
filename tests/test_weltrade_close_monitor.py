@@ -119,6 +119,24 @@ async def run_case(case):
 
 
 @pytest.mark.asyncio
+async def test_silent_reconciliation_preserves_halt_and_pending_alert(case):
+    settings, ledger, records, events, sink, terminal, _ = case
+    records.record_post_fill_integrity_halt('CLOSE_UNCONFIRMED')
+    terminal.deals = (
+        deal(terminal, ticket=1, entry=terminal.DEAL_ENTRY_IN, profit=0.0),
+        deal(terminal, ticket=2, reason=terminal.DEAL_REASON_TP),
+    )
+    with pytest.raises(RuntimeError, match='persisted integrity halt remains active'):
+        await monitor.monitor_weltrade_closes(
+            settings, terminal=terminal, ledger=ledger, records=records,
+            events=events, notify=False)
+    assert ledger.entries()[0].reconciliation_state == 'CLOSE_CONFIRMED'
+    assert ledger.entries()[0].close_notification_claimed_at is None
+    assert records.post_fill_integrity_halt() == 'CLOSE_UNCONFIRMED'
+    sink.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reason,expected", [
     (ReadOnlyTerminal.DEAL_REASON_SL, "STOP_LOSS"),
     (ReadOnlyTerminal.DEAL_REASON_TP, "TAKE_PROFIT"),

@@ -159,8 +159,9 @@ def inspect_intent(
         pending = terminal.orders_get()
         if positions is None or pending is None:
             raise RuntimeError("Current broker positions or orders are unreadable")
-        historical_orders = _history(terminal, "history_orders_get", start, end)
-        historical_deals = _history(terminal, "history_deals_get", start, end)
+        server_shift = timedelta(seconds=offset)
+        historical_orders = _history(terminal, "history_orders_get", start + server_shift, end + server_shift)
+        historical_deals = _history(terminal, "history_deals_get", start + server_shift, end + server_shift)
         symbol = row["symbol"].strip().upper()
         ids = lambda records: tuple(sorted(
             str(item.ticket) for item in records

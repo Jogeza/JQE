@@ -15,6 +15,7 @@ from tools import evaluate_execution_safety as preflight
 
 
 class HistoryTerminal:
+    DEAL_ENTRY_IN = 0
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_INOUT = 2
     DEAL_TYPE_BUY = 3
@@ -54,12 +55,31 @@ def test_full_window_is_authoritative_and_starts_at_server_day() -> None:
         terminal, start=start, end=end, count=500, connected=True,
     )
     assert snapshot.covers(start, end)
-    assert terminal.window[0] <= start
+    utc_window = tuple(bound - timedelta(hours=3) for bound in terminal.window)
+    assert utc_window[0] <= start
     server_day_start = datetime.combine(
-        (terminal.window[1] + timedelta(hours=3)).date(),
+        terminal.window[1].date(),
         datetime.min.time(), tzinfo=timezone.utc,
     ) - timedelta(hours=3)
-    assert terminal.window[0] == min(start, server_day_start)
+    assert utc_window[0] == min(start, server_day_start)
+    assert snapshot.coverage_start == utc_window[0]
+    assert snapshot.coverage_end == utc_window[1]
+
+
+def test_server_filtered_recent_close_is_visible_in_utc_coverage():
+    start, end = _window()
+    raw_time = int(end.timestamp()) + 3 * 3600
+    deal = SimpleNamespace(ticket=77, position_id=42, symbol="FX Vol 20",
+                           entry=1, type=4, volume=0.02, price=100.0,
+                           profit=1.58, commission=0.0, swap=0.0, time=raw_time)
+    terminal = HistoryTerminal()
+    terminal.history_deals_get = lambda begin, finish: (
+        (deal,) if begin.timestamp() <= raw_time <= finish.timestamp() else ())
+    snapshot = read_mt5_trade_history_snapshot(
+        terminal, start=start, end=end, count=500, connected=True)
+    assert snapshot.covers(start, end)
+    assert len(snapshot.trades) == 1
+    assert snapshot.trades[0].closed_at == datetime.fromtimestamp(raw_time - 10800, timezone.utc)
 
 
 @pytest.mark.parametrize("result", [None, RuntimeError("offline history failure")])

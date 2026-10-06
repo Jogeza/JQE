@@ -66,7 +66,7 @@ from broker.simulation_gateway import SimulationGateway
 from broker.types import ExecutionQuantity, ExecutionQuantityUnit, OrderSide, Timeframe, TIMEFRAME_SECONDS
 from config.settings import settings
 from core.data_validator import validate_market_data
-from core.exceptions import MarketDataError
+from core.exceptions import CacheError, MarketDataError
 from core.indicators import calculate_indicators
 from core.logger import logger
 from core.regime import detect_regime
@@ -321,6 +321,21 @@ class ApplicationService:
                 provenance = self._provenance(configured, candles)
                 cache_status = "REFRESHED" if downloaded > 0 else "FRESH_CACHE"
                 return candles, provenance, "CURRENT", cache_status
+        except CacheError:
+            # Preserve immutable conflicting history. Observation can still
+            # consume a validated, closed-bar broker batch without persisting it.
+            logger.exception("Cache persistence failed; requesting uncached broker observation")
+            try:
+                async with self._connected_source(source):
+                    current = await source.get_candles(provider_symbol, timeframe, count + 1)
+                now = datetime.datetime.now(datetime.timezone.utc)
+                step = datetime.timedelta(seconds=TIMEFRAME_SECONDS[timeframe])
+                current = [c for c in current if c.time + step <= now][-count:]
+                ordered = all(b.time > a.time for a, b in zip(current, current[1:]))
+                if current and ordered and validate_market_data(pd.DataFrame([c.model_dump() for c in current])):
+                    return current, self._provenance(configured, current), "CURRENT", "CACHE_WRITE_FAILED"
+            except Exception:
+                logger.exception("Uncached broker observation failed")
         except Exception:
             logger.exception(
                 "Market-data refresh failed; falling back to cached candles "
@@ -1374,6 +1389,17 @@ class ApplicationService:
                 account = await gateway.get_account_info()
                 positions = await gateway.get_positions()
                 history = await gateway.get_trade_history(count=20)
+                daily_accounting = None
+                daily_accounting_error = None
+                daily_reader = getattr(gateway, "get_daily_accounting", None)
+                if callable(daily_reader):
+                    try:
+                        daily_accounting = await daily_reader()
+                        if daily_accounting.get('currency') != account.currency or daily_accounting.get('current_balance') != account.balance:
+                            raise ValueError('Account observation changed')
+                    except Exception as exc:
+                        daily_accounting = None
+                        daily_accounting_error = type(exc).__name__
                 tick_reader = getattr(gateway, "get_latest_tick", None)
                 tick = await tick_reader(target_symbol) if callable(tick_reader) else None
                 candles = await gateway.get_candles(target_symbol, timeframe, 2)
@@ -1435,6 +1461,8 @@ class ApplicationService:
                         TerminalSymbolSpecificationDTO(**specifications) if specifications else None
                     ),
                     positions=position_dtos, recent_trades=trade_dtos,
+                    daily_accounting=daily_accounting,
+                    daily_accounting_error=daily_accounting_error,
                 )
         except Exception as exc:
             logger.exception("Weltrade terminal observation failed")

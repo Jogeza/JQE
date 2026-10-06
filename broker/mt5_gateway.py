@@ -100,7 +100,10 @@ def read_mt5_trade_history_snapshot(
         ) - timedelta(seconds=offset)
         query_start = min(start.astimezone(timezone.utc), server_day_start)
         query_end = max(end.astimezone(timezone.utc), now)
-        deals = terminal.history_deals_get(query_start, query_end)
+        # Weltrade history filters use the same server-clock epochs as deal.time.
+        # Keep coverage in UTC, but translate both query bounds to server time.
+        server_shift = timedelta(seconds=offset)
+        deals = terminal.history_deals_get(query_start + server_shift, query_end + server_shift)
         if deals is None:
             return unknown
         closing = {terminal.DEAL_ENTRY_OUT, terminal.DEAL_ENTRY_INOUT}
@@ -270,6 +273,11 @@ def _mt5_timeframe(timeframe: Timeframe) -> int:
 
 
 class MT5Gateway(BrokerGateway):
+    async def get_daily_accounting(self) -> dict:
+        self._require_connected()
+        from broker.daily_accounting import read_daily_accounting
+        return await asyncio.to_thread(read_daily_accounting, mt5, offset_reader=_history_server_offset)
+
     """MetaTrader 5 implementation of BrokerGateway."""
 
     market_data_provider = "mt5"

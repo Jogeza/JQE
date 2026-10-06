@@ -147,6 +147,14 @@ def evaluate(settings: Settings, *, terminal=mt5) -> ExecutionSafetySnapshot:
     unresolved = 0
     connected = False
 
+    try:
+        halt_rows = _read_rows(Path(settings.intent_store_path),
+                              "SELECT reason FROM post_fill_integrity_halt WHERE singleton_id=1")
+        if halt_rows:
+            reasons.extend(("PERSISTED_INTEGRITY_HALT", str(halt_rows[0][0])))
+    except (OSError, sqlite3.Error, ValueError):
+        reasons.append("INTEGRITY_HALT_STATE_UNAVAILABLE")
+
     enforce_weltrade_only(broker=settings.effective_broker, market_data_source=settings.market_data_source)
     path = settings.weltrade_terminal_path
     login = settings.effective_weltrade_login
