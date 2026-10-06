@@ -1,30 +1,27 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TradeHistoryDTO } from '../types/api';
-import { formatMoney } from '../utils/format';
+import { formatMoney, utcDayKey } from '../utils/format';
 
 interface TradeCalendarProps {
   trades: TradeHistoryDTO[];
   currency?: string;
+  selectedDay?: string | null;
+  onSelectDay?: (day: string | null) => void;
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
-const utcDay = (iso: string): string | null => {
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
-};
-
-export const TradeCalendar: React.FC<TradeCalendarProps> = ({ trades, currency }) => {
+export const TradeCalendar: React.FC<TradeCalendarProps> = ({ trades, currency, selectedDay, onSelectDay }) => {
   const initial = new Date();
   const [view, setView] = useState({ year: initial.getUTCFullYear(), month: initial.getUTCMonth() });
 
   const byDay = useMemo(() => {
     const map = new Map<string, { profit: number; count: number }>();
     for (const trade of trades) {
-      const key = utcDay(trade.close_time);
+      const key = utcDayKey(trade.close_time);
       if (!key) continue;
       const cell = map.get(key) ?? { profit: 0, count: 0 };
       cell.profit += trade.profit;
@@ -94,11 +91,23 @@ export const TradeCalendar: React.FC<TradeCalendarProps> = ({ trades, currency }
                   const classes = ['trade-calendar-cell', tone];
                   if (cell) classes.push('has-trades');
                   if (key === todayKey) classes.push('is-today');
+                  if (key === selectedDay) classes.push('is-selected');
+                  const interactive = Boolean(cell && onSelectDay);
+                  if (interactive) classes.push('is-clickable');
+                  const toggle = () => onSelectDay?.(selectedDay === key ? null : key);
                   return (
                     <td
                       key={dayIndex}
                       className={classes.join(' ')}
                       title={cell ? `${cell.count} closed trade${cell.count === 1 ? '' : 's'} (UTC)` : undefined}
+                      role={interactive ? 'button' : undefined}
+                      tabIndex={interactive ? 0 : undefined}
+                      aria-pressed={interactive ? selectedDay === key : undefined}
+                      aria-label={interactive ? `${day} ${monthLabel}: ${cell!.count} closed trade${cell!.count === 1 ? '' : 's'}, ${formatCell(value)}` : undefined}
+                      onClick={interactive ? toggle : undefined}
+                      onKeyDown={interactive ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
+                      } : undefined}
                     >
                       <span className="trade-calendar-day">{day}</span>
                       {cell && <span className="trade-calendar-value">{formatCell(value)}</span>}
@@ -119,6 +128,9 @@ export const TradeCalendar: React.FC<TradeCalendarProps> = ({ trades, currency }
               ? 'No closed trades recorded for this month (broker history window only).'
               : `${monthTrades} closed trade${monthTrades === 1 ? '' : 's'} · broker close date (UTC)`}
           </span>
+          {onSelectDay && monthTrades > 0 && (
+            <span className="trade-calendar-summary-hint">Select a day to filter execution history</span>
+          )}
         </div>
       </div>
     </div>

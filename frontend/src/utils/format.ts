@@ -13,3 +13,8 @@ export function formatMoney(value: number, currency?: string, sign = false): str
 export function formatInstrumentPrice(value: number, decimals?: number): string {
   return decimals === undefined ? '—' : value.toFixed(decimals);
 }
+
+export function utcDayKey(iso: string): string | null {
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
+}

@@ -67,3 +67,38 @@ it('renders a flat fallback without currency and an honest empty month', async (
     expect(host.textContent).not.toContain('+5.00');
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
 });
+
+it('exposes keyboard-accessible day selection only for days with trades', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-06T12:00:00Z'));
+  const onSelectDay = vi.fn();
+  const trades = [trade('1', '2026-10-05T09:00:00Z', 12.5)];
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    const render = (selectedDay: string | null) => root.render(
+      <TradeCalendar currency="USD" trades={trades} selectedDay={selectedDay} onSelectDay={onSelectDay} />);
+
+    await act(async () => render(null));
+    const buttons = host.querySelectorAll('[role="button"]');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].getAttribute('aria-label')).toBe('5 October 2026: 1 closed trade, +$12.50');
+    expect(host.textContent).toContain('Select a day to filter execution history');
+
+    await act(async () => { (buttons[0] as HTMLElement).click(); });
+    expect(onSelectDay).toHaveBeenCalledWith('2026-10-05');
+
+    await act(async () => render('2026-10-05'));
+    const selected = host.querySelector('[role="button"]') as HTMLElement;
+    expect(selected.className).toContain('is-selected');
+    expect(selected.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => { selected.click(); });
+    expect(onSelectDay).toHaveBeenLastCalledWith(null);
+
+    await act(async () => render(null));
+    const cell = host.querySelector('[role="button"]') as HTMLElement;
+    await act(async () => {
+      cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(onSelectDay).toHaveBeenLastCalledWith('2026-10-05');
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
+});

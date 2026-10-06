@@ -1,30 +1,46 @@
 import React from 'react';
-import { History, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { History, ArrowUpRight, ArrowDownRight, X } from 'lucide-react';
 import { TradeHistoryDTO } from '../types/api';
-import { formatInstrumentPrice, formatMoney } from '../utils/format';
+import { formatInstrumentPrice, formatMoney, utcDayKey } from '../utils/format';
 
 interface RecentTradesTableProps {
   trades: TradeHistoryDTO[];
   loading?: boolean;
   currency?: string;
   broker?: string;
+  dayFilter?: string | null;
+  onClearDayFilter?: () => void;
 }
 
-export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, loading, currency, broker }) => {
+export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, loading, currency, broker, dayFilter, onClearDayFilter }) => {
   const formatTime = (timeStr: string) => {
     const d = new Date(timeStr);
     if (Number.isNaN(d.getTime())) return timeStr || '—';
     return d.toLocaleTimeString('en-GB', { hour12: false }) + ' ' + d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
   };
 
+  const visible = dayFilter ? trades.filter((trade) => utcDayKey(trade.close_time) === dayFilter) : trades;
+
   return (
     <div className="quant-panel">
       <div className="quant-panel-header">
         <div className="quant-panel-title">
           <History size={14} color="var(--quant-cyan)" />
-          <span>Execution History ({trades.length})</span>
+          <span>Execution History ({dayFilter ? `${visible.length} of ${trades.length}` : trades.length})</span>
         </div>
-        <span className="badge badge-neutral">{broker?.toLowerCase() === 'weltrade' ? 'WELTRADE MT5 HISTORY' : 'BROKER SOURCE UNAVAILABLE'}</span>
+        <div className="trade-table-heading-right">
+          {dayFilter && (
+            <span className="trade-day-filter">
+              {dayFilter} UTC
+              {onClearDayFilter && (
+                <button type="button" aria-label="Clear day filter" onClick={onClearDayFilter}>
+                  <X size={11} />
+                </button>
+              )}
+            </span>
+          )}
+          <span className="badge badge-neutral">{broker?.toLowerCase() === 'weltrade' ? 'WELTRADE MT5 HISTORY' : 'BROKER SOURCE UNAVAILABLE'}</span>
+        </div>
       </div>
 
       <div className="quant-table-wrapper">
@@ -42,14 +58,16 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = ({ trades, lo
             </tr>
           </thead>
           <tbody>
-            {trades.length === 0 ? (
+            {visible.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                  {loading ? 'Fetching trade history...' : 'NO RECENT EXECUTED TRADES FOUND'}
+                  {loading
+                    ? 'Fetching trade history...'
+                    : dayFilter ? `NO CLOSED TRADES ON ${dayFilter} (UTC)` : 'NO RECENT EXECUTED TRADES FOUND'}
                 </td>
               </tr>
             ) : (
-              trades.map((t) => {
+              visible.map((t) => {
                 const isBuy = t.side.toUpperCase() === 'BUY';
                 const isWin = t.profit >= 0;
 

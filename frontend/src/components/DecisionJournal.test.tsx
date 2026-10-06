@@ -81,3 +81,25 @@ it('routes transport errors to Notifications and never claims an armed process',
     window.removeEventListener('jqe:notification', receive);
   }
 });
+
+it('pauses journal polling while the page is hidden and refetches on return', async () => {
+  vi.useFakeTimers();
+  let visibility: DocumentVisibilityState = 'hidden';
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+  const spy = vi.spyOn(jqeApi, 'getJournal').mockResolvedValue({ state: 'OBSERVED', items: [] });
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<DecisionJournal />));
+    expect(spy).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(45000));
+    expect(spy).not.toHaveBeenCalled();
+    visibility = 'visible';
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(spy).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(15000));
+    expect(spy).toHaveBeenCalledTimes(2);
+  } finally {
+    await act(async () => root.unmount()); spy.mockRestore(); vi.useRealTimers();
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  }
+});

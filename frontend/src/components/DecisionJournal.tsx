@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BookOpen } from 'lucide-react';
 import { jqeApi } from '../services/api';
 import type { ObservationHealthResponse, ResourceState } from '../types/api';
 
@@ -16,16 +17,17 @@ export interface AnalysisStatus {
 export function DecisionJournal() {
   const [items, setItems] = useState<JournalEntry[]>([]);
   const [state, setState] = useState('Loading');
+  const [analysis, setAnalysis] = useState<AnalysisStatus>();
   const [supervisor, setSupervisor] = useState<{ state: string; execution_enabled: boolean; cycle_number?: number; reason?: string | null }>();
   useEffect(() => {
     const controller = new AbortController();
     let inFlight = false;
     const refresh = async () => {
-      if (inFlight || controller.signal.aborted) return;
+      if (inFlight || controller.signal.aborted || document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
         const result = await jqeApi.getJournal(controller.signal);
-        if (!controller.signal.aborted) { setItems(result.items); setState(result.state); setSupervisor(result.supervisor); }
+        if (!controller.signal.aborted) { setItems(result.items); setState(result.state); setAnalysis(result.analysis); setSupervisor(result.supervisor); }
       } catch {
         if (!controller.signal.aborted) {
           setState('Unavailable');
@@ -38,24 +40,39 @@ export function DecisionJournal() {
         inFlight = false;
       }
     };
+    const onVisibility = () => { if (document.visibilityState === 'visible') void refresh(); };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 15000);
-    return () => { controller.abort(); window.clearInterval(timer); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { controller.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); };
   }, []);
-  return <section className="workspace-card" aria-label="Decision journal">
-    <h2>Journal</h2>
-    <p>Weltrade demo · UTC · {state}</p>
-    <p role="status">Demo supervisor: {supervisor?.state ?? 'Unavailable'} · {supervisor?.execution_enabled ? 'armed · guarded demo' : 'not verified as armed'} · {supervisor?.cycle_number ?? 0} cycles{supervisor?.reason ? ` · ${supervisor.reason}` : ''}</p>
-    <p className="workspace-note">Analysis and decisions are evidence for review. Broker fills appear in trade history below. Strategy changes require separate research validation.</p>
-    {!items.length && <p>No recorded decisions yet.</p>}
-    <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-      {items.map(item => <details key={item.id} className="workspace-inline-details">
-        <summary>{item.symbol} · {item.timeframe} · {item.facts.status ?? item.facts.signal ?? item.stage} · {new Date(item.observed_at).toISOString().replace('T', ' ').slice(0, 19)} UTC</summary>
-        <p>{item.facts.decision_code ?? item.facts.reasons?.join(' · ') ?? 'No reason supplied'}</p>
-        {item.stage === 'ANALYSIS' && <p>Confidence {item.facts.confidence ?? 'unavailable'} · {item.facts.quality} · {item.facts.regime}</p>}
-        {item.facts.order_id && <p>Broker order {item.facts.order_id}</p>}
-        {item.facts.factors && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(item.facts.factors, null, 2)}</pre>}
-      </details>)}
+  return <section className="quant-panel" aria-label="Decision journal">
+    <div className="quant-panel-header">
+      <div className="quant-panel-title">
+        <BookOpen size={14} color="var(--quant-cyan)" />
+        <span>Decision Journal</span>
+      </div>
+      <span className={`badge ${state === 'OBSERVED' ? 'badge-cyan' : 'badge-neutral'}`}>{state}</span>
+    </div>
+    <div className="quant-panel-body journal-body">
+      <div className="journal-status" role="status">
+        <span>Weltrade demo · UTC</span>
+        <span className={supervisor?.execution_enabled ? 'journal-status-armed' : undefined}>
+          Demo supervisor: {supervisor?.state ?? 'Unavailable'} · {supervisor?.execution_enabled ? 'armed · guarded demo' : 'not verified as armed'} · {supervisor?.cycle_number ?? 0} cycles{supervisor?.reason ? ` · ${supervisor.reason}` : ''}
+        </span>
+        {analysis && <span>Analysis {analysis.state} · {analysis.current_pairs}/{analysis.total_pairs} pairs</span>}
+      </div>
+      <p className="journal-note">Analysis and decisions are evidence for review. Broker fills appear in trade history below. Strategy changes require separate research validation.</p>
+      {!items.length && <p className="journal-empty">No recorded decisions yet.</p>}
+      <div className="journal-scroll">
+        {items.map(item => <details key={item.id} className="journal-entry">
+          <summary>{item.symbol} · {item.timeframe} · {item.facts.status ?? item.facts.signal ?? item.stage} · {new Date(item.observed_at).toISOString().replace('T', ' ').slice(0, 19)} UTC</summary>
+          <p>{item.facts.decision_code ?? item.facts.reasons?.join(' · ') ?? 'No reason supplied'}</p>
+          {item.stage === 'ANALYSIS' && <p>Confidence {item.facts.confidence ?? 'unavailable'} · {item.facts.quality} · {item.facts.regime}</p>}
+          {item.facts.order_id && <p>Broker order {item.facts.order_id}</p>}
+          {item.facts.factors && <pre>{JSON.stringify(item.facts.factors, null, 2)}</pre>}
+        </details>)}
+      </div>
     </div>
   </section>;
 }
