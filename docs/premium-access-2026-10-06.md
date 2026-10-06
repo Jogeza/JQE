@@ -17,6 +17,16 @@ not been applied to production: no authorized SQL management connection was
 available. Until applied, the old direct authenticated Supabase RPC can still
 activate a free trial. The hosted route alone does not close that direct path.
 
+The migration is transactional and aborts if inherited grants still allow
+authenticated or anonymous execution. Apply it once in the configured project's
+Supabase SQL Editor, then run supabase/verify_paid_access_gate.sql. Both permission
+checks must return true, and catalog rows must retain NOT_CONFIGURED. Do not
+rerun the base migration. These SQL changes do not alter existing entitlements,
+trials, usage counters or trading state. Production SQL validation is pending.
+
+The owner confirmed that payment-provider selection is deferred and checkout
+must stay disabled. No payment provider implementation is authorized yet.
+
 Next: apply the migration through the project SQL administration interface,
 choose the payment provider and implement verified, idempotent server webhooks
 before enabling purchases or activating any paid 24-hour access. Define refund,
