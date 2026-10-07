@@ -7,6 +7,7 @@
   display: flex;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background-color: var(--bg-canvas);
 }
@@ -17,6 +18,7 @@
   flex: 1;
   min-width: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background-color: var(--bg-canvas);
 }
@@ -51,6 +53,12 @@
 .text-amber { color: var(--quant-amber); }
 .text-cyan { color: var(--quant-cyan); }
 .text-purple { color: var(--quant-purple); }
+
+/* iOS Safari flashes a grey highlight on tap; Apple browsers only understand
+   the prefixed property, so this cannot be folded into the component themes. */
+button, a, summary, select, input, textarea, [role="button"], .chart-indicator-option {
+  -webkit-tap-highlight-color: transparent;
+}
 
 /* ==========================================================================
    Quant Surface Panels (Light Cards by default)
@@ -146,8 +154,12 @@
   cursor: pointer;
 }
 
-.chart-fullscreen-toggle:hover {
-  color: var(--text-primary);
+/* Touch devices synthesize a sticky hover on first tap; guard hover states so
+   the highlight only applies to real pointers. */
+@media (hover: hover) {
+  .chart-fullscreen-toggle:hover {
+    color: var(--text-primary);
+  }
 }
 
 .chart-fullscreen-toggle[aria-pressed="true"] {
@@ -174,8 +186,10 @@
   cursor: pointer;
 }
 
-.chart-indicator-toggle:hover {
-  color: var(--text-primary);
+@media (hover: hover) {
+  .chart-indicator-toggle:hover {
+    color: var(--text-primary);
+  }
 }
 
 .chart-indicator-picker.is-open .chart-indicator-toggle {
@@ -220,8 +234,10 @@
   cursor: pointer;
 }
 
-.chart-indicator-option:hover {
-  background: var(--bg-card-subtle);
+@media (hover: hover) {
+  .chart-indicator-option:hover {
+    background: var(--bg-card-subtle);
+  }
 }
 
 .chart-indicator-option input {
@@ -256,8 +272,24 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
   flex-direction: column;
 }
 
+/* With viewport-fit=cover the CSS overlay owns the whole notch screen; keep
+   header controls below the notch and the decision card above the home bar. */
 .chart-panel.is-fullscreen .quant-panel-header {
   flex-wrap: nowrap;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  padding-right: calc(14px + env(safe-area-inset-right, 0px));
+  padding-left: calc(14px + env(safe-area-inset-left, 0px));
+}
+
+.chart-panel.is-fullscreen .chart-overlay {
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+}
+
+/* iOS Safari: vertical drags scroll the page, horizontal pans and pinch stay on the chart. */
+.chart-drawing-host,
+.chart-host-plain {
+  touch-action: pan-y pinch-zoom;
 }
 
 .chart-panel.is-fullscreen .chart-drawing-host,
@@ -295,6 +327,25 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
 
   .symbol-picker-trigger {
     min-height: 34px;
+  }
+}
+
+/* Apple tablets are wider than every max-width breakpoint above, so size
+   touch targets by pointer type as well; also kill the double-tap zoom delay. */
+@media (pointer: coarse) {
+  .chart-fullscreen-toggle,
+  .chart-indicator-toggle,
+  .chart-decision-collapse,
+  .chart-decision-pill,
+  .symbol-search-button,
+  .symbol-picker-trigger {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  .chart-indicator-option {
+    min-height: 44px;
   }
 }
 

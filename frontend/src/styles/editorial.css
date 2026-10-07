@@ -251,9 +251,9 @@ input, select { border-color: var(--border); min-height: 36px; border-radius: 6p
   .desktop-sidebar { display: none; }
   /* The header owns the notification panel's fixed containing block (backdrop-filter),
      so elevate it above page cards and keep it put while the panel is open. */
-  .mobile-navigation-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 8px 16px; position: relative; z-index: 30; background: #111; color: white; transition: margin-top 200ms ease, opacity 160ms ease; }
+  .mobile-navigation-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 8px 16px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); position: relative; z-index: 30; background: #111; color: white; transition: margin-top 200ms ease, opacity 160ms ease; }
   .mobile-navigation-header strong { margin-right: auto; font-size: 13px; font-weight: 500; }
-  .mobile-navigation-header.retracted { margin-top: -64px; opacity: 0; pointer-events: none; }
+  .mobile-navigation-header.retracted { margin-top: calc(-64px - env(safe-area-inset-top, 0px)); opacity: 0; pointer-events: none; }
   .mobile-navigation-header.retracted:has(.notification-panel) { margin-top: 0; opacity: 1; pointer-events: auto; }
   .main-content-wrapper { height: auto; min-height: 0; }
   .application-header { height: 52px !important; min-height: 52px; padding: 0 12px !important; gap: 8px; }
