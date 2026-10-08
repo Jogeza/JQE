@@ -54,8 +54,9 @@ def _generate_uptrend_candles(count: int) -> list[Candle]:
     for i in range(count):
         # Monotonically increasing price to ensure EMA50 > EMA200 and RSI > 50
         price = base_price + i
-        # Increase volatility at the end to ensure ATR > average ATR for higher confidence score
-        vol = 2.0 if i >= count - 15 else 1.0
+        # Constant volatility keeps the canonical detector in TRENDING; an
+        # end-of-series spike now trips its HIGH_VOLATILITY protection.
+        vol = 2.0
         candles.append(
             Candle(
                 time=base_time + timedelta(hours=i),

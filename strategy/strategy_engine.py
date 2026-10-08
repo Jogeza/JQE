@@ -41,7 +41,7 @@ from intelligence.trade_plan import TradePlan, TradePlanBuilder
 from strategy.features.feature_engine import FeatureEngine
 from strategy.scoring.signal_scorer import SignalScorer
 from strategy.signal_engine import SignalEngine
-from risk.risk_engine import MIN_CONFIDENCE
+from risk.risk_engine import MIN_CONFIDENCE, UNKNOWN_SPREAD_FALLBACK
 
 
 class RegimeTranslator:
@@ -176,7 +176,7 @@ class StrategyEngine:
         latest = df.iloc[-1]
         current_price = price if price is not None else float(latest["close"])
         latest_atr = float(latest.get("ATR", latest.get("ATR_14", 0.0)))
-        current_spread = spread if spread is not None else float(latest.get("spread", 1.0))
+        current_spread = spread if spread is not None else float(latest.get("spread", UNKNOWN_SPREAD_FALLBACK))
         latest_rsi = float(latest.get("RSI", latest.get("RSI_14", 50.0)))
 
         # Enforce canonical intelligence fields for downstream consumers

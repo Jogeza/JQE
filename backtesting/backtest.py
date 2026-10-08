@@ -49,10 +49,10 @@ DEFAULT_CANDLES = 5000
 _WARMUP_CANDLES = 200
 _BACKTEST_ENGINE_VERSION = "jqe-backtest-v1"
 _DEFAULT_STRATEGY_CONFIGURATION = {
-    "strategy_id": "jqe-canonical-strategy-v1",
+    "strategy_id": "jqe-canonical-strategy-v2",
     "entrypoint": "strategy.pipeline.generate_trading_signal",
     "indicator_engine": "core.indicators.calculate_indicators-v1",
-    "regime_engine": "intelligence.market_regime.detect_legacy_regime-v1",
+    "regime_engine": "intelligence.market_regime.detect_regime-v2",
 }
 
 

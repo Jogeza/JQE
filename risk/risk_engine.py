@@ -28,6 +28,7 @@ MIN_CONFIDENCE = 75
 MAX_RISK_PERCENT = 0.5
 MIN_ATR = 1.0
 MAX_SPREAD = 30.0
+UNKNOWN_SPREAD_FALLBACK = 1.0
 
 _DEFAULT_BALANCE = 50.0
 
@@ -209,7 +210,7 @@ class RiskEngine:
             decision["reason_code"] = RiskDecisionCode.LOW_VOLATILITY.value
             return decision
 
-        spread = candle.get("spread", 0)
+        spread = candle.get("spread", UNKNOWN_SPREAD_FALLBACK)
         if spread > self.max_spread:
             decision["reason"] = "Spread too high"
             decision["reason_code"] = RiskDecisionCode.SPREAD_TOO_HIGH.value

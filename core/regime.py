@@ -8,8 +8,13 @@ import ``from core.regime import detect_regime`` — same
 backward-compatibility approach as ``core/logger.py`` (Milestone 1):
 one implementation, re-exported at the old path so existing call sites
 don't need to change.
+
+Re-exports the canonical detector (emits ``HIGH_VOLATILITY``,
+``TRENDING``, ``RANGING``, ``UNKNOWN``) rather than the legacy
+vocabulary so the canonical strategy path sees the high-volatility
+protection branch.
 """
 
-from intelligence.market_regime import detect_legacy_regime as detect_regime
+from intelligence.market_regime import detect_regime
 
 __all__ = ["detect_regime"]

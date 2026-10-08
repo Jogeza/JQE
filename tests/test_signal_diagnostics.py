@@ -21,7 +21,7 @@ def test_signal_diagnostics_are_deterministic_and_bounded():
     assert all(stats["valid"] + stats["missing"] == 40 for stats in first.indicator_sanity.values())
 
 
-def test_bearish_trending_rsi_below_40_does_not_emit_sell():
+def test_bearish_trending_rsi_below_40_emits_sell():
     candles = series()
     # Reverse the real price direction while retaining valid OHLC values.
     falling = [candle.model_copy(update={
@@ -29,5 +29,8 @@ def test_bearish_trending_rsi_below_40_does_not_emit_sell():
         "low": 199-(i*.2), "close": 199.5-(i*.2),
     }) for i, candle in enumerate(candles)]
     result = diagnose_signals(falling)
-    assert result.sell_signals == 0
-    assert result.reason_counts["BEARISH_MOMENTUM_NOT_STRONG"] > 0
+    # Trend-aligned bearish momentum (RSI < 40 in a downtrend) now emits SELL;
+    # this scenario previously locked in the defect that made canonical SELLs
+    # unreachable.
+    assert result.sell_signals == result.evaluations
+    assert result.buy_signals == 0

@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from strategy.pipeline import generate_trading_signal
+from strategy.strategy_engine import StrategyEngine
 from risk.risk_engine import MIN_CONFIDENCE
 
 
@@ -50,17 +51,28 @@ class TestGenerateTradingSignal:
         with pytest.raises(KeyError):
             generate_trading_signal(df)
 
-    def test_bullish_trend_strong_momentum_below_confidence_threshold_is_gated(self) -> None:
-        # close > EMA50 > EMA200 and RSI > 50 -> TREND_UP -> TRENDING;
-        # EMA50 > EMA200 -> BULLISH; RSI > 60 -> STRONG momentum.  The
-        # direction is detected, but the shared institutional confidence
-        # gate demotes a sub-threshold signal to NO_TRADE with an explicit
-        # reason rather than presenting it as executable.
+    def test_bullish_aligned_setup_meets_shared_confidence_threshold(self) -> None:
+        # close > EMA50 > EMA200 and RSI > 50 -> TRENDING;
+        # EMA50 > EMA200 -> BULLISH; RSI > 60 -> trend-aligned STRONG momentum.
+        # trend 30 + STRONG 30 + NORMAL 15 == MIN_CONFIDENCE exactly: the
+        # previously sub-threshold fixture (NORMAL scored 10 -> 70) now
+        # qualifies, which is the point of the confidence-alignment fix.
         df = _make_indicator_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0)
         signal = generate_trading_signal(df, "TEST")
         assert signal["intelligence"]["regime"] == "TRENDING"
         assert signal["intelligence"]["trend"] == "BULLISH"
-        assert signal["confidence"] < MIN_CONFIDENCE
+        assert signal["confidence"] == MIN_CONFIDENCE
+        assert signal["signal"] == "BUY"
+
+    def test_sub_threshold_confidence_is_demoted_with_explicit_reason(self) -> None:
+        # The shared gate must demote a below-floor signal to NO_TRADE with an
+        # explicit reason rather than presenting it as executable.
+        df = _make_indicator_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0)
+        # 2.8 keeps the frame TRENDING under the canonical detector (below its
+        # 1.5x average-ATR tripwire) while scoring HIGH feature volatility, so
+        # confidence 80 reaches a raised floor of 90 and is demoted.
+        df.loc[df.index[-1], "ATR"] = 2.8
+        signal = generate_trading_signal(df, "TEST", engine=StrategyEngine(min_confidence=90))
         assert signal["signal"] == "NO_TRADE"
         assert any(
             "Confidence below configured threshold" in reason

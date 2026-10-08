@@ -112,22 +112,53 @@ class TestStrategyEngine:
 
     def test_bearish_trend_strong_momentum_produces_sell(self) -> None:
         engine = StrategyEngine(min_confidence=70)
-        # EMA50 < EMA200 -> BEARISH, RSI > 60 -> STRONG momentum, regime=TRENDING -> SELL
-        df = _make_df(close=75.0, ema50=80.0, ema200=90.0, rsi=65.0, atr=2.0)
+        # EMA50 < EMA200 -> BEARISH, RSI < 40 -> trend-aligned STRONG momentum,
+        # regime=TRENDING -> SELL
+        df = _make_df(close=75.0, ema50=80.0, ema200=90.0, rsi=35.0, atr=2.0)
         decision = engine.evaluate(df, symbol="GBPUSD", regime="TRENDING")
 
         assert decision.signal == "SELL"
         assert decision.intelligence["trend"] == "BEARISH"
+        assert decision.intelligence["momentum"] == "STRONG"
         assert decision.intelligence["regime"] == "TRENDING"
         assert decision.trade_plan is not None
         assert decision.trade_plan.is_valid()
         assert decision.trade_plan.signal == "SELL"
         assert decision.trade_plan.take_profit < decision.trade_plan.entry < decision.trade_plan.stop_loss
 
+    def test_bearish_trend_aligned_momentum_sells_through_detector_path(self) -> None:
+        # No injected regime: the canonical detector must classify
+        # close < EMA50 < EMA200 with RSI < 50 as TRENDING and the SELL must
+        # survive the default confidence floor of 75.
+        engine = StrategyEngine()
+        df = _make_df(close=75.0, ema50=80.0, ema200=90.0, rsi=35.0, atr=2.0)
+        decision = engine.evaluate(df, symbol="GBPUSD")
+
+        assert decision.signal == "SELL"
+        assert decision.confidence == 75
+        assert decision.intelligence["regime"] == "TRENDING"
+        assert decision.trade_plan is not None
+        assert decision.trade_plan.signal == "SELL"
+
+    def test_high_volatility_regime_blocks_entry_end_to_end(self) -> None:
+        # A trailing ATR spike must surface as HIGH_VOLATILITY through the
+        # canonical detector (no injected regime) and hit the signal engine's
+        # high-volatility protection branch.
+        engine = StrategyEngine()
+        df = _make_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0, atr=2.0)
+        df.loc[df.index[-1], "ATR"] = 5.0
+        decision = engine.evaluate(df, symbol="XAUUSD")
+
+        assert decision.intelligence["regime"] == "HIGH_VOLATILITY"
+        assert decision.signal == "NO_TRADE"
+
     def test_configured_confidence_floor_converts_weak_actionable_signal_to_no_trade(self) -> None:
         engine = StrategyEngine(min_confidence=90)
         df = _make_df(close=105.0, ema50=100.0, ema200=90.0, rsi=65.0, atr=2.0)
-        df.loc[df.index[-1], "ATR"] = 4.0
+        # 2.8 keeps the frame TRENDING under the canonical detector
+        # (below its 1.5x average-ATR tripwire) while still scoring HIGH
+        # feature volatility, so confidence 80 reaches the configured floor.
+        df.loc[df.index[-1], "ATR"] = 2.8
 
         decision = engine.evaluate(df, symbol="EURUSD")
 
