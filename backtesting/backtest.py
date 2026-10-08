@@ -283,4 +283,15 @@ def build_backtest_result(
 
 
 if __name__ == "__main__":
-    asyncio.run(run_backtest())
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--entry-quality-audit", type=Path, metavar="NEW_OUTPUT_DIRECTORY",
+                        help="Audit frozen Weltrade M5 bundles offline; never connects a gateway")
+    args = parser.parse_args()
+    if args.entry_quality_audit:
+        from backtesting.entry_quality import audit_baseline
+        asyncio.run(audit_baseline(args.entry_quality_audit, run_backtest))
+    else:
+        asyncio.run(run_backtest())

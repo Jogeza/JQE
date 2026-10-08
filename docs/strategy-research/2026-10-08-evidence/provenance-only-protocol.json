@@ -1,0 +1,49 @@
+{
+  "strategy_configurations_tried": 1,
+  "candidate_configurations_tried": 0,
+  "split": "floor(70% of bars) train / remaining test; 200-bar warmup; flat at boundary",
+  "costs": {
+    "existing_zero_cost": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "spread": 0.0,
+      "slippage": 0.0,
+      "fee_per_trade": 0.0,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "adverse_slippage_atr_fraction": 0.0,
+      "spread_atr_fraction": 0.0
+    },
+    "illustrative_cost": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "spread": 0.0,
+      "slippage": 0.0,
+      "fee_per_trade": 0.01,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "adverse_slippage_atr_fraction": 0.05,
+      "spread_atr_fraction": 0.1
+    },
+    "double_spread_commission": {
+      "entry_timing": "NEXT_CANDLE_OPEN",
+      "spread": 0.0,
+      "slippage": 0.0,
+      "fee_per_trade": 0.02,
+      "same_candle_collision_policy": "STOP_LOSS_WINS",
+      "gap_fill_policy": "AT_TRIGGER_PRICE",
+      "max_holding_candles": 19,
+      "stop_atr_multiple": 1.5,
+      "target_atr_multiple": 3.0,
+      "adverse_slippage_atr_fraction": 0.05,
+      "spread_atr_fraction": 0.2
+    }
+  },
+  "currency": "SIMULATION CASH ONLY; terminal contract economics and costs unavailable",
+  "universe": "All frozen data/bundles/*_M5; M1 excluded by predeclared timeframe",
+  "promotion": "Blocked without verified closed-bar provenance, terminal economics, costs and adequate untouched samples"
+}

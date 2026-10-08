@@ -1,0 +1,325 @@
+[
+  {
+    "bundle": "data\\bundles\\FX_Vol_20_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "FX Vol 20",
+      "canonical_symbol": "FX Vol 20",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:33.258564+00:00",
+      "content_hash": "sha256:ad800dc14b4a5b7187e5484e14e251c438e8129298a4f18dbc29b632be148605"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\FX_Vol_40_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "FX Vol 40",
+      "canonical_symbol": "FX Vol 40",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:35.131484+00:00",
+      "content_hash": "sha256:c8132ab19f90be9b559783c3e3052eafe6baab6f5116caebf27038499e6d3cda"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\FX_Vol_60_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "FX Vol 60",
+      "canonical_symbol": "FX Vol 60",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:37.086863+00:00",
+      "content_hash": "sha256:4a34e06f489c3cf8e78b8f0bc41de1668cfc9d605e97836feae80358f46c1ec4"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\FX_Vol_80_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "FX Vol 80",
+      "canonical_symbol": "FX Vol 80",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:39.031826+00:00",
+      "content_hash": "sha256:441890a25153268f530dbe9fda18a66917b3d7316ef23e123e1de753437a9b51"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\FX_Vol_99_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "FX Vol 99",
+      "canonical_symbol": "FX Vol 99",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:40.955015+00:00",
+      "content_hash": "sha256:efca741b7c895e23fd4c266f89178f3ed776572fcc31552908eb62fc0f41536c"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\MAX_PainX_1000_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "MAX PainX 1000",
+      "canonical_symbol": "MAX PainX 1000",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:50:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:44.277982+00:00",
+      "content_hash": "sha256:4f97e59cc69512f16ce74166a020fef42198ba9c9065b4df08a1618d02fc4d8b"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\MAX_PainX_2000_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "MAX PainX 2000",
+      "canonical_symbol": "MAX PainX 2000",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:50:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:45.177361+00:00",
+      "content_hash": "sha256:0ff6e3bda2054cdf70150ddeeafa74882394e971fad0165023019f7cbc9feb81"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\PainX_1200_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "PainX 1200",
+      "canonical_symbol": "PainX 1200",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:43.405109+00:00",
+      "content_hash": "sha256:23c490343861516faa008b2ad9d4913036e1f3c902a28a08068337f2e42cc3fe"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\PainX_400_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "PainX 400",
+      "canonical_symbol": "PainX 400",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:39.902955+00:00",
+      "content_hash": "sha256:a4c01ec388263fb46c174b1fa1ef5d533a544b753fae9afa77d908419fc5bc3e"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\PainX_600_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "PainX 600",
+      "canonical_symbol": "PainX 600",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:40.780963+00:00",
+      "content_hash": "sha256:5b5e723bc1854133b66c5466f73da9ea7bd24698676fa33d2370fc57a580065a"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\PainX_800_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "PainX 800",
+      "canonical_symbol": "PainX 800",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:41.706365+00:00",
+      "content_hash": "sha256:ca662cf8c638b9cf31eb319a5b63ace2d5d80d8d08722661c4fb62d7af811478"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\PainX_999_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "PainX 999",
+      "canonical_symbol": "PainX 999",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:42.562294+00:00",
+      "content_hash": "sha256:834210846e39366da9efd995ef9b4843530d94121233f9e27390940193228d11"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\SFX_Vol_20_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "SFX Vol 20",
+      "canonical_symbol": "SFX Vol 20",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:42.898297+00:00",
+      "content_hash": "sha256:42a1a50e7c0493c991b865e25d46180a0e065a82697b0bc91f45b25037902613"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\SFX_Vol_40_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "SFX Vol 40",
+      "canonical_symbol": "SFX Vol 40",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:44.752403+00:00",
+      "content_hash": "sha256:edc3a68c2c2f3877fa8c420775db8185e6a627643d6b231decd83b94c4be38db"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\SFX_Vol_60_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "SFX Vol 60",
+      "canonical_symbol": "SFX Vol 60",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 02:30:00+00:00",
+      "last_candle": "2026-09-27 20:15:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 21:53:46.667919+00:00",
+      "content_hash": "sha256:3cd743661e5d8236c392cf083774f9c6c2a383e936a2560425f2d363de6e74bc"
+    },
+    "exclusion": "Missing bars; no gap filling or time correction permitted",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\SFX_Vol_80_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "SFX Vol 80",
+      "canonical_symbol": "SFX Vol 80",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:38.083255+00:00",
+      "content_hash": "sha256:64839cfac002b2f9088de93bf2720810bf28e91353ba6ee745d22a8ed56edbef"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  },
+  {
+    "bundle": "data\\bundles\\SFX_Vol_99_M5",
+    "manifest": {
+      "provider": "weltrade",
+      "source": "Weltrade MT5 terminal",
+      "provider_symbol": "SFX Vol 99",
+      "canonical_symbol": "SFX Vol 99",
+      "timeframe": "M5",
+      "granularity_seconds": 300,
+      "first_candle": "2026-09-26 04:40:00+00:00",
+      "last_candle": "2026-09-27 22:25:00+00:00",
+      "candle_count": 500,
+      "volume_available": true,
+      "retrieved_at": "2026-09-27 19:48:38.994257+00:00",
+      "content_hash": "sha256:627a4dae5b30a286db543744299a16d5e193a70ab7bca5145d90f8b205bdc187"
+    },
+    "exclusion": "Bar closes after manifest retrieval time; closed-bar provenance unverified",
+    "runs": []
+  }
+]

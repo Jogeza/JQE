@@ -1,0 +1,39 @@
+{
+  "backend_final": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "4",
+    "tests": "2581",
+    "time": "131.394",
+    "timestamp": "2026-10-08T06:04:53.659323+03:00",
+    "hostname": "Jogeza"
+  },
+  "backend_initial": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "1",
+    "skipped": "4",
+    "tests": "2580",
+    "time": "176.383",
+    "timestamp": "2026-10-08T06:01:33.423606+03:00",
+    "hostname": "Jogeza"
+  },
+  "frontend": {
+    "tests": 238,
+    "files": 40,
+    "test_exit_code": 0,
+    "build_exit_code": 0,
+    "build_warning": "JavaScript chunk exceeds 500 kB"
+  },
+  "external_network_attempts": 0,
+  "backtest_replays": 48,
+  "strategy_configurations": 1,
+  "candidate_configurations": 0,
+  "commands": [
+    "D:/JQE/venv/Scripts/python.exe -m backtesting.backtest --entry-quality-audit reports/entry-quality-20261008/baseline-gap-disclosed",
+    "D:/JQE/venv/Scripts/python.exe -m pytest -p tests.offline_research_guard -q --junitxml=reports/entry-quality-20261008/backend-final.xml",
+    "npm test -- --run (frontend)",
+    "npm run build (frontend)"
+  ]
+}
