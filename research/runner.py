@@ -72,6 +72,7 @@ async def run_partition_experiment(
             candles=len(split.train),
             starting_balance=starting_balance,
             dataset=split.train,
+            provider=manifest.provider,
             strategy_configuration=dict(strategy_config),
             execution_assumptions=execution_assumptions,
         )
@@ -83,6 +84,8 @@ async def run_partition_experiment(
             candles=total_len,
             starting_balance=starting_balance,
             dataset=candles,
+            provider=manifest.provider,
+            manifest=manifest,
             start_index=train_len,
             end_index=train_len + val_len,
             strategy_configuration=dict(strategy_config),
@@ -96,6 +99,8 @@ async def run_partition_experiment(
             candles=total_len,
             starting_balance=starting_balance,
             dataset=candles,
+            provider=manifest.provider,
+            manifest=manifest,
             start_index=train_len + val_len,
             end_index=total_len,
             strategy_configuration=dict(strategy_config),
@@ -109,6 +114,8 @@ async def run_partition_experiment(
             candles=total_len,
             starting_balance=starting_balance,
             dataset=candles,
+            provider=manifest.provider,
+            manifest=manifest,
             strategy_configuration=dict(strategy_config),
             execution_assumptions=execution_assumptions,
         )
@@ -150,6 +157,7 @@ async def run_partition_experiment(
             "risk": asdict(backtest_result.risk),
             "execution": asdict(backtest_result.execution),
             "initial_capital": backtest_result.initial_capital,
+            "run_context": backtest_result.run_context,
         },
         metrics=metrics,
         provenance={

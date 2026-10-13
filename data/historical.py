@@ -68,9 +68,10 @@ class HistoricalDataService:
             persistence.
     """
 
-    def __init__(self, gateway: CandleDataSource, store: CandleStore | None = None) -> None:
+    def __init__(self, gateway: CandleDataSource, store: CandleStore | None = None, *, research_coverage_policy=None) -> None:
         self.gateway = gateway
         self.store = store or CandleStore()
+        self.research_coverage_policy = research_coverage_policy
 
     async def refresh_latest_tick(
         self, *, symbol: str, provider_symbol: str, provider: str
@@ -189,6 +190,7 @@ class HistoricalDataService:
                     cached, provider=provider, canonical_symbol=symbol,
                     provider_symbol=source_symbol, timeframe=timeframe,
                     start=start, end=end,
+                    research_policy=self.research_coverage_policy,
                 )
             except MarketDataError as exc:
                 if "Unsupported historical coverage policy" not in str(exc):
@@ -214,6 +216,7 @@ class HistoricalDataService:
                 refreshed, provider=provider, canonical_symbol=symbol,
                 provider_symbol=source_symbol, timeframe=timeframe,
                 start=start, end=end,
+                research_policy=self.research_coverage_policy,
             ).is_complete
         else:
             refreshed_complete = bool(refreshed) and refreshed[0].time <= start and refreshed[-1].time >= end and not find_gaps(refreshed, step)

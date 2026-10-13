@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -147,6 +147,9 @@ class BacktestTrade:
     balance_after: float
     holding_candles: int
     exit_reason: BacktestExitReason
+    initial_risk_account_currency: float | None = None
+    commission_costs: float | None = None
+    financing_costs: float | None = None
 
     def __getitem__(self, key: str) -> Any:
         """Temporary compatibility for existing analytics/research callers."""
@@ -199,6 +202,12 @@ class BacktestIndicatorObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class BacktestEquityObservation:
+    timestamp: datetime
+    equity: float
+
+
+@dataclass(frozen=True, slots=True)
 class BacktestResult:
     identity_schema_version: int
     engine_version: str
@@ -241,6 +250,8 @@ class BacktestResult:
     trades: tuple[BacktestTrade, ...]
     decisions: tuple[BacktestDecision, ...] = ()
     indicators: tuple[BacktestIndicatorObservation, ...] = ()
+    run_context: dict[str, Any] = field(default_factory=dict)
+    equity_observations: tuple[BacktestEquityObservation, ...] = ()
 
     @property
     def result_hash(self) -> str:
@@ -254,7 +265,11 @@ class BacktestResult:
 
     def to_json_bytes(self) -> bytes:
         payload = self._normalized_payload()
-        payload["result_hash"] = self.result_hash
+        # Use the same normalized snapshot for the preimage instead of converting
+        # the complete dataclass a second time. Hash normalization stays unchanged.
+        preimage = dict(payload)
+        preimage.pop("provider", None)
+        payload["result_hash"] = _sha256(preimage)
         return (_canonical_json(payload) + "\n").encode("utf-8")
 
     def to_dict(self) -> dict[str, Any]:
@@ -293,10 +308,11 @@ def backtest_run_fingerprint(
     initial_capital: float, strategy: dict[str, Any],
     risk: BacktestRiskConfiguration, execution: BacktestExecutionAssumptions,
     engine_version: str,
+    run_context: dict[str, Any] | None = None,
 ) -> str:
     """Hash every explicit deterministic input, excluding observation metadata."""
-    return _sha256({
-        "identity_schema_version": 1,
+    payload = {
+        "identity_schema_version": 2 if run_context is not None else 1,
         "engine_version": engine_version,
         "dataset_hash": dataset_hash,
         "symbol": symbol,
@@ -305,4 +321,7 @@ def backtest_run_fingerprint(
         "strategy": strategy,
         "risk": asdict(risk),
         "execution": asdict(execution),
-    })
+    }
+    if run_context is not None:
+        payload["run_context"] = run_context
+    return _sha256(payload)

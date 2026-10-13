@@ -3,3 +3,4 @@
 # @pytest.mark.asyncio needed) now that the broker layer's async
 # BrokerGateway interface requires async test functions.
 asyncio_mode = "auto"
+testpaths = ["tests"]

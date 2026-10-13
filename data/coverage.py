@@ -184,15 +184,37 @@ class WeltradeSyntheticCoveragePolicy:
         return True
 
 
+@dataclass(frozen=True, slots=True)
+class FrozenWeltradeSundayResearchPolicy:
+    """Opt-in research assumption for one frozen window; never the default.
+
+    Published server break 06:50–07:00 mapped using assumed historical UTC+3.
+    This is conditional coverage, not a verified historical session calendar.
+    """
+    def is_candle_expected(self, timestamp: datetime) -> bool:
+        timestamp=_require_utc(timestamp)
+        if not datetime(2026,7,10,tzinfo=timezone.utc)<=timestamp<datetime(2026,10,8,tzinfo=timezone.utc):
+            raise MarketDataError('Frozen research calendar used outside registered history')
+        return not (timestamp.weekday()==6 and timestamp.hour==3 and timestamp.minute in (50,55))
+
+
 def validate_historical_coverage(
     candles: Sequence[Candle], *, provider: str, canonical_symbol: str,
     provider_symbol: str, timeframe: Timeframe, start: datetime, end: datetime,
+    research_policy: FrozenWeltradeSundayResearchPolicy | None = None,
 ) -> CoverageValidationResult:
     """Validate every expected, aligned UTC bucket in an inclusive range."""
     start, end = _require_utc(start), _require_utc(end)
     if end < start:
         raise MarketDataError("Historical coverage range is not ordered")
     policy = get_coverage_policy(provider, canonical_symbol, provider_symbol, timeframe)
+    if research_policy is not None:
+        universe={f'{family} Vol {level}' for family in ('FX','SFX') for level in (20,40,60,80,99)}
+        if type(research_policy) is not FrozenWeltradeSundayResearchPolicy or provider!='weltrade' or canonical_symbol not in universe or provider_symbol!=canonical_symbol or timeframe!=Timeframe.M5:
+            raise MarketDataError('Frozen session policy requires exact native Weltrade M5 identity')
+        if len({c.time for c in candles})!=len(candles):
+            raise MarketDataError('Duplicate research coverage timestamps')
+        policy=research_policy
     step = timedelta(seconds=TIMEFRAME_SECONDS[timeframe])
     if int(start.timestamp()) % int(step.total_seconds()) or int(end.timestamp()) % int(step.total_seconds()):
         raise MarketDataError("Historical coverage bounds must align to the timeframe")
@@ -208,6 +230,8 @@ def validate_historical_coverage(
         current += step
     missing_buckets = tuple(sorted(expected_buckets - present))
     unexpected_buckets = tuple(sorted(present - expected_buckets))
+    if research_policy is not None and unexpected_buckets:
+        raise MarketDataError('Unexpected candle in frozen research session closure or range')
     return CoverageValidationResult(
         expected_count=len(expected_buckets),
         missing_count=len(missing_buckets),

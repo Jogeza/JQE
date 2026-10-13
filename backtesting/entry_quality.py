@@ -45,11 +45,13 @@ def summarize(engine, candles, start, end):
             mae = max(0, t.entry_price - min(c.low for c in segment)) / distance
             mfe = max(0, max(c.high for c in segment) - t.entry_price) / distance
         else:
-            mae = max(0, max(c.high for c in segment) - t.entry_price) / distance
-            mfe = max(0, t.entry_price - min(c.low for c in segment)) / distance
+            model = getattr(engine, "market_model", None)
+            mae = max(0, max(c.high + (model.spread(indices[c.time]) if model else 0) for c in segment) - t.entry_price) / distance
+            mfe = max(0, t.entry_price - min(c.low + (model.spread(indices[c.time]) if model else 0) for c in segment)) / distance
         o = observations[t.signal_timestamp]
         signal = candles[indices[t.signal_timestamp]]
-        rows.append({**asdict(t), "net_r": t.net_pnl / (distance * t.quantity.value),
+        initial_risk = getattr(t, "initial_risk_account_currency", None) or (distance * t.quantity.value)
+        rows.append({**asdict(t), "quantity": t.quantity.model_dump(mode="json"), "net_r": t.net_pnl / initial_risk,
                      "mae_r_upper_bound": mae, "mfe_r_upper_bound": mfe,
                      "regime": o.regime, "rsi": o.rsi,
                      "ema_distance_atr": abs(signal.close - o.ema50) / o.atr,
@@ -102,7 +104,9 @@ async def audit_baseline(output: Path, runner):
                 "costs": {k: asdict(v) for k, v in costs.items()},
                 "currency": "SIMULATION CASH ONLY; terminal contract economics and costs unavailable",
                 "universe": "All frozen data/bundles/*_M5; M1 excluded by predeclared timeframe",
-                "protocol_revision": "First provenance-only pass rejected gaps; before any replay, allow disclosed unfilled gaps. No strategy outcomes inspected.",
+                "diagnostic_only": True,
+                "holdout_status": "Untouched status not verified; previously inspected samples cannot establish fresh OOS evidence",
+                "protocol_revision": "Allow disclosed unfilled gaps for diagnostic replays only",
                 "promotion": "Blocked without verified closed-bar provenance, terminal economics, costs and adequate untouched samples"}
     (output / "protocol.json").write_text(json.dumps(protocol, indent=2, default=str), encoding="utf-8")
     evidence = []
@@ -124,6 +128,8 @@ async def audit_baseline(output: Path, runner):
                         "start_index": start, "end_index_exclusive": end,
                         "first_signal_bar": candles[start].time, "last_signal_bar": candles[end-1].time,
                         "run_fingerprint": engine.result.run_fingerprint,
+                        "result_hash": engine.result.result_hash,
+                        "run_context": engine.result.run_context,
                         "metrics": summarize(engine, candles, start, end)})
         evidence.append(record)
         (output / "baseline.json").write_text(json.dumps(evidence, indent=2, default=str, allow_nan=False), encoding="utf-8")
