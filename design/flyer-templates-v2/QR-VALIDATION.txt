@@ -1,0 +1,18 @@
+All 16 QR codes decoded from rendered flyer artwork.
+01-editorial-social: website → https://jqe.jokiholdings.com
+01-editorial-social: telegram → https://t.me/jqetrading
+01-editorial-a4: website → https://jqe.jokiholdings.com
+01-editorial-a4: telegram → https://t.me/jqetrading
+02-research-social: website → https://jqe.jokiholdings.com
+02-research-social: telegram → https://t.me/jqetrading
+02-research-a4: website → https://jqe.jokiholdings.com
+02-research-a4: telegram → https://t.me/jqetrading
+03-campaign-social: website → https://jqe.jokiholdings.com
+03-campaign-social: telegram → https://t.me/jqetrading
+03-campaign-a4: website → https://jqe.jokiholdings.com
+03-campaign-a4: telegram → https://t.me/jqetrading
+04-photo-led-social: website → https://jqe.jokiholdings.com
+04-photo-led-social: telegram → https://t.me/jqetrading
+04-photo-led-a4: website → https://jqe.jokiholdings.com
+04-photo-led-a4: telegram → https://t.me/jqetrading
+Destination reachability was not verified; decoding verifies the encoded URLs.

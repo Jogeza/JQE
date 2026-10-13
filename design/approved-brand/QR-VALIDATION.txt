@@ -1,0 +1,15 @@
+All 24 embedded codes decoded from final rendered flyers.
+01-editorial-a4: website and Telegram QR codes decoded correctly.
+01-editorial-social: website and Telegram QR codes decoded correctly.
+02-research-a4: website and Telegram QR codes decoded correctly.
+02-research-social: website and Telegram QR codes decoded correctly.
+03-campaign-a4: website and Telegram QR codes decoded correctly.
+03-campaign-social: website and Telegram QR codes decoded correctly.
+04-photo-led-a4: website and Telegram QR codes decoded correctly.
+04-photo-led-social: website and Telegram QR codes decoded correctly.
+05-background-editorial-a4: website and Telegram QR codes decoded correctly.
+05-background-editorial-social: website and Telegram QR codes decoded correctly.
+06-telegram-a4: website and Telegram QR codes decoded correctly.
+06-telegram-social: website and Telegram QR codes decoded correctly.
+Encoded destinations: https://jqe.jokiholdings.com, https://t.me/jqetrading
+Encoding validated; destination availability is not checked by this test.
