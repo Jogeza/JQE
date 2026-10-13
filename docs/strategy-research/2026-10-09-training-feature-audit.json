@@ -1,0 +1,25 @@
+{
+  "disposition_counts": {
+    "CENSORED_GAP": 24,
+    "CENSORED_PARTITION_BOUNDARY": 19,
+    "ELIGIBLE_FOR_CANONICAL_REPLAY_NOT_YET_LABELLED": 2833
+  },
+  "economic_replays": 0,
+  "eligible_events_missing_features": 0,
+  "events_checked": 2876,
+  "feature_status_counts": {
+    "AVAILABLE": 2870,
+    "UNAVAILABLE": 6
+  },
+  "features_sha256": "sha256:ab17dfd7b5e880577aa8a5d7a40d14cc24e15e386a2c3b11d50724790ddb27ee",
+  "holdouts_read": false,
+  "implementation_plan_sha256": "sha256:7fbb0436506373c7e599eaa3da58efa44a0e645cec40b854b1fd72bba9030d21",
+  "limitations": [
+    "Same-response spread evidence is preserved acquisition evidence, not executable historical quotes",
+    "No event-label join or ML fitting qualification in this audit"
+  ],
+  "models_fitted": 0,
+  "source_snapshot_matches": true,
+  "status": "PASS",
+  "unique_events": 2876
+}

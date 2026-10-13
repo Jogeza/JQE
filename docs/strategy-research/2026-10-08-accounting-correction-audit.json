@@ -1,0 +1,251 @@
+{
+  "scope": "SAVED_TRAIN_MODEL_V2_REVIEW_NOT_A_NEW_REPLAY",
+  "records": [
+    {
+      "symbol": "FX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "88c9e08ae7bce8a9604b1204b99c57b00a3920568aa528838fb182a065d1c98d"
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "aa37cced0f0b4549acf6d99741865d56e618b8cb4341bcd5a97f800626417f8a"
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "e6cc63b2c2bd6611fd71b528348502a97cd44d5bf6f4c69a060a95405063151c"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "2168e46d13b6443ba3feb7a55454fb4657aa6eb964b0acec484bf77f52799241"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "861348e6c9ef3e11731a7b7a443f12f72c1ab47beb5f8446fcabafdc854e0658"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "507c31c3182a0ae0d3e201a3a9d6fc0daa363cfb7649551039ec4447c880d5d4"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "f033cb629690b745011b959f3d0ad100b83b1d989f56dbe2d21466fd6d9c754f"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "5a769b8104e323f73a79e831145ce58355497102f5d3096d87176346579e2518"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "df57701d2e40552449a67cce95caffea020be6f6e469cca2a96c30a05ab2462a"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "8b82c172385ac0e26eca844a992782fc40103b7ee2545e71da15f866fc12bf7b"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "214aa6d66602d8fbf36f668645e49b67bc1b9704631bd1048fa9985052650341"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "673d0a9a032fc40036d03fe575dade7138725a359235ea4c84fef74f981f188e"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "7ba6b2de57010ec938f621416ac808e62b60dbc450a0156a9d0f395398a0e30d"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "bf36c9259aa544196d451ebdd644298c85b37926f704f935201ee08bbc685475"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "b8c7f3b56deb82558b0641695b54e65a8b9b575dacee6f1abf6f964c2b56a2c6"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "8825f0204721eb394560d2a09edb48f82fbdc0fa5377d792c10bf05f34ac9de0"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "c8ca4d9694565c8f3e7eab4c9a19c9ab0723527674d7872162cd1384d6161827"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "abd0b2c761e950f928788e15a07f143ae67731fe44ae910db18b281e5341b875"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "4281ac5bd7298e16ca0b9f22f603e1043d65e0a345f4121857e723223bc710c0"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "abf4d8fe3209092e972c5bebdce238f036b60024bd58f88866000cdd22c5c008"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "ea9c691c84f0245e651b8616812b2d7ee6c0463061f4c2f2f3099e8809b03ffa"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "fd9ceb0db0076e84eb0de551dd1e15616fbf5cf16743255bd8bb1474d59c5383"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "d7b73483c1cc4576afcee8d5ac38470e75d399a62e7a575a4d99911428aaeada"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "eb5172af6142494617805aadddeb2651f3fcb554265775033e1ef7f96899bece"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "75260387d9d203024491b9f9d1ba64d1f88e7a1cf1f7a61095ea25cbf669e907"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "2500576ffd9db145a2ae1682528a16db77dca42184dd87777eba50e8914dc731"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "7e8fd911de10abb417364400b504c5f6d1d0baa7ae6a11b3d3f244d1763fde77"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 164,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "65ca675f935b9335b1dc0bbd07764982f63c6316bd4af47f51fe77e57a7182e7"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 69,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "b470f5a36c14de21949f2ce3973208f3c26bdcf0b96e6908eed25f91a4af34f8"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 266,
+      "stop_violations": [],
+      "planned_risk_violations": [],
+      "result_sha256": "82bdcafde3aa3e1c159ecb2f90109c263ec7733500649bdb22d1a0b56e611087"
+    }
+  ],
+  "aggregate": {
+    "replays": 30,
+    "trade_observations": 499,
+    "stop_violations": 0,
+    "planned_risk_violations": 0
+  }
+}

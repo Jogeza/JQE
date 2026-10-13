@@ -1,0 +1,49 @@
+{
+  "symbol": "FX Vol 99",
+  "cost": "assumed_3usd_per_lot_per_side",
+  "start": "2026-09-08 00:00:00+00:00",
+  "end_exclusive": "2026-10-08 00:00:00+00:00",
+  "parent_content_hash": "sha256:68cc13cd1bcba54304865d92af52bb7b480cd777556e0633ca5404f96a581987",
+  "dataset_hash": "sha256:7dd9f4179789e4d0b326ed0ad6edaea0428891326acd9845c6386816241161e5",
+  "run_fingerprint": "sha256:625bb009763bd6b2dfa773cd7240bb7ef4f90ee6e37e32e3a2680008a7d3d25e",
+  "result_hash": "sha256:196f174890c1ad6a70b3943c1e61bae297095b6593f9110145d5699b289bc12a",
+  "metrics": {
+    "trades": 0,
+    "expectancy_account_currency": null,
+    "expectancy_r": null,
+    "profit_factor": null,
+    "win_rate_percent": null,
+    "max_realized_drawdown_percent": 0.0,
+    "sharpe_unannualized_trade_returns": null,
+    "sortino_unannualized_trade_returns": null,
+    "exposure_bar_fraction": 0.0,
+    "holding_bars": null,
+    "mae_r_upper_bound": null,
+    "mfe_r_upper_bound": null,
+    "decision_states": {
+      "QUEUED": 2711,
+      "EXECUTION_REJECTED": 2710,
+      "NO_TRADE": 5921
+    },
+    "clusters": {},
+    "trade_details": [],
+    "claim_scope": "TRAIN_ONLY_CONDITIONAL_MODELLED_USD_NOT_VERIFIED_ACCOUNT_RESULTS",
+    "expectancy_modelled_usd": null,
+    "average_win_modelled_usd": null,
+    "average_loss_modelled_usd": null,
+    "max_bar_close_drawdown_modelled_usd": 0.0,
+    "drawdown_basis": "BAR_CLOSE_LIQUIDATION_EQUITY",
+    "net_modelled_usd": 0.0,
+    "commission_modelled_usd": 0,
+    "financing_modelled_usd": 0,
+    "rejection_reasons": {
+      "Minimum lot cannot satisfy frozen cash-risk/margin limits": 2710
+    },
+    "exit_reasons": {},
+    "holding_minutes_upper_bound_p10_p50_p90": null,
+    "exposure_wall_time_upper_bound_fraction": 0.0,
+    "sharpe_bar_returns_unannualized": null,
+    "sortino_bar_returns_unannualized": null,
+    "bar_return_periods": 8632
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "status": "PASS_CONDITIONAL_SESSION_COVERAGE_NOT_ML_READY",
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:de0ba6e97e0f603fab8ec34dbd1ab4c5a663ca13c3291a612cd26d6bf995ecfb",
+      "manifest_sha256": "sha256:97318bf291e54b75c29c286477c0abab6182cbbd969849eb4fb7bcae6093bce9",
+      "csv_sha256": "sha256:5e1487c228004b2643f940a57d73ea462dfd93c56d4e9e03ed85cb256b7553ae",
+      "spread_sha256": "sha256:c36846ae6845a034dcd5fa2d35dfe79fa97ea94f541f7e536dc283835d98c123"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:10755a2c39379e877a90a12ae3b5dba83db46cadad0852a25d4b79f6f1c141aa",
+      "manifest_sha256": "sha256:9ef4cc6f6e1d67236c3419c1973b21bb294343b2fb7112d77242ebf33baadcc0",
+      "csv_sha256": "sha256:44c897e04caaff2a015f369f02605e35b928a87da9dbc3a287c57228a99afb47",
+      "spread_sha256": "sha256:f65633bbfaf5de8ab87ac399796cb8c2c9472f468a63f1cbfccb1cc7521dc6de"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:ac39a62680b1038a27074da3567d3dba33f8a26db5d0f9ca1bdb7252fad5a2f5",
+      "manifest_sha256": "sha256:3557c3b24dcf16e9d2b637f283791b1553f1b4c98d4f91cb38e4e0bad18f08b6",
+      "csv_sha256": "sha256:e65512ded47e61e3547922beb019c55073dca015e21d1b9b3587e2de189423dd",
+      "spread_sha256": "sha256:c87ec186cdb3b146c32b4e83b01fd401f7045e891b869579c37fbf91eeaf502f"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:ff1769b501701aebe6219e48209700d97869253353e72201d1ba1bb7065f26c4",
+      "manifest_sha256": "sha256:03766862a3d359fe202aebfbcb8aba16a6135d57cb658fcaf8e2c0aba32757f4",
+      "csv_sha256": "sha256:31b964ba26bb69ac9bbd4ac1964872556d1fe2f48984cbd77b70ae23ac6386e0",
+      "spread_sha256": "sha256:c78dd7bcf1f8e233785a5537ebbb941a4bb8b4eb43399d41f7ee64891cd4f507"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:286d0c9948ca47fe9a0b17e5f8830a592e307c8620ebf67e7d8f79f77ea33f19",
+      "manifest_sha256": "sha256:18a442709f3de50ced64d36a004a5b378ca3d5c29a99ddf89f60aa2d8a3464c7",
+      "csv_sha256": "sha256:74fa30511493600b4f1bb49587374e957b55ea36fbeede1083480291ca0651ec",
+      "spread_sha256": "sha256:8dede37950d090a9263c24cda12ccb97484bbbb99a41ff473d211fb384bcf1cc"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:3b26fe78295a6253d59c1181ddbf1a4a849ed14519a7031eda5682a44b6c8619",
+      "manifest_sha256": "sha256:a779945b8817caec1e88e24f82523ab064bedc9dcf8fda3862a9701058c64cfc",
+      "csv_sha256": "sha256:a21b1213a1355a4fe5a9c1b53214e159fbeba6b56315ebecc222b97455723326",
+      "spread_sha256": "sha256:f351c2bed10ad714e1ba3d1396ba4ee2263d6b5cf5268f205d00391831be9990"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:e0b6aca7aecfe6c183112caf5457558e5db531d008dd668a9cc6711495b7f241",
+      "manifest_sha256": "sha256:20515bec513ad109245a6c179f32ebbd92b786283bb296a75de65c7b07fdae2a",
+      "csv_sha256": "sha256:35090c403c2f4d3a00333cafefec5f9a8a223cfd1afacbe79838507f3ba1af64",
+      "spread_sha256": "sha256:5d1a942d30f8240b519afa8e2699467c299c7e34bead052968d4bd7031f9346a"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:74136beea63924e73a90a0cd52e7f70aca29692acd7240cad3620bbe9e1f4340",
+      "manifest_sha256": "sha256:d973dcf368c72fd60adeea06ac946539bca956ae5006d879522479ae053c0413",
+      "csv_sha256": "sha256:21bd00863a205c4905d36552a8d06e1e6481ac6dcb8ddcfcaeb9e3f9c2ff2858",
+      "spread_sha256": "sha256:3ac7fbcd12d0e68a3433b88a324b90ecc41b1b2bd23e003e95298724a2af69c7"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:2ff3545fecb3575ce5b207f6d9f3b3c06ac0c1acfb266a34624799663530cfdc",
+      "manifest_sha256": "sha256:aeb1635d06be391b670d71f103b0943c3a422e817ce0062e4b26a7cc9155aa2b",
+      "csv_sha256": "sha256:bf54634622508fa04e0e0fd68f53912fbdda9160d867bdb0a4f5615501a32d74",
+      "spread_sha256": "sha256:1afd269856399d55025b529f82751e8e1fae176bb920ceccf1aaf8b87b079f77"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "candles": 25894,
+      "calendar_days": 90,
+      "closed_buckets_under_assumption": 26,
+      "unexpected_missing": 0,
+      "content_hash": "sha256:eb533a7a507ecfb6d8c062cb95f846be056c84aee85d0a3349ea4d27017e0bc4",
+      "manifest_sha256": "sha256:7c5a175e96e639487499469c5607de4eb72f7b6c1650fb5c1dea050d02f03ecf",
+      "csv_sha256": "sha256:2eadb41ba48568bc65551a109bb9e889aeeb3c00e5447bdb733aa1e641da7c8a",
+      "spread_sha256": "sha256:479bc4513ce8e51dc26e31b16d1e43e69c3687657b1cf4f8fdecba5cf28a8a88"
+    }
+  ],
+  "calendar_historically_verified": false,
+  "assumed_offset_seconds": 10800,
+  "source_snapshot_matches": true,
+  "session_policy_sha256": "sha256:cd93a7527b609c700b84c48ce7f5d0832c7b9f17e281cac5e846733e2e627569",
+  "models_fitted": 0,
+  "holdouts_read": false,
+  "promotion_authorized": false,
+  "limitations": [
+    "Current EET wording does not prove historical UTC+3/DST",
+    "Current contract probes do not prove historical fees/financing",
+    "Expanded indicator prefix requires new signal/label identities; old labels cannot be transferred"
+  ]
+}

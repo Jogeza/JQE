@@ -1,0 +1,115 @@
+{
+  "observed_at": "2026-10-08T04:21:34.863834+00:00",
+  "lookback_days": 30,
+  "query_server_shift_seconds": 10800,
+  "query_status": "RETURNED",
+  "account_currency": "USD",
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "observed_deals": 6,
+      "commission_per_lot": [
+        0.0
+      ],
+      "fee_per_lot": [
+        0.0
+      ],
+      "swap_observations": [
+        -0.13,
+        0.0
+      ],
+      "status": "OBSERVATIONS_ONLY_NOT_VERIFIED_FEE_SCHEDULE"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "observed_deals": 2,
+      "commission_per_lot": [
+        0.0
+      ],
+      "fee_per_lot": [
+        0.0
+      ],
+      "swap_observations": [
+        0.0
+      ],
+      "status": "OBSERVATIONS_ONLY_NOT_VERIFIED_FEE_SCHEDULE"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "observed_deals": 8,
+      "commission_per_lot": [
+        0.0
+      ],
+      "fee_per_lot": [
+        0.0
+      ],
+      "swap_observations": [
+        0.0
+      ],
+      "status": "OBSERVATIONS_ONLY_NOT_VERIFIED_FEE_SCHEDULE"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "observed_deals": 0,
+      "commission_per_lot": [],
+      "fee_per_lot": [],
+      "swap_observations": [],
+      "status": "UNKNOWN_NO_MATCHING_DEALS"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "observed_deals": 2,
+      "commission_per_lot": [
+        0.0
+      ],
+      "fee_per_lot": [
+        0.0
+      ],
+      "swap_observations": [
+        0.0
+      ],
+      "status": "OBSERVATIONS_ONLY_NOT_VERIFIED_FEE_SCHEDULE"
+    }
+  ],
+  "no_orders_submitted": true
+}

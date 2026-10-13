@@ -1,0 +1,11 @@
+# Recent-close dashboard history diagnosis — 2026-10-11
+
+Observed recent-close omission after ticket572131426: canonical ledger CLOSE_CONFIRMED/net-0.52USD at16:54:44UTC; terminal position absent/balance141.09. API recent_trades omits close. This is a display/history-read discrepancy; canonical close accounting already succeeded.
+
+Source finding: api/service.py terminal_observation calls gateway.get_trade_history(count=20). broker/mt5_gateway.py get_trade_history sends now-30days/now UTC directly to MT5 history_deals_get, then converts deal.time through server-offset helper. In contrast read_mt5_trade_history_snapshot resolves fresh server offset and shifts BOTH query bounds before fetching. Therefore the convenience history method can omit recent server-local epochs beyond unshifted end. Source-level mismatch confirmed; raw paired same-time shifted/unshifted terminal queries not performed, so sole-cause attribution remains unverified. Do not call stale API history authoritative.
+
+16 existing history-coverage/timestamp tests passed, zero externalnetworkattempts. They certify existing tested paths, not a repaired convenience method. No source change, MT5 manipulation, supervisor/API restart or campaign stop.
+
+Prepared implementation requirements: resolve fresh server offset off-loop; fail unavailable on stale/ambiguous clock rather than fabricate empty complete history; shift query bounds consistently; normalize timestamps with resolved offset; sort closing deals chronologically before count slice; preserve closing-deal identity, fee-scope semantics and completeness distinction. Display list is not authoritative daily accounting or position-close reconstruction. Add fake-terminal regression with a just-closed server-clock deal excluded by unshifted end, negative offset/freshness/error cases and unchanged older ordering. Preserve existing safety assertions.
+
+broker/mt5_gateway.py is hashed in active canonical campaign. Patch only after explicit research-only stop and qualified NEW source transition/resume, or after full campaign completion. API reload separately scoped after patch/tests; never edit/restart execution sources or MT5 to repair display. Next choose safe campaign transition timing; do not discard completed labels or claim prior source equals patched source.

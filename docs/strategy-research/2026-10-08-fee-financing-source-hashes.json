@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "D:\\JQE\\reports\\account-fee-timeline-20261008-01.json",
+    "Hash": "DA590647B3E5B27F093A8C9DF6ECD3F4F64C03149775CD8424D4380E962D2C6E"
+  },
+  {
+    "Path": "D:\\JQE\\reports\\weltrade-public-tools-20261008.json",
+    "Hash": "520CB71516F3E89011F3B9E9EB0E7242349572BF9D04635E72B3A642A67A745A"
+  },
+  {
+    "Path": "D:\\JQE\\reports\\weltrade-public-legal-20261008.json",
+    "Hash": "3D051EAD735301D8464A8D2CFA376F1EEFE8B952DAACD8465C773B1E7606446E"
+  },
+  {
+    "Path": "D:\\JQE\\reports\\capture_fee_timeline_20261008.py",
+    "Hash": "E968D0F2B138678CE1BEFB35B805601C34030E014712D38FE2EDCA7B60CE4E95"
+  },
+  {
+    "Path": "D:\\JQE\\reports\\reconcile_fee_timeline_20261008.py",
+    "Hash": "A9230B4B8C01D69E0732C7F210830845C0B841EE9733C36E76B4941B69F49F72"
+  }
+]

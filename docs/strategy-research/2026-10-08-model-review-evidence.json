@@ -1,0 +1,255 @@
+{
+  "scope": "SAVED_TRAIN_ARTIFACT_REVIEW_ONLY_NO_NEW_STRATEGY_CONFIGURATION",
+  "rows": [
+    {
+      "symbol": "FX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "5316bc583d95ef6f3f1cbf162948d84701826fde8f7a34519b9f169fbd6545c8"
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "d59bc4a615bb441a474714bd987650dcea021866acaa5b8fff7dfb9cb76eb274"
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "59cd17ce97cd99105cfd022705d7ba2b1a252f9c3760c2603bc65541a5fda12a"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "829b16769fd7617d994484722f20677785f0cd21b16656dc9d4dca58b3d48c51"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "aac76ad6e17e974289d1f676dd344bd0f0a495a88d85b0c4f70941559d617bce"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "f89031ca83d292474e658f7d783e62d3af7e17c3bd1dddec8af5e9eccbec5832"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "ae601d815f96c3e35b57d5bf69221ee73b249803eab43208c3bc9a3a72151fab"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "15b2b0c4655e9c705cacc32bb90ffe4da60b781ed4a40f631f0820581d6bd5da"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "d04a030990a37f5ae022c2fa11f1612748b8f14cc16d86d7473cf8ac2ef0b131"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "bfedc5f711d12982a632d835a43ce6c56783221aba29ebc6421cb1f93092d9cd"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "9a6d5c4587bb5f65566b7002a0c4f205cd22ca504ae909843554d4f76e20a85f"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "8e3f73497eddb41bae878fb6b301600de6de44144a7af80bcfdbddc8d92434b3"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "687ad1b0840697f829ae56acf62a9f7b446466ce322de6c12928c479aee25cda"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "df7c584816befe2551e045b0c240f28093fd96b0fbf300198551648e457e29fa"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "3d047eb279e6be973ad22cb8e11a6b193ba22bf0662ba488c628309df15fad74"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "86041fdc28fb297bc983e43c21254fac50b44e413b8cd96af10637019e205a65"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "458f46ca83711351d2a97ccd1df99323603645db7849e309c945dbea25620d76"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "87dd2dbd834db151c5fff541664a3f5215ecf0a94ba52d4deb03c9ba53745bbe"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "03d3a216a7e639d3b6ef0355cf566a06f5aaf3e661570c51066f6d102b7c3f1e"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "1ed6bd8a4ac633cbbaba1319b63a7654ab7d6a5a145a116482c8351eaeec0bed"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "22d6b24a4da8964a91e2fee6f913d8f6e0047ebd3494a39377a1f906dc8a083e"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "2d223d8fda281687bdf4cb73aba53e19202454eaa7f07b838e19ba9976070f7a"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "f86422832e3a229ee472c6be789b3cf97447a78ed6e091d897f49917c9caf5a2"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "2a8d24bd6587e23907039049c0f624eb10e5c5c5e8ef487b6c9f85ded32bca3e"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "269fff642372d29abc3285aebe9cd7c0673bdfd8dffadc8e768389a641c754ce"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "e0e60282896e7f15e57189604f10b8291dd147bc14e35dcb945f711e98a1bef8"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "39fbe6b19dd0712725b591c8bc650b7295824f893eca1cc3f4686ae714627997"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 175,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "a06cdd4500b5012e533629f12631a47fdca9e9eef98537efd4adf3041b6e091f"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 72,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "e590d5c3357a1af9e10ef7a5cb37f4b13edd8a72bfa66ad1497a4ae1c8c0bcf0"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 279,
+      "definite_opposite_quote_stop_violations": [],
+      "realized_losses_above_budget_not_attributed": [],
+      "metrics_sha256": "4afa1f9f45690160bfce09a632bd6a44d1a7ddc582c2bead3faf0306de45a8a7"
+    }
+  ],
+  "stop_check": "Conservative upper bound excludes entry slippage; may undercount violations",
+  "risk_rounding_counterexample": {
+    "stop_loss_cash_unrounded": 0.304,
+    "exit_slippage_cash_unrounded": 0.014,
+    "separately_rounded_sum": 0.31,
+    "rounded_combined_loss": 0.32,
+    "budget": 0.31,
+    "note": "Arithmetic counterexample only; exact production acceptance separately reviewed"
+  },
+  "financing_evidence": "Aggregated 18 deals have no position/time/lot timeline; -0.13 swap cannot be reconstructed"
+}

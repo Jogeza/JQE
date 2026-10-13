@@ -1,0 +1,601 @@
+{
+  "campaign": "D:\\JQE\\reports\\entry-campaign-20261008-04",
+  "strategy_replays": 0,
+  "candidate_configurations_evaluated": 0,
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:44b75155da06d30d74df914f91a16a5b1a028340874e4fc4615403548910d09b",
+      "spread_price_p50": 4.21,
+      "spread_price_p90": 4.3,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "cf84d21c1e726bd357438ca56830d9f22e5cbfbc683d9f76474053db0e93a7e5",
+        "manifest.json": "f465d6a5b7e551da34725d79eaf5747f6d7cd0cbc67789cbe423092c808049bd",
+        "recorded-spread.json": "4115e9aba9317bcdf0df81f5bcc8ce5458e696f7d669f53c73e81dd4ed2a07a4"
+      }
+    },
+    {
+      "symbol": "FX Vol 40",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:2d466b4727ca308f1d3afd59c1a33dac52a7a4d3a75b29014a1c4a5663af3d13",
+      "spread_price_p50": 13.19,
+      "spread_price_p90": 13.950000000000001,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "770bbdc11cd40599c9011d076b5705e8b2bca7092c0e286304167bbd4d4635b7",
+        "manifest.json": "84e7f5c69f454c2c24f4ca6ee4cca64de2845b8b85ed1a06a86063a8186bb5d9",
+        "recorded-spread.json": "4175cfec3dd0c09c03a6f326218aae47ee44758c1aa3e39fb977215766bb285a"
+      }
+    },
+    {
+      "symbol": "FX Vol 60",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:5eb068f615ca2c93f430a4fc8b9c642d30033256823ade3957598d29c4347e27",
+      "spread_price_p50": 3.7800000000000002,
+      "spread_price_p90": 4.26,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "933073e31803443302e1ff521ac27a04b8b4f24a0bd864a198ad860f8491267f",
+        "manifest.json": "49937199e3d675d52bbdf903f3dd65abfcfece33e0c50a1b4fd73680a572edf3",
+        "recorded-spread.json": "33fed5f386bd8e435d79f23cf76fc8714a106c561fbb154b5ef9f576aa3d6ca2"
+      }
+    },
+    {
+      "symbol": "FX Vol 80",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:44e72d4ec4a1d417eac7620d5baf87d18c5e93d17961d327e3509ae196470742",
+      "spread_price_p50": 17.07,
+      "spread_price_p90": 18.34,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "fcffbcee46c23bdc2fc3c2d3953cbef146d03f0fd462c3fa5165d515fdadae55",
+        "manifest.json": "53b23a497193a3a1d16fb7f554a39fcc50ca1052d420cc8f3605fe09a3d5112f",
+        "recorded-spread.json": "e0abbf549d9057b641b549995aa09f572b17447f3456cde99aab252fbc2c45d5"
+      }
+    },
+    {
+      "symbol": "FX Vol 99",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:68cc13cd1bcba54304865d92af52bb7b480cd777556e0633ca5404f96a581987",
+      "spread_price_p50": 6.7700000000000005,
+      "spread_price_p90": 7.48,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "1e1f11a48320d44dd7fc2dc166f15ee0e1ef3e44ab0117ef31265330eccabd6b",
+        "manifest.json": "23e01e2c2bde3f4080ca33a2304820076c2a7ffe21f23c86b1e6101e683d71f4",
+        "recorded-spread.json": "d2c706ced216357dae5e040f52921772009b91f97b0141dd00da8f2d512409d2"
+      }
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:e2a609a57c8b7036c699be7af051c808309a39543024b3bb7bee531af24c0bf7",
+      "spread_price_p50": 4.58,
+      "spread_price_p90": 4.95,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "d415b73a09380ecda3d5064ea4c54e275bf2df9516b64790ef803dd2e4a71420",
+        "manifest.json": "a1191cd1bda5eeb1921401e319c739464e26766f09b4cfd10337b6d389f76390",
+        "recorded-spread.json": "57040f4f5e4a16652e90c32f63fab446a62002eeec9df6d29e20b67077406a0c"
+      }
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:50d5c3276b2184c3fc4b3dcf2cc8d5ffc1b43b4fc810e3782b4711397d3e86f3",
+      "spread_price_p50": 22.005000000000003,
+      "spread_price_p90": 28.68,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "0bee96edae66dfb96d16b2d835ed6ca52f3d64810212357bcea4725f32eac53b",
+        "manifest.json": "8c1b65c00a7ef2caca052a0a8a988d2eedb5b4124ebb7b919ebcccf6c0fc0052",
+        "recorded-spread.json": "dc3441c4c2e30a889949249a19e81220526698a7a149fda427badc37eb2d4d50"
+      }
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:7f8dc43fb3d15b81d88b7042aff03980192b1e648547edd451c5c4b897509d53",
+      "spread_price_p50": 108.93,
+      "spread_price_p90": 122.95,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "b64021a103444c8067d4ae2a9f7fdb32cdac5ce78f8fd1a29b9947d3ae7742b3",
+        "manifest.json": "54b432529640881767b4c5d24d227aad0ae233ccad70b0f522821b494cfa4b18",
+        "recorded-spread.json": "df72386f81d53499ac32a85e72027590c46092853355bc934b30824ebff927f1"
+      }
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:02d7b4a04945f5356b5a24e84463b77a690267367fa45137e4d5746245ce0415",
+      "spread_price_p50": 34.71,
+      "spread_price_p90": 67.3,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "394c448caf905cebbf609954e01d2545896f0015bb691f7d9c2b1f55fbfce2cc",
+        "manifest.json": "18cfce0d678a0029d65e8196ee68ac3b1a544ce6c81442187dc95b8ebe6e6cff",
+        "recorded-spread.json": "4354530b37f7e92b1e3d536ff27c2b9637adbb892eb6c4124f162c497784427e"
+      }
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "candle_count": 12000,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "closed_at_retrieval": true,
+      "training_bars": 8632,
+      "gaps": [
+        {
+          "after": "2026-08-30T03:45:00+00:00",
+          "before": "2026-08-30T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-06T03:45:00+00:00",
+          "before": "2026-09-06T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-13T03:45:00+00:00",
+          "before": "2026-09-13T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-20T03:45:00+00:00",
+          "before": "2026-09-20T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-09-27T03:45:00+00:00",
+          "before": "2026-09-27T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        },
+        {
+          "after": "2026-10-04T03:45:00+00:00",
+          "before": "2026-10-04T04:00:00+00:00",
+          "elapsed_seconds": 900.0
+        }
+      ],
+      "content_hash": "sha256:d47e14104c458058f006fcf7e97aa173194bfb3468cf39d2fe8b755d87787143",
+      "spread_price_p50": 2.04,
+      "spread_price_p90": 2.5100000000000002,
+      "zero_spread_bars": 0,
+      "files": {
+        "candles.csv": "26a5aef754a2b0ab6b62afe9acbef1186a13b4527511852d129da69f6a491106",
+        "manifest.json": "37a71cdd1d81f70517a78e6777bd60eafd856950d47d9e77203dd87f8d345dc9",
+        "recorded-spread.json": "2f10bc22baabb78b2ec9be21492fddda91cd7491e684344fbe083210efc40ff9"
+      }
+    }
+  ],
+  "attempts": [
+    {
+      "directory": "reports\\entry-campaign-20261008-01",
+      "status": "BLOCKED",
+      "reason": "Fresh tick does not verify the gateway's fixed server-time offset",
+      "failed_symbols": [],
+      "tool_sha256": "2753ef0a1a26947710d105dcc7f57312e02ede56fc77b83b1cbe42aff20e71bd",
+      "report_sha256": "b61f1571ef43b58d3aea54cebe3b5fbf5e2570be0f91a0857d9f2c5aceda6c5e"
+    },
+    {
+      "directory": "reports\\entry-campaign-20261008-02",
+      "status": "PARTIAL_ACQUISITION_BLOCKED",
+      "reason": null,
+      "failed_symbols": [
+        {
+          "symbol": "FX Vol 20",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "FX Vol 40",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "FX Vol 60",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "FX Vol 80",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "FX Vol 99",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "SFX Vol 20",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "SFX Vol 40",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "SFX Vol 60",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "SFX Vol 80",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        },
+        {
+          "symbol": "SFX Vol 99",
+          "reason": "Broker P/L probe unavailable or inconsistent"
+        }
+      ],
+      "tool_sha256": "6b85a4cb95728dd528c394d9d7fadd3020f391d0ad130f694d6c0feaaf0b8bff",
+      "report_sha256": "fcb06bcc725bf87398d956ab8f0e83874fb04ce6745a0b64714be93e70d8e8ff"
+    },
+    {
+      "directory": "reports\\entry-campaign-20261008-03",
+      "status": "PARTIAL_ACQUISITION_BLOCKED",
+      "reason": null,
+      "failed_symbols": [
+        {
+          "symbol": "FX Vol 60",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "FX Vol 80",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "FX Vol 99",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "SFX Vol 40",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "SFX Vol 60",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "SFX Vol 80",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        },
+        {
+          "symbol": "SFX Vol 99",
+          "reason": "Spread sidecar cannot be bound to the frozen OHLC sequence"
+        }
+      ],
+      "tool_sha256": "bec6e64bdfcaa3dcc36af8f3937a2e080a1818e243b407e3925f625f218215f5",
+      "report_sha256": "416350d07f3b85e056b4f20b169d560c8f16474fead72be6be3ef77e7c356aaa"
+    },
+    {
+      "directory": "reports\\entry-campaign-20261008-04",
+      "status": "ACQUIRED_NEEDS_COST_MODEL_AND_FUTURE_HOLDOUT",
+      "reason": null,
+      "failed_symbols": [],
+      "tool_sha256": "db3ef2f413358f9d9950a1534a8f54fbf631c235d83187c53ccb6fc07141e2d2",
+      "report_sha256": "08dddeec152b58601215c30ee241224d66677071fe13ea0c9998574a321e1474"
+    }
+  ]
+}

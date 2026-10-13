@@ -1,0 +1,512 @@
+{
+  "observed_at": "2026-10-08T04:28:22.106075+00:00",
+  "account_currency": "USD",
+  "account_leverage": 10000,
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -2.0,
+      "swap_short": -2.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 7.0,
+      "trade_stops_level": 1080,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 118476.0,
+          "lots": 0.01,
+          "margin": 0.24
+        },
+        {
+          "side": "BUY",
+          "price": 118476.0,
+          "lots": 0.02,
+          "margin": 0.47
+        },
+        {
+          "side": "SELL",
+          "price": 118471.78,
+          "lots": 0.01,
+          "margin": 0.24
+        },
+        {
+          "side": "SELL",
+          "price": 118471.78,
+          "lots": 0.02,
+          "margin": 0.47
+        }
+      ]
+    },
+    {
+      "symbol": "FX Vol 40",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -4.0,
+      "swap_short": -4.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 4.0,
+      "trade_stops_level": 2643,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 180449.74,
+          "lots": 0.01,
+          "margin": 0.72
+        },
+        {
+          "side": "BUY",
+          "price": 180449.74,
+          "lots": 0.02,
+          "margin": 1.44
+        },
+        {
+          "side": "SELL",
+          "price": 180436.89,
+          "lots": 0.01,
+          "margin": 0.72
+        },
+        {
+          "side": "SELL",
+          "price": 180436.89,
+          "lots": 0.02,
+          "margin": 1.44
+        }
+      ]
+    },
+    {
+      "symbol": "FX Vol 60",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -6.0,
+      "swap_short": -6.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 5.0,
+      "trade_stops_level": 1815,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 40512.1,
+          "lots": 0.01,
+          "margin": 0.24
+        },
+        {
+          "side": "BUY",
+          "price": 40512.1,
+          "lots": 0.02,
+          "margin": 0.49
+        },
+        {
+          "side": "SELL",
+          "price": 40507.78,
+          "lots": 0.01,
+          "margin": 0.24
+        },
+        {
+          "side": "SELL",
+          "price": 40507.78,
+          "lots": 0.02,
+          "margin": 0.49
+        }
+      ]
+    },
+    {
+      "symbol": "FX Vol 80",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -8.0,
+      "swap_short": -8.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 1.0,
+      "trade_stops_level": 6702,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 55559.74,
+          "lots": 0.01,
+          "margin": 0.44
+        },
+        {
+          "side": "BUY",
+          "price": 55559.74,
+          "lots": 0.02,
+          "margin": 0.89
+        },
+        {
+          "side": "SELL",
+          "price": 55543.91,
+          "lots": 0.01,
+          "margin": 0.44
+        },
+        {
+          "side": "SELL",
+          "price": 55543.91,
+          "lots": 0.02,
+          "margin": 0.89
+        }
+      ]
+    },
+    {
+      "symbol": "FX Vol 99",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -10.0,
+      "swap_short": -10.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 4.0,
+      "trade_stops_level": 4191,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 48879.24,
+          "lots": 0.01,
+          "margin": 0.49
+        },
+        {
+          "side": "BUY",
+          "price": 48879.24,
+          "lots": 0.02,
+          "margin": 0.98
+        },
+        {
+          "side": "SELL",
+          "price": 48870.63,
+          "lots": 0.01,
+          "margin": 0.49
+        },
+        {
+          "side": "SELL",
+          "price": 48870.63,
+          "lots": 0.02,
+          "margin": 0.98
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -6.5,
+      "swap_short": -6.5,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 5.0,
+      "trade_stops_level": 2016,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 32005.82,
+          "lots": 0.01,
+          "margin": 0.64
+        },
+        {
+          "side": "BUY",
+          "price": 32005.82,
+          "lots": 0.02,
+          "margin": 1.28
+        },
+        {
+          "side": "SELL",
+          "price": 32002.16,
+          "lots": 0.01,
+          "margin": 0.64
+        },
+        {
+          "side": "SELL",
+          "price": 32002.16,
+          "lots": 0.02,
+          "margin": 1.28
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -13.0,
+      "swap_short": -13.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 1.0,
+      "trade_stops_level": 7362,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 127613.25,
+          "lots": 0.01,
+          "margin": 5.1
+        },
+        {
+          "side": "BUY",
+          "price": 127613.25,
+          "lots": 0.02,
+          "margin": 10.21
+        },
+        {
+          "side": "SELL",
+          "price": 127584.11,
+          "lots": 0.01,
+          "margin": 5.1
+        },
+        {
+          "side": "SELL",
+          "price": 127584.11,
+          "lots": 0.02,
+          "margin": 10.21
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -19.0,
+      "swap_short": -19.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 1.0,
+      "trade_stops_level": 5892,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 276809.6,
+          "lots": 0.01,
+          "margin": 16.61
+        },
+        {
+          "side": "BUY",
+          "price": 276809.6,
+          "lots": 0.02,
+          "margin": 33.22
+        },
+        {
+          "side": "SELL",
+          "price": 276714.8,
+          "lots": 0.01,
+          "margin": 16.6
+        },
+        {
+          "side": "SELL",
+          "price": 276714.8,
+          "lots": 0.02,
+          "margin": 33.21
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -25.5,
+      "swap_short": -25.5,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 2.0,
+      "trade_stops_level": 8598,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 84627.66,
+          "lots": 0.01,
+          "margin": 6.77
+        },
+        {
+          "side": "BUY",
+          "price": 84627.66,
+          "lots": 0.02,
+          "margin": 13.54
+        },
+        {
+          "side": "SELL",
+          "price": 84589.02,
+          "lots": 0.01,
+          "margin": 6.77
+        },
+        {
+          "side": "SELL",
+          "price": 84589.02,
+          "lots": 0.02,
+          "margin": 13.53
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "currency_profit": "USD",
+      "currency_margin": "USD",
+      "currency_base": "USD",
+      "chart_mode": 0,
+      "swap_rollover3days": 5,
+      "swap_long": -32.0,
+      "swap_short": -32.0,
+      "swap_mode": 5,
+      "margin_initial": 0.0,
+      "margin_maintenance": 0.0,
+      "trade_calc_mode": 2,
+      "trade_contract_size": 1.0,
+      "trade_tick_size": 0.01,
+      "trade_tick_value": 0.01,
+      "trade_tick_value_profit": 0.01,
+      "trade_tick_value_loss": 0.01,
+      "point": 0.01,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 2.0,
+      "trade_stops_level": 1716,
+      "margin_probes": [
+        {
+          "side": "BUY",
+          "price": 1713.68,
+          "lots": 0.01,
+          "margin": 0.17
+        },
+        {
+          "side": "BUY",
+          "price": 1713.68,
+          "lots": 0.02,
+          "margin": 0.34
+        },
+        {
+          "side": "SELL",
+          "price": 1712.7,
+          "lots": 0.01,
+          "margin": 0.17
+        },
+        {
+          "side": "SELL",
+          "price": 1712.7,
+          "lots": 0.02,
+          "margin": 0.34
+        }
+      ]
+    }
+  ],
+  "enum_values": {
+    "SYMBOL_CALC_MODE_CFD": 2,
+    "SYMBOL_SWAP_MODE_INTEREST_CURRENT": 5,
+    "SYMBOL_CHART_MODE_BID": 0
+  }
+}

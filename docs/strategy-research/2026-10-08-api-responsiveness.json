@@ -1,0 +1,13 @@
+{
+  "scope": "READ_ONLY_OPERATOR_EVIDENCE_DIAGNOSTIC_NOT_STRATEGY_RESULT",
+  "verification_rows_prechange": 233831,
+  "evidence_bytes_prechange": 67772416,
+  "old_reader_seconds_observed": 1.371,
+  "latest_only_sql_seconds_observed": 0.406,
+  "new_reader_seconds_observed": 0.530725,
+  "broker_groups": 3,
+  "measurements": "single observational measurements; not controlled benchmark",
+  "live_backend_restarted": false,
+  "sole_timeout_cause_proven": false,
+  "database_modified": false
+}

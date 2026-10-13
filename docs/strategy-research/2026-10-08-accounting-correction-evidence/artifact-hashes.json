@@ -1,0 +1,317 @@
+[
+  {
+    "file": "FX_Vol_20--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1921,
+    "sha256": "78e8f0c33355c5cced385b3f50a90c425fb6c42633bdab52fb70c67c23290d45"
+  },
+  {
+    "file": "FX_Vol_20--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5102864,
+    "sha256": "88c9e08ae7bce8a9604b1204b99c57b00a3920568aa528838fb182a065d1c98d"
+  },
+  {
+    "file": "FX_Vol_20--double_spread_commission--metrics.json",
+    "bytes": 1916,
+    "sha256": "d324281ca7d081a4b8d3fda6aa5371dacb0602ac43778f2204bc3b3b721a884e"
+  },
+  {
+    "file": "FX_Vol_20--double_spread_commission--result.json",
+    "bytes": 5102862,
+    "sha256": "aa37cced0f0b4549acf6d99741865d56e618b8cb4341bcd5a97f800626417f8a"
+  },
+  {
+    "file": "FX_Vol_20--optimistic_zero_commission--metrics.json",
+    "bytes": 1918,
+    "sha256": "5ba762fee305c8e5b8560047d210c494f30e43578de67ad48353e3053bb7b3c1"
+  },
+  {
+    "file": "FX_Vol_20--optimistic_zero_commission--result.json",
+    "bytes": 5102864,
+    "sha256": "e6cc63b2c2bd6611fd71b528348502a97cd44d5bf6f4c69a060a95405063151c"
+  },
+  {
+    "file": "FX_Vol_40--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1921,
+    "sha256": "207fe1de59f6cdf2d58aefe3c4f1d5492ac591d0b4ba0800bb99244d4a3c2740"
+  },
+  {
+    "file": "FX_Vol_40--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5088974,
+    "sha256": "2168e46d13b6443ba3feb7a55454fb4657aa6eb964b0acec484bf77f52799241"
+  },
+  {
+    "file": "FX_Vol_40--double_spread_commission--metrics.json",
+    "bytes": 1916,
+    "sha256": "1fed565bd1ae100487d805c0d179785377b01254d8cbd417dd946104530e81e2"
+  },
+  {
+    "file": "FX_Vol_40--double_spread_commission--result.json",
+    "bytes": 5088972,
+    "sha256": "861348e6c9ef3e11731a7b7a443f12f72c1ab47beb5f8446fcabafdc854e0658"
+  },
+  {
+    "file": "FX_Vol_40--optimistic_zero_commission--metrics.json",
+    "bytes": 1918,
+    "sha256": "157bb204e049f67131663aa53eac0a141074468fc0f19adefe544e47ad347ff5"
+  },
+  {
+    "file": "FX_Vol_40--optimistic_zero_commission--result.json",
+    "bytes": 5088974,
+    "sha256": "507c31c3182a0ae0d3e201a3a9d6fc0daa363cfb7649551039ec4447c880d5d4"
+  },
+  {
+    "file": "FX_Vol_60--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1921,
+    "sha256": "08a4457ffd75f7a6e0299a54e3fe432e494c09c6de88b729988dcc8766b75d62"
+  },
+  {
+    "file": "FX_Vol_60--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5075524,
+    "sha256": "f033cb629690b745011b959f3d0ad100b83b1d989f56dbe2d21466fd6d9c754f"
+  },
+  {
+    "file": "FX_Vol_60--double_spread_commission--metrics.json",
+    "bytes": 1916,
+    "sha256": "a6fa065046406b859bc2e6eb24407d942690ab03f3e7e4e296bf319f4ef5e48a"
+  },
+  {
+    "file": "FX_Vol_60--double_spread_commission--result.json",
+    "bytes": 5075522,
+    "sha256": "5a769b8104e323f73a79e831145ce58355497102f5d3096d87176346579e2518"
+  },
+  {
+    "file": "FX_Vol_60--optimistic_zero_commission--metrics.json",
+    "bytes": 1918,
+    "sha256": "a6772c98da75f8ca6dc86dab8e077b660f82b418467df56bcda738714ee6fd91"
+  },
+  {
+    "file": "FX_Vol_60--optimistic_zero_commission--result.json",
+    "bytes": 5075524,
+    "sha256": "df57701d2e40552449a67cce95caffea020be6f6e469cca2a96c30a05ab2462a"
+  },
+  {
+    "file": "FX_Vol_80--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1921,
+    "sha256": "b65e583d0e5f0d296f0217c3a38454f434d50610f61bc059b00138d78d537768"
+  },
+  {
+    "file": "FX_Vol_80--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5040032,
+    "sha256": "8b82c172385ac0e26eca844a992782fc40103b7ee2545e71da15f866fc12bf7b"
+  },
+  {
+    "file": "FX_Vol_80--double_spread_commission--metrics.json",
+    "bytes": 1916,
+    "sha256": "1c2e38701a610ee66cc69428f62954a15b2cd25f8123669452bc63e1d1060e71"
+  },
+  {
+    "file": "FX_Vol_80--double_spread_commission--result.json",
+    "bytes": 5040030,
+    "sha256": "214aa6d66602d8fbf36f668645e49b67bc1b9704631bd1048fa9985052650341"
+  },
+  {
+    "file": "FX_Vol_80--optimistic_zero_commission--metrics.json",
+    "bytes": 1918,
+    "sha256": "2f22821acda2a4c71bd69da2aa1e9e61c60ed0280ec62405f8f1ba47bfee93c9"
+  },
+  {
+    "file": "FX_Vol_80--optimistic_zero_commission--result.json",
+    "bytes": 5040032,
+    "sha256": "673d0a9a032fc40036d03fe575dade7138725a359235ea4c84fef74f981f188e"
+  },
+  {
+    "file": "FX_Vol_99--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1921,
+    "sha256": "93b309cca63ee9a665c1f96455c7df00b88fcbc1616389de66aa27e7e3ea0002"
+  },
+  {
+    "file": "FX_Vol_99--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5103468,
+    "sha256": "7ba6b2de57010ec938f621416ac808e62b60dbc450a0156a9d0f395398a0e30d"
+  },
+  {
+    "file": "FX_Vol_99--double_spread_commission--metrics.json",
+    "bytes": 1916,
+    "sha256": "39c4fb2aa5b4540498a737422e43027dd92422a6fe1a2289bea73450908123dc"
+  },
+  {
+    "file": "FX_Vol_99--double_spread_commission--result.json",
+    "bytes": 5103466,
+    "sha256": "bf36c9259aa544196d451ebdd644298c85b37926f704f935201ee08bbc685475"
+  },
+  {
+    "file": "FX_Vol_99--optimistic_zero_commission--metrics.json",
+    "bytes": 1918,
+    "sha256": "f7a2eda5162bd36a1131f84a8e094cb61e43cd817676d559ccb5eaa4a03a9d33"
+  },
+  {
+    "file": "FX_Vol_99--optimistic_zero_commission--result.json",
+    "bytes": 5103468,
+    "sha256": "b8c7f3b56deb82558b0641695b54e65a8b9b575dacee6f1abf6f964c2b56a2c6"
+  },
+  {
+    "file": "SFX_Vol_20--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1922,
+    "sha256": "5f157939945afbf1698811901827943dbb6282d740ae7e59759a0ebe3a85df67"
+  },
+  {
+    "file": "SFX_Vol_20--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5186140,
+    "sha256": "8825f0204721eb394560d2a09edb48f82fbdc0fa5377d792c10bf05f34ac9de0"
+  },
+  {
+    "file": "SFX_Vol_20--double_spread_commission--metrics.json",
+    "bytes": 1917,
+    "sha256": "0f8b6e36440c2735ab3e2b7c6f03d934952cce861df2d88a3a8107e3a405c443"
+  },
+  {
+    "file": "SFX_Vol_20--double_spread_commission--result.json",
+    "bytes": 5186138,
+    "sha256": "c8ca4d9694565c8f3e7eab4c9a19c9ab0723527674d7872162cd1384d6161827"
+  },
+  {
+    "file": "SFX_Vol_20--optimistic_zero_commission--metrics.json",
+    "bytes": 1919,
+    "sha256": "3658f5896e319b5f3529e1d26d467cc186ac037d794c26bf2e0f6702034068b4"
+  },
+  {
+    "file": "SFX_Vol_20--optimistic_zero_commission--result.json",
+    "bytes": 5186140,
+    "sha256": "abd0b2c761e950f928788e15a07f143ae67731fe44ae910db18b281e5341b875"
+  },
+  {
+    "file": "SFX_Vol_40--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1922,
+    "sha256": "39c4df606fa279a5eb06fcf0eb57e21ae9f7556ac53189145388257b8bfab43c"
+  },
+  {
+    "file": "SFX_Vol_40--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5133567,
+    "sha256": "4281ac5bd7298e16ca0b9f22f603e1043d65e0a345f4121857e723223bc710c0"
+  },
+  {
+    "file": "SFX_Vol_40--double_spread_commission--metrics.json",
+    "bytes": 1917,
+    "sha256": "cd4037869a0dc5e2da9d021fd1b5ede178d9d3ca68ae72470e6d25c376b84e82"
+  },
+  {
+    "file": "SFX_Vol_40--double_spread_commission--result.json",
+    "bytes": 5133565,
+    "sha256": "abf4d8fe3209092e972c5bebdce238f036b60024bd58f88866000cdd22c5c008"
+  },
+  {
+    "file": "SFX_Vol_40--optimistic_zero_commission--metrics.json",
+    "bytes": 1919,
+    "sha256": "b525b80c8b37a17ce60c5e4565fc76f3baff77e4e3a848a81b60fe47d8253d17"
+  },
+  {
+    "file": "SFX_Vol_40--optimistic_zero_commission--result.json",
+    "bytes": 5133567,
+    "sha256": "ea9c691c84f0245e651b8616812b2d7ee6c0463061f4c2f2f3099e8809b03ffa"
+  },
+  {
+    "file": "SFX_Vol_60--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1922,
+    "sha256": "f45c41537966aea5b340f18aba31c0caf04fa46bbd6698e34c90a34b67b9dc70"
+  },
+  {
+    "file": "SFX_Vol_60--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5091919,
+    "sha256": "fd9ceb0db0076e84eb0de551dd1e15616fbf5cf16743255bd8bb1474d59c5383"
+  },
+  {
+    "file": "SFX_Vol_60--double_spread_commission--metrics.json",
+    "bytes": 1917,
+    "sha256": "bfd3fe22bab822a6e2c3931ae9882cf1689bc7323ed3219a7fc1b966e37b4e9e"
+  },
+  {
+    "file": "SFX_Vol_60--double_spread_commission--result.json",
+    "bytes": 5091917,
+    "sha256": "d7b73483c1cc4576afcee8d5ac38470e75d399a62e7a575a4d99911428aaeada"
+  },
+  {
+    "file": "SFX_Vol_60--optimistic_zero_commission--metrics.json",
+    "bytes": 1919,
+    "sha256": "426bf5ddca812d35777bc758503d8fe529ba853dc71aac1bc25f477b4ed21507"
+  },
+  {
+    "file": "SFX_Vol_60--optimistic_zero_commission--result.json",
+    "bytes": 5091919,
+    "sha256": "eb5172af6142494617805aadddeb2651f3fcb554265775033e1ef7f96899bece"
+  },
+  {
+    "file": "SFX_Vol_80--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 1922,
+    "sha256": "c6c2fef91f6e33d9a46d5fcbcaab86d5aa4723fcd384eb193c0063e7080cdc10"
+  },
+  {
+    "file": "SFX_Vol_80--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 5088863,
+    "sha256": "75260387d9d203024491b9f9d1ba64d1f88e7a1cf1f7a61095ea25cbf669e907"
+  },
+  {
+    "file": "SFX_Vol_80--double_spread_commission--metrics.json",
+    "bytes": 1917,
+    "sha256": "624c51aa53697a1273bc7c473f83b002264663e3d46e8cd77a3ce93beeb10268"
+  },
+  {
+    "file": "SFX_Vol_80--double_spread_commission--result.json",
+    "bytes": 5088861,
+    "sha256": "2500576ffd9db145a2ae1682528a16db77dca42184dd87777eba50e8914dc731"
+  },
+  {
+    "file": "SFX_Vol_80--optimistic_zero_commission--metrics.json",
+    "bytes": 1919,
+    "sha256": "4ecce2222999447c2d1d101d96342baf34928578fb87f7e9d0339ab45bbf21da"
+  },
+  {
+    "file": "SFX_Vol_80--optimistic_zero_commission--result.json",
+    "bytes": 5088863,
+    "sha256": "7e8fd911de10abb417364400b504c5f6d1d0baa7ae6a11b3d3f244d1763fde77"
+  },
+  {
+    "file": "SFX_Vol_99--assumed_3usd_per_lot_per_side--metrics.json",
+    "bytes": 192373,
+    "sha256": "9faef2e59dab6c82b199c92f26f68d09d246aac11972960f277a4dfa30c19ba4"
+  },
+  {
+    "file": "SFX_Vol_99--assumed_3usd_per_lot_per_side--result.json",
+    "bytes": 4962866,
+    "sha256": "65ca675f935b9335b1dc0bbd07764982f63c6316bd4af47f51fe77e57a7182e7"
+  },
+  {
+    "file": "SFX_Vol_99--double_spread_commission--metrics.json",
+    "bytes": 82682,
+    "sha256": "62ba98fe90036d2334e7ec93c0f51bafa7a724c3aeb0c22b4a9300e91531601d"
+  },
+  {
+    "file": "SFX_Vol_99--double_spread_commission--result.json",
+    "bytes": 5020493,
+    "sha256": "b470f5a36c14de21949f2ce3973208f3c26bdcf0b96e6908eed25f91a4af34f8"
+  },
+  {
+    "file": "SFX_Vol_99--optimistic_zero_commission--metrics.json",
+    "bytes": 309084,
+    "sha256": "d3b401c9c8a636e6f05eefc11f114aafb305dde8807314f0cb4091653ac009aa"
+  },
+  {
+    "file": "SFX_Vol_99--optimistic_zero_commission--result.json",
+    "bytes": 4897083,
+    "sha256": "82bdcafde3aa3e1c159ecb2f90109c263ec7733500649bdb22d1a0b56e611087"
+  },
+  {
+    "file": "summary.json",
+    "bytes": 3213,
+    "sha256": "5f04010eb18a8d103dd1e79e807102f69b9225d048d90d2974d952572c770a60"
+  },
+  {
+    "file": "training-replay-protocol.json",
+    "bytes": 12855,
+    "sha256": "45a4cfdb51d4a6d197b28c1b8856b1a8a1ef91d2df4b24434d20c0e46af7103e"
+  },
+  {
+    "file": "trials.jsonl",
+    "bytes": 13285,
+    "sha256": "9aeb9023ecdf25cae75fd6e5f8956b2474da8652dd99c931c90f15784926250c"
+  }
+]

@@ -1,0 +1,66 @@
+{
+  "cost_dispositions": {
+    "CENSORED": 129,
+    "EXECUTED": 3338,
+    "NON_EXECUTABLE": 5161
+  },
+  "diagnostics_sha256": "sha256:e5d295eef3dec325b6d418f15d5ee938196c21cec0a413581623ee6dc3b90cff",
+  "distinct_events_with_executed_label": 1545,
+  "errors": [],
+  "events": 2876,
+  "folds": [
+    {
+      "claim": "INSPECTED_TRAINING_SPLIT_PLUMBING_NOT_OOS_OR_FIT",
+      "embargo_minutes": 95,
+      "end_exclusive": "2026-09-29T00:00:00+00:00",
+      "grouping": "Latest actual label availability across executed cost siblings",
+      "per_cost": {
+        "assumed_3usd_per_lot_per_side": {
+          "evaluation_executed": 502,
+          "train_executed": 653
+        },
+        "double_spread_commission": {
+          "evaluation_executed": 341,
+          "train_executed": 261
+        },
+        "optimistic_zero_commission": {
+          "evaluation_executed": 510,
+          "train_executed": 992
+        }
+      },
+      "start_inclusive": "2026-09-22T00:00:00+00:00",
+      "unique_evaluation_events": 510,
+      "unique_train_events": 992
+    },
+    {
+      "claim": "INSPECTED_TRAINING_SPLIT_PLUMBING_NOT_OOS_OR_FIT",
+      "embargo_minutes": 95,
+      "end_exclusive": "2026-10-08T00:00:00+00:00",
+      "grouping": "Latest actual label availability across executed cost siblings",
+      "per_cost": {
+        "assumed_3usd_per_lot_per_side": {
+          "evaluation_executed": 12,
+          "train_executed": 1169
+        },
+        "double_spread_commission": {
+          "evaluation_executed": 1,
+          "train_executed": 604
+        },
+        "optimistic_zero_commission": {
+          "evaluation_executed": 12,
+          "train_executed": 1528
+        }
+      },
+      "start_inclusive": "2026-09-29T00:00:00+00:00",
+      "unique_evaluation_events": 12,
+      "unique_train_events": 1528
+    }
+  ],
+  "holdouts_read": false,
+  "joined_sha256": "sha256:543c87d4fc8293c270b147cda0bd53e74811a23419b212fe21bc646be2db893b",
+  "models_fitted": 0,
+  "performance_evaluated": false,
+  "promotion_authorized": false,
+  "source_snapshot_matches": true,
+  "status": "PASS_SAVED_JOIN_AND_PURGE_AUDIT"
+}

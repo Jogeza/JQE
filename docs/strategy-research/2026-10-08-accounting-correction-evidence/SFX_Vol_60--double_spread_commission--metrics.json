@@ -1,0 +1,49 @@
+{
+  "symbol": "SFX Vol 60",
+  "cost": "double_spread_commission",
+  "start": "2026-09-08 00:00:00+00:00",
+  "end_exclusive": "2026-10-08 00:00:00+00:00",
+  "parent_content_hash": "sha256:7f8dc43fb3d15b81d88b7042aff03980192b1e648547edd451c5c4b897509d53",
+  "dataset_hash": "sha256:2d1ecd11bbd2d54b07eb9f55d9a906ad7b9762e86de9d63a3f37287d59e2c22f",
+  "run_fingerprint": "sha256:a487ea0fb9e33af0c40f5a99b709d4a8cd1d3a447a703820835acfd2aa1d8ba2",
+  "result_hash": "sha256:40e578cb79798687995df188ae9d8a491d1c8b0c4d59df163d239984316b9d95",
+  "metrics": {
+    "trades": 0,
+    "expectancy_account_currency": null,
+    "expectancy_r": null,
+    "profit_factor": null,
+    "win_rate_percent": null,
+    "max_realized_drawdown_percent": 0.0,
+    "sharpe_unannualized_trade_returns": null,
+    "sortino_unannualized_trade_returns": null,
+    "exposure_bar_fraction": 0.0,
+    "holding_bars": null,
+    "mae_r_upper_bound": null,
+    "mfe_r_upper_bound": null,
+    "decision_states": {
+      "QUEUED": 2784,
+      "EXECUTION_REJECTED": 2784,
+      "NO_TRADE": 5848
+    },
+    "clusters": {},
+    "trade_details": [],
+    "claim_scope": "TRAIN_ONLY_CONDITIONAL_MODELLED_USD_NOT_VERIFIED_ACCOUNT_RESULTS",
+    "expectancy_modelled_usd": null,
+    "average_win_modelled_usd": null,
+    "average_loss_modelled_usd": null,
+    "max_bar_close_drawdown_modelled_usd": 0.0,
+    "drawdown_basis": "BAR_CLOSE_LIQUIDATION_EQUITY",
+    "net_modelled_usd": 0.0,
+    "commission_modelled_usd": 0,
+    "financing_modelled_usd": 0,
+    "rejection_reasons": {
+      "Minimum lot cannot satisfy frozen cash-risk/margin limits": 2784
+    },
+    "exit_reasons": {},
+    "holding_minutes_upper_bound_p10_p50_p90": null,
+    "exposure_wall_time_upper_bound_fraction": 0.0,
+    "sharpe_bar_returns_unannualized": null,
+    "sortino_bar_returns_unannualized": null,
+    "bar_return_periods": 8632
+  }
+}

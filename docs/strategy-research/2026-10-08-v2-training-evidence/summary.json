@@ -1,0 +1,91 @@
+{
+  "status": "TRAIN_DIAGNOSTIC_COMPLETE_PROMOTION_BLOCKED",
+  "candidate_configurations_evaluated": 0,
+  "replays": 30,
+  "aggregates": {
+    "optimistic_zero_commission": {
+      "trades": 279,
+      "expectancy_modelled_usd": -0.011577060931899653,
+      "expectancy_r": -0.02330896799924782,
+      "expectancy_r_ci95_3day_block_train_only": [
+        -0.2112464237407824,
+        0.12310861013600687
+      ],
+      "profit_factor": 0.9384879070653209,
+      "profit_factor_status": "DEFINED",
+      "win_rate_percent": 35.842293906810035,
+      "average_win_modelled_usd": 0.4928,
+      "average_loss_modelled_usd": -0.2933519553072626,
+      "net_modelled_usd_sum_independent_accounts": -3.230000000000001,
+      "equal_weight_symbol_expectancy_r": -0.02330896799924782,
+      "zero_trade_symbols": [
+        "FX Vol 20",
+        "FX Vol 40",
+        "FX Vol 60",
+        "FX Vol 80",
+        "FX Vol 99",
+        "SFX Vol 20",
+        "SFX Vol 40",
+        "SFX Vol 60",
+        "SFX Vol 80"
+      ],
+      "portfolio_metrics": "NOT_COMPUTED; ten independent 50-USD research accounts, not shared portfolio capital"
+    },
+    "assumed_3usd_per_lot_per_side": {
+      "trades": 175,
+      "expectancy_modelled_usd": -0.057085714285714295,
+      "expectancy_r": -0.23442207682367017,
+      "expectancy_r_ci95_3day_block_train_only": [
+        -0.4401388379575273,
+        -0.09136410496278945
+      ],
+      "profit_factor": 0.7053966381598348,
+      "profit_factor_status": "DEFINED",
+      "win_rate_percent": 35.42857142857143,
+      "average_win_modelled_usd": 0.3858064516129033,
+      "average_loss_modelled_usd": -0.3000884955752212,
+      "net_modelled_usd_sum_independent_accounts": -9.99,
+      "equal_weight_symbol_expectancy_r": -0.23442207682367017,
+      "zero_trade_symbols": [
+        "FX Vol 20",
+        "FX Vol 40",
+        "FX Vol 60",
+        "FX Vol 80",
+        "FX Vol 99",
+        "SFX Vol 20",
+        "SFX Vol 40",
+        "SFX Vol 60",
+        "SFX Vol 80"
+      ],
+      "portfolio_metrics": "NOT_COMPUTED; ten independent 50-USD research accounts, not shared portfolio capital"
+    },
+    "double_spread_commission": {
+      "trades": 72,
+      "expectancy_modelled_usd": -0.12444444444444445,
+      "expectancy_r": -0.5521586606884089,
+      "expectancy_r_ci95_3day_block_train_only": [
+        -0.9932305110050388,
+        -0.3590931453522399
+      ],
+      "profit_factor": 0.4347003154574132,
+      "profit_factor_status": "DEFINED",
+      "win_rate_percent": 30.555555555555557,
+      "average_win_modelled_usd": 0.3131818181818181,
+      "average_loss_modelled_usd": -0.317,
+      "net_modelled_usd_sum_independent_accounts": -8.96,
+      "equal_weight_symbol_expectancy_r": -0.5521586606884089,
+      "zero_trade_symbols": [
+        "FX Vol 20",
+        "FX Vol 40",
+        "FX Vol 60",
+        "FX Vol 80",
+        "FX Vol 99",
+        "SFX Vol 20",
+        "SFX Vol 40",
+        "SFX Vol 60",
+        "SFX Vol 80"
+      ],
+      "portfolio_metrics": "NOT_COMPUTED; ten independent 50-USD research accounts, not shared portfolio capital"
+    }
+  }
+}

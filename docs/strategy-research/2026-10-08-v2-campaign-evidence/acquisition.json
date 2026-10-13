@@ -1,0 +1,1176 @@
+{
+  "status": "ACQUIRED_NEEDS_COST_MODEL_AND_FUTURE_HOLDOUT",
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 7.0,
+        "trade_stops_level": 1080,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -2.0,
+        "swap_short": -2.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444001,
+          "time_msc": 1791444001072,
+          "bid": 118421.49,
+          "ask": 118425.71
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 118425.71,
+            "exit": 118325.71,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 118425.71,
+            "exit": 118415.71,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 118425.71,
+            "exit": 118435.71,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 118425.71,
+            "exit": 118525.71,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 118421.49,
+            "exit": 118521.49,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 118421.49,
+            "exit": 118431.49,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 118421.49,
+            "exit": 118411.49,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 118421.49,
+            "exit": 118321.49,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:44b75155da06d30d74df914f91a16a5b1a028340874e4fc4615403548910d09b",
+      "gaps": 6,
+      "spread_sidecar_sha256": "4115e9aba9317bcdf0df81f5bcc8ce5458e696f7d669f53c73e81dd4ed2a07a4"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 4.0,
+        "trade_stops_level": 2643,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -4.0,
+        "swap_short": -4.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444002,
+          "time_msc": 1791444002072,
+          "bid": 180696.78,
+          "ask": 180709.65
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 180709.65,
+            "exit": 180609.65,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 180709.65,
+            "exit": 180699.65,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 180709.65,
+            "exit": 180719.65,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 180709.65,
+            "exit": 180809.65,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 180696.78,
+            "exit": 180796.78,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 180696.78,
+            "exit": 180706.78,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 180696.78,
+            "exit": 180686.78,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 180696.78,
+            "exit": 180596.78,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:2d466b4727ca308f1d3afd59c1a33dac52a7a4d3a75b29014a1c4a5663af3d13",
+      "gaps": 6,
+      "spread_sidecar_sha256": "4175cfec3dd0c09c03a6f326218aae47ee44758c1aa3e39fb977215766bb285a"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 5.0,
+        "trade_stops_level": 1815,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -6.0,
+        "swap_short": -6.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444003,
+          "time_msc": 1791444003073,
+          "bid": 40576.21,
+          "ask": 40580.54
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 40580.54,
+            "exit": 40480.54,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 40580.54,
+            "exit": 40570.54,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 40580.54,
+            "exit": 40590.54,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 40580.54,
+            "exit": 40680.54,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 40576.21,
+            "exit": 40676.21,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 40576.21,
+            "exit": 40586.21,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 40576.21,
+            "exit": 40566.21,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 40576.21,
+            "exit": 40476.21,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:5eb068f615ca2c93f430a4fc8b9c642d30033256823ade3957598d29c4347e27",
+      "gaps": 6,
+      "spread_sidecar_sha256": "33fed5f386bd8e435d79f23cf76fc8714a106c561fbb154b5ef9f576aa3d6ca2"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 1.0,
+        "trade_stops_level": 6702,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -8.0,
+        "swap_short": -8.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444004,
+          "time_msc": 1791444004073,
+          "bid": 55549.75,
+          "ask": 55565.58
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 55565.58,
+            "exit": 55465.58,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 55565.58,
+            "exit": 55555.58,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 55565.58,
+            "exit": 55575.58,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 55565.58,
+            "exit": 55665.58,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 55549.75,
+            "exit": 55649.75,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 55549.75,
+            "exit": 55559.75,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 55549.75,
+            "exit": 55539.75,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 55549.75,
+            "exit": 55449.75,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:44e72d4ec4a1d417eac7620d5baf87d18c5e93d17961d327e3509ae196470742",
+      "gaps": 6,
+      "spread_sidecar_sha256": "e0abbf549d9057b641b549995aa09f572b17447f3456cde99aab252fbc2c45d5"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 4.0,
+        "trade_stops_level": 4191,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -10.0,
+        "swap_short": -10.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444005,
+          "time_msc": 1791444005073,
+          "bid": 48938.09,
+          "ask": 48946.71
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 48946.71,
+            "exit": 48846.71,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 48946.71,
+            "exit": 48936.71,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 48946.71,
+            "exit": 48956.71,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 48946.71,
+            "exit": 49046.71,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 48938.09,
+            "exit": 49038.09,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 48938.09,
+            "exit": 48948.09,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 48938.09,
+            "exit": 48928.09,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 48938.09,
+            "exit": 48838.09,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:68cc13cd1bcba54304865d92af52bb7b480cd777556e0633ca5404f96a581987",
+      "gaps": 6,
+      "spread_sidecar_sha256": "d2c706ced216357dae5e040f52921772009b91f97b0141dd00da8f2d512409d2"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 5.0,
+        "trade_stops_level": 2016,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -6.5,
+        "swap_short": -6.5,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444006,
+          "time_msc": 1791444006072,
+          "bid": 31987.68,
+          "ask": 31991.34
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 31991.34,
+            "exit": 31891.34,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 31991.34,
+            "exit": 31981.34,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 31991.34,
+            "exit": 32001.34,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 31991.34,
+            "exit": 32091.34,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 31987.68,
+            "exit": 32087.68,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 31987.68,
+            "exit": 31997.68,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 31987.68,
+            "exit": 31977.68,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 31987.68,
+            "exit": 31887.68,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:e2a609a57c8b7036c699be7af051c808309a39543024b3bb7bee531af24c0bf7",
+      "gaps": 6,
+      "spread_sidecar_sha256": "57040f4f5e4a16652e90c32f63fab446a62002eeec9df6d29e20b67077406a0c"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 1.0,
+        "trade_stops_level": 7362,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -13.0,
+        "swap_short": -13.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444007,
+          "time_msc": 1791444007073,
+          "bid": 127946.42,
+          "ask": 127975.64
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 127975.64,
+            "exit": 127875.64,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 127975.64,
+            "exit": 127965.64,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 127975.64,
+            "exit": 127985.64,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 127975.64,
+            "exit": 128075.64,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 127946.42,
+            "exit": 128046.42,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 127946.42,
+            "exit": 127956.42,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 127946.42,
+            "exit": 127936.42,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 127946.42,
+            "exit": 127846.42,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:50d5c3276b2184c3fc4b3dcf2cc8d5ffc1b43b4fc810e3782b4711397d3e86f3",
+      "gaps": 6,
+      "spread_sidecar_sha256": "dc3441c4c2e30a889949249a19e81220526698a7a149fda427badc37eb2d4d50"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 1.0,
+        "trade_stops_level": 5892,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -19.0,
+        "swap_short": -19.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444008,
+          "time_msc": 1791444008073,
+          "bid": 275254.99,
+          "ask": 275349.28
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 275349.28,
+            "exit": 275249.28,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 275349.28,
+            "exit": 275339.28,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 275349.28,
+            "exit": 275359.28,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 275349.28,
+            "exit": 275449.28,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 275254.99,
+            "exit": 275354.99,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 275254.99,
+            "exit": 275264.99,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 275254.99,
+            "exit": 275244.99,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 275254.99,
+            "exit": 275154.99,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:7f8dc43fb3d15b81d88b7042aff03980192b1e648547edd451c5c4b897509d53",
+      "gaps": 6,
+      "spread_sidecar_sha256": "df72386f81d53499ac32a85e72027590c46092853355bc934b30824ebff927f1"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 2.0,
+        "trade_stops_level": 8598,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -25.5,
+        "swap_short": -25.5,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444009,
+          "time_msc": 1791444009073,
+          "bid": 84094.61,
+          "ask": 84133.01
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 84133.01,
+            "exit": 84033.01,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 84133.01,
+            "exit": 84123.01,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 84133.01,
+            "exit": 84143.01,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 84133.01,
+            "exit": 84233.01,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 84094.61,
+            "exit": 84194.61,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 84094.61,
+            "exit": 84104.61,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 84094.61,
+            "exit": 84084.61,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 84094.61,
+            "exit": 83994.61,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:02d7b4a04945f5356b5a24e84463b77a690267367fa45137e4d5746245ce0415",
+      "gaps": 6,
+      "spread_sidecar_sha256": "4354530b37f7e92b1e3d536ff27c2b9637adbb892eb6c4124f162c497784427e"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "status": "ACQUIRED_NOT_PROMOTION_QUALIFIED",
+      "economics": {
+        "point": 0.01,
+        "digits": 2,
+        "trade_tick_size": 0.01,
+        "trade_tick_value": 0.01,
+        "trade_tick_value_profit": 0.01,
+        "trade_tick_value_loss": 0.01,
+        "trade_contract_size": 1.0,
+        "volume_min": 0.01,
+        "volume_step": 0.01,
+        "volume_max": 2.0,
+        "trade_stops_level": 1716,
+        "trade_freeze_level": 0,
+        "trade_calc_mode": 2,
+        "swap_long": -32.0,
+        "swap_short": -32.0,
+        "swap_mode": 5,
+        "quote": {
+          "time": 1791444010,
+          "time_msc": 1791444010074,
+          "bid": 1708.71,
+          "ask": 1709.68
+        },
+        "account_currency": "USD",
+        "profit_probes": [
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 1709.68,
+            "exit": 1609.68,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 1709.68,
+            "exit": 1699.68,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 1709.68,
+            "exit": 1719.68,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "BUY",
+            "lots": 0.01,
+            "entry": 1709.68,
+            "exit": 1809.68,
+            "ticks": 10000,
+            "pnl": 1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 1708.71,
+            "exit": 1808.71,
+            "ticks": -10000,
+            "pnl": -1.0
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 1708.71,
+            "exit": 1718.71,
+            "ticks": -1000,
+            "pnl": -0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 1708.71,
+            "exit": 1698.71,
+            "ticks": 1000,
+            "pnl": 0.1
+          },
+          {
+            "side": "SELL",
+            "lots": 0.01,
+            "entry": 1708.71,
+            "exit": 1608.71,
+            "ticks": 10000,
+            "pnl": 1.0
+          }
+        ],
+        "economics_status": "CURRENT_SNAPSHOT_PROBED_NOT_HISTORICAL_GUARANTEE",
+        "commission_status": "NOT_VERIFIED",
+        "slippage_status": "NOT_VERIFIED"
+      },
+      "candles": 12000,
+      "downloaded": 12001,
+      "first": "2026-08-27T11:20:00+00:00",
+      "last": "2026-10-08T04:15:00+00:00",
+      "content_hash": "sha256:d47e14104c458058f006fcf7e97aa173194bfb3468cf39d2fe8b755d87787143",
+      "gaps": 6,
+      "spread_sidecar_sha256": "2f10bc22baabb78b2ec9be21492fddda91cd7491e684344fbe083210efc40ff9"
+    }
+  ],
+  "orders_permitted": false,
+  "tool_sha256": "db3ef2f413358f9d9950a1534a8f54fbf631c235d83187c53ccb6fc07141e2d2",
+  "requested_bars_per_symbol": 12000,
+  "source_snapshot": {
+    "files": {
+      "analytics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "analytics/daily_balance.py": "fe58fd8e19db4e96a5fa8354e8c1fccd22d2da3cdb6d87eeec4bcf04e3b08c1d",
+      "analytics/overfitting.py": "8210f13bba3560345ca9ccca91757d34bfa79e6ff02722cae1c192a6f5970007",
+      "analytics/pbo.py": "4b06a4f76ad40db3af8a2444553e448f343bb48c68481f7d0df5b41ba5bae37f",
+      "analytics/performance.py": "a1190d9595e9f47571c0e55c6d24b9dc36a29583597473eae399470e71e97bbf",
+      "backtesting/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "backtesting/backtest.py": "c778e18e3f38cc48ffe4628e276911689a5cc849c4d5cfe432b65cb8630a72e9",
+      "backtesting/drawdown.py": "dd345039de73fb52475c245a303a4b60892a21c6902ba1e5374e561b17e3a6b8",
+      "backtesting/engine.py": "530619a16c3b62537795e98d0cfd3228b585d3f69eeb7e2766c71e26089c78e4",
+      "backtesting/entry_quality.py": "7567fc1956f339e31e29b44362c50e5554aecb86e3a27c319a622cbd2b3ed60a",
+      "backtesting/models.py": "7ae2a73195b4c8dc70e60ab74cc375504cd422d546d90359e744ad1afc563bc2",
+      "backtesting/provenance.py": "cdee3663263832a9f9ac621971d8635fecde07580c9cf5d690c309c5a8fea7c0",
+      "backtesting/qualification.py": "a7a4884788614f62925acc465e3dcc48a09933f67504067051e77a08dae6e025",
+      "backtesting/run.py": "64a07820605735afefe27bf51558693a4d37cf6d81412bde5aadd682d4f789f1",
+      "broker/__init__.py": "0e798e53e8bfe99771ba1436491f215b6f47e7d41da00a003f58e694ea9c6955",
+      "broker/base.py": "effd3a4eddba6ff4ba74d08364077d96d595e792e10d5dd9030feda7eac5ba35",
+      "broker/daily_accounting.py": "333f87754aa83cad456f01d0984c411d4db82b24f10fae7daf8250841096167a",
+      "broker/demo_guard.py": "2259c3d0dd57d70a2908028ccece72ae98bc8dc8a5cb3c36e48485dd663e6362",
+      "broker/deriv_auth.py": "72e05117922cb12f2e14ffdb0707bb22090adadbaaf833265f75a53e4e6982e2",
+      "broker/deriv_contract_semantics.py": "edb6451939059b9c6c0612394a0069ffc8e4fb1c2b72571ef7a0ccd1851900ce",
+      "broker/deriv_contract_spec.py": "58dfd65a36f68410b08932e000e61d2ac8e271e6e78290db5d50e094549d7587",
+      "broker/deriv_demo.py": "f2d01b2ae877df08200a2f16dec8463505c320cc6a986833c3129f44d9690081",
+      "broker/deriv_demo_proposal.py": "29f3f8a6eeedd136628f6f51ba7f58441ed732f0c576da99a287eefdbb368036",
+      "broker/deriv_evidence.py": "4d1bd8f702dc42d8b07de73681771c955c5479c71193af5f543b72a388f01514",
+      "broker/deriv_evidence_handoff.py": "3c1cb191ec47ee7adda804cf8ce7ba784dd3f7bef7e6de7002cca0ac1c7c5d3a",
+      "broker/deriv_evidence_intake.py": "c9f7de2998f043ce1380d89c351e68f627767520c96184ef874a80835d36fbd9",
+      "broker/deriv_evidence_review.py": "dbbb0ca5825ec84532f841f1396b6677994ac756b38ae12d61aef3537f70e7b2",
+      "broker/deriv_execution_terms.py": "f0060ce44e5117c783e8170a1ecd06b183bd5e1eefd27477609f5e1b4eae811f",
+      "broker/deriv_execution_terms_service.py": "d2e2073d1de60f9381fc53c71e7a26b875b035682cfb6a6c9f7251c1f3d5d9fc",
+      "broker/deriv_financial_semantics.py": "bda03e9c4bf934f0ff6890a8e5f7b24b794eae4a55251fbd751b04b3a68009b8",
+      "broker/deriv_gateway.py": "f306601c47be413da59da282b7153c78ff14238d18b726aaf9234e80945ba603",
+      "broker/deriv_loss_model.py": "b6725f91c8434dde8506a1b9936329f408e088b3535660b7ee5386262b92da5a",
+      "broker/deriv_proof_consumption.py": "2c9e02437aaa9c551c79d518908a9d516ee192d2cb8f56304ea0c91e31e8a620",
+      "broker/deriv_proof_registration.py": "d6703b4abc9b55f218be8b44294d7f8211f99adcebbd4dd268383309c32c0901",
+      "broker/deriv_proof_registry.py": "bfffc1b87722d072e18df062e6ec9610f19501b5e07b84eece19c010796a9b39",
+      "broker/deriv_proof_review.py": "cc4152d13c4e453e927dbf6b5e1381cfa00118b066c399e290ea75cb9f7d808e",
+      "broker/deriv_proof_store.py": "2b68c426f0de9b7deedfbaed828db7b89ba8e0685c7086fcb98a0c066551415c",
+      "broker/deriv_public_data.py": "4db773a3622ba4b2555aa1cea7301eb205b4c83af0e4bdd7fd1aec0a608ee592",
+      "broker/factory.py": "387c47cee29be2f57aca291dd97b2e0bd8c9de594f137a38fbcdd0cf289afff3",
+      "broker/mt5_demo.py": "9d3d53e154a52af4bd6db95f1fb0ee8037d4ca9925e3c83d7ad3a79fcde0c04b",
+      "broker/mt5_gateway.py": "8c5ddb5cede4c0ce3299067e4a16077f29dfb16d5fe80452ca1b80cafd586696",
+      "broker/mt5_telemetry.py": "0ab540a219d1a665822f19cd639c718a5c40a7c7f1652591e46e119400d14711",
+      "broker/scope.py": "190eddf3d6a02ad25e8a4181a10d3ae2d2d25b219f3d15111db3b67e07ca3100",
+      "broker/simulation_gateway.py": "b2120326511affe633dad9b1d44944130f5a681dba21d3e65c68f7c516aef4c1",
+      "broker/types.py": "aa52ac129517c2662cc573a676892b06f642a79c51ca9aa401e2f457fbb06419",
+      "broker/weltrade_gateway.py": "8b91ffd56695df1305952228ecdefe805c55eda9042ff6b5a32b8d812bbde496",
+      "broker/weltrade_symbols.py": "28011536181d322839dbb8b81c6d50ffe7348702693ca7b1a75ebc4e29b4b7e8",
+      "config/__init__.py": "6baa19f35b6a64c0f45dad959c0ae03561cd500c5d0216eed61ee4a005678927",
+      "config/settings.py": "61e6636667ff8eb0c8dd1a5063988599f02d175a7d8f1009cc05a47d6cd86be7",
+      "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "core/data_validator.py": "f40c88194d4cccd8d41e3583e061413d599dec8ba5cc07f777feaa3f2397f6b8",
+      "core/exceptions.py": "72e734e6e8ebf4a293bef6e74097616bbf7e553ec066df9a115c6eba95541cd0",
+      "core/indicators.py": "c7c3938a715ba0b1ee3d65322f3d4fe0e3fa8bac30cb1228226adde984e8d46e",
+      "core/logger.py": "47dc2b25471fde75d062e5b79e8deafa50472d29535eb36ad0cc937e91f549a6",
+      "core/logging_config.py": "faecf7b3ac96be6a738ccf2ce31575cbfd5c05579ae65ccb08e2e63e92155255",
+      "core/mt5_connection.py": "6694bbb721996e1346a1e173079a30bbbbd2fc050860b2c1dd8b745c58e5188b",
+      "core/mt5_session.py": "11d706b70ed64ab2ae2e44637912b7a885a114518c70b1cb9b37fdf3b5f6fe59",
+      "core/processes.py": "a8600ee1c21d90ec83637ff2d98ee550c62232cb8f92aaaac3ada9adfd276e61",
+      "core/regime.py": "a8aee69536a9474043e9778158bde06df2fba31fddb0b7a6d3b61d7f2e6350ee",
+      "data/__init__.py": "e176f6514e5cb4f3987e4c26bbc1a8e02baa1dfe7ade03c8dc48641ca8d81a12",
+      "data/active_market.py": "3a2c34da571e952fcd37b2597289f6e73d3377cf1e6c6d958e7c502dcd258591",
+      "data/broker_selection.py": "d10811380a42f882af854223944f1895a43a50fd5685c051eec86697634c9f14",
+      "data/coverage.py": "3a282452572ac9c0f51acbd17703207603eb5ba094ab7c440cf8bc7205860f2a",
+      "data/dataset.py": "5f04176564c065da7babbc45567ac0fc3bb1e9956df820214d8b0d4cba83127f",
+      "data/historical.py": "673eea9c83c52edc88495df83e1ec96d17c38433906bc892fa2ff90a92f62dec",
+      "data/market_observation.py": "4a562f86d89962c5b4f6b761f3d3702b035d8ae88223621a8aa6201c9c68a561",
+      "data/provenance.py": "6b7da89467ccbce0184c685c6d05c982751882c589759d1099692a887c42ae4f",
+      "data/storage.py": "07e54999a4fed8c735b803647d984392c122e69446c318fda6b8316c3191d60d",
+      "data/types.py": "5bd5c5d0df12368069ff38ed21c16a721307760786a1e2cf9c6d8d5c5d1be244",
+      "data/watchlist.py": "ed5c0d3360675fc35577b0097e802aac53fe6933af749c5c6cb491533aa594e0",
+      "execution/simulator.py": "0471f4b2fa2224d55ca21a7621ca2ef6ea9d9f92a71bfb47ec1617e0d1f1cc6a",
+      "intelligence/__init__.py": "2f229e55b072915393fdd834190be089a054af5a496d2455652cca7c60ab3b7e",
+      "intelligence/analyst.py": "6ca24208c6fdd47e179c7112b1f3f78a5bcc4f5ecbf23a62ff200fcae9b87bf7",
+      "intelligence/confidence_model.py": "144fae5ad531043ffbb70b8886268532722a502506883220a8f65914da334dd0",
+      "intelligence/liquidity_engine.py": "12286d29568434e1bc0fc0398e3730ac2228775117882d1224b68c64fa9aaf3b",
+      "intelligence/market_regime.py": "f0c98fecc3ec94b0de3d3f18222848a4942b74490d4ad33c668d881b1cd78fc4",
+      "intelligence/momentum_engine.py": "2d76e3e3e161e344fd3f2c81b24b57c4f5634c33d95e9dbe997f7380f3fe807a",
+      "intelligence/trade_plan.py": "32b07c4372d8590bf6d9d6e10d508d81b2e91d04e14ef6a32d7f6ef150f526fa",
+      "intelligence/trend_engine.py": "3b5aa6d42ff644a02e48e95ffc58c4eb7e88127fc803be4c8ce23ee3fdb0f082",
+      "intelligence/volatility_engine.py": "5b72b296b24662a03d6a1e2e9eba1114940a2bf9e1e74df1c2edb08955f6dd79",
+      "research/campaign_provenance.py": "89fdfbf07272433e1a5ac642065cf42898b7d062b1a14e0ba57e7bc89cc4d324",
+      "research/runner.py": "0de90682c05c82d8867e88ee4626d51f993c6ffc1b1ec5f389d1d410bd8681f9",
+      "risk/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "risk/dynamic_risk.py": "29f93fe17befb47aa9d5ffceff3123934c88852d4ebf34a1f0b8b1706394b902",
+      "risk/position_sizing.py": "acb7ba579b5a1932bfd71971770ef219da3fde1f16320665578eaa0251f8e9c5",
+      "risk/risk_controller.py": "f78d1b6077d0c465e54b2ef35037aa57ff3f77c275c2e26e890475a510d9a6cd",
+      "risk/risk_engine.py": "53af29d1612cd0d1eac972b1a2708c864276b543aea5420d48c9cdf758e72094",
+      "risk/simulation_contract.py": "835e1129a4ca05312956288b3671f3a95859b2c1d9a58d53e3f3f79d165c7f18",
+      "strategy/__init__.py": "fa8be2d20f5cacd5543b6cb7ed7465e7207c3392a6759904976c0aa389c1e9b8",
+      "strategy/features/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "strategy/features/feature_engine.py": "d6e71d14fd398f7a4fe38f3501d950bc5792f130f13ff748133c92d68783d2bf",
+      "strategy/pipeline.py": "df55d90340d0c7fa2cf77d8de76747c3996d4ad6c0e570f4d1ac6c79a1bb0956",
+      "strategy/scoring/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "strategy/scoring/signal_scorer.py": "db76ae225d3d3795480abca3501fa68ef1bdf7990a9afda55bb0466ea56b20c4",
+      "strategy/signal_engine.py": "20c1fbedafb95b19ce147702c27c56def3cd5e633c5b512bac093405cc34dc29",
+      "strategy/strategy_engine.py": "4bc08beff63182050361f8ae64f8f647c8a0a73bed446e53ac3ee581f23f317a"
+    },
+    "dependencies": {
+      "python": "3.13.14",
+      "numpy": "2.5.1",
+      "pandas": "3.0.3",
+      "pydantic": "2.13.4"
+    }
+  },
+  "clock_observation": {
+    "offset_seconds": 10800,
+    "utc_observed_at": "2026-10-08T04:20:01.563139+00:00"
+  },
+  "terminal_verification": {
+    "configured_path_matches": true,
+    "configured_demo_identity_matches": true,
+    "account_currency": "USD",
+    "server_offset_seconds": 10800,
+    "observed_at": "2026-10-08T04:20:01.563139+00:00"
+  },
+  "market_watch_unchanged": true
+}

@@ -173,3 +173,34 @@ The first provenance-only command targeted `reports/entry-quality-20261008/basel
 - `git diff --check`: passed (Windows LF/CRLF normalization notice only).
 
 [Validation summary](2026-10-08-evidence/validation.json) preserves command outcomes. Detailed local logs/JUnit evidence remain under `reports/entry-quality-20261008/`; that directory is Git-ignored. The portable baseline/protocol inventories alongside this report are deliberately retained outside it. Source changes are limited to the offline backtest audit CLI/module, its opt-in test-isolation plugin/tests, and this research documentation/evidence. No candidate or live behavior changed.
+
+## 2026-10-08 canonical v2 follow-up
+
+The original v1 evidence above remains unchanged. The separate [canonical v2
+training baseline](2026-10-08-v2-training-baseline.md) completed 30 preregistered
+conditional-cost replays across ten native Weltrade symbols. Only SFX Vol 99
+traded, with negative training expectancy in every cost case. No candidate or
+untouched out-of-sample evaluation was performed; no improvement is established.
+See that report for all counts, costs, sizing rejections, loss clusters, validation
+and explicit limitations. Next work is fee/financing reconciliation and model
+review before candidate or holdout work.
+
+## Corrected accounting baseline
+
+The [completed accounting comparison](2026-10-08-accounting-correction.md) replaces
+flawed-model values as the current conditional v2 training reference. It preserves
+the original artifacts. All 30 replays completed; SFX Vol 99 only has 266 / 164 /
+69 trades and mean net R -0.01318 / -0.20808 / -0.46119 for zero / assumed / doubled
+costs. Nine symbols remain no-trade; no candidate or OOS result is established.
+See the [fee reconciliation](2026-10-08-fee-financing-reconciliation.md) for observed
+cashflow evidence, corroborated current swap magnitudes and unresolved historical
+terms. Next work requested: preregistered ML feasibility without holdout reuse.
+
+## ML feasibility follow-up
+
+The [ML entry-quality research perspective](2026-10-08-ml-entry-quality.md) reviews
+primary sources through September 2026 and records the current blocked readiness,
+causal-label requirements, proposed one-model experiment and security controls.
+Zero ML models were fitted or performance trials evaluated. Next work: canonical
+opportunity-label recording and additional immutable qualified history; existing
+holdouts and all negative baseline outcomes remain preserved.

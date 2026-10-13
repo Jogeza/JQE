@@ -1,0 +1,40 @@
+{
+  "observed_at": "2026-10-08T06:33:22.548707+00:00",
+  "scope": "PARTIAL_SAVED_ARTIFACT_AUDIT_NOT_STRATEGY_RESULT",
+  "campaign_status": "RUNNING_NO_FINAL_SUMMARY",
+  "planned_attempts": 8499,
+  "ledger_completed_at_snapshot": 211,
+  "artifacts_audited": 211,
+  "counts": [
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "status": "EXECUTED",
+      "count": 14
+    },
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "status": "NON_EXECUTABLE",
+      "count": 57
+    },
+    {
+      "cost": "double_spread_commission",
+      "status": "NON_EXECUTABLE",
+      "count": 70
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "status": "EXECUTED",
+      "count": 49
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "status": "NON_EXECUTABLE",
+      "count": 21
+    }
+  ],
+  "source_snapshot_matches": true,
+  "errors": [],
+  "final_coverage_proven": false,
+  "ml_fitting_authorized": false,
+  "holdouts_read": false
+}

@@ -1,0 +1,58 @@
+{
+  "observed_at": "2026-10-08T18:15:21.406091+00:00",
+  "scope": "COMPLETE_TRAINING_LABEL_COVERAGE_AUDIT_NOT_STRATEGY_PERFORMANCE",
+  "status": "PASS",
+  "registered_events": 2876,
+  "eligible_events": 2833,
+  "censored_events": 43,
+  "expected_attempts": 8499,
+  "completed_attempts": 8499,
+  "counts": [
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "status": "EXECUTED",
+      "count": 1186
+    },
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "status": "NON_EXECUTABLE",
+      "count": 1647
+    },
+    {
+      "cost": "double_spread_commission",
+      "status": "EXECUTED",
+      "count": 607
+    },
+    {
+      "cost": "double_spread_commission",
+      "status": "NON_EXECUTABLE",
+      "count": 2226
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "status": "EXECUTED",
+      "count": 1545
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "status": "NON_EXECUTABLE",
+      "count": 1288
+    }
+  ],
+  "source_snapshot_matches": true,
+  "artifact_file_hashes_digest": "sha256:672108ad7ff3d70f5e2b057cab3eacc217374ad6aca7acb5cdb12a30cd847e2e",
+  "ledger_sha256": "sha256:e56e2d636ad5ba51e37c934fd202353de2021d547e726fa85538864071f65369",
+  "old_ledger_sha256": "sha256:aac186a83eaad73b61886841fb763fc472754866aa4135389977cd85d7d76566",
+  "interrupted_attempts_retried": 1,
+  "source_lineage": "Two disclosed orchestration snapshots; identical canonical replay body, strategy/risk/fill/data/cost hashes unchanged",
+  "summary_sha256": "sha256:739859b238738da7a312547fb3d080e0f5fa6b3a71df6a13941320cc6a8a6331",
+  "errors": [],
+  "ml_fitting_authorized": false,
+  "features_extracted": false,
+  "holdouts_read": false,
+  "limitations": [
+    "Compact artifacts are not full result-hash preimages",
+    "Cost cases overlap; independent opportunity labels are not stateful strategy returns",
+    "Full causal feature equivalence, longer history and verified costs remain required"
+  ]
+}

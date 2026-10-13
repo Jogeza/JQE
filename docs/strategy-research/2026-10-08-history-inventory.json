@@ -1,0 +1,342 @@
+[
+  {
+    "path": "data\\bundles\\FX_Vol_20_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 20",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_20_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 20",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_40_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 40",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_40_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 40",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_60_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 60",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_60_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 60",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_80_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 80",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_80_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 80",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_99_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 99",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\FX_Vol_99_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "FX Vol 99",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\MAX_PainX_1000_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "MAX PainX 1000",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\MAX_PainX_1000_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "MAX PainX 1000",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7326388888888888,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\MAX_PainX_2000_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "MAX PainX 2000",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\MAX_PainX_2000_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "MAX PainX 2000",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7326388888888888,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_1200_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 1200",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_1200_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 1200",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_400_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 400",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_400_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 400",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_600_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 600",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_600_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 600",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_800_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 800",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_800_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 800",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_999_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 999",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\PainX_999_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "PainX 999",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_20_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 20",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_20_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 20",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_40_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 40",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_40_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 40",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_60_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 60",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_60_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 60",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_80_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 80",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": true,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_80_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 80",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_99_M1\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 99",
+    "timeframe": "M1",
+    "bars": 500,
+    "span_days": 0.34652777777777777,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  },
+  {
+    "path": "data\\bundles\\SFX_Vol_99_M5\\manifest.json",
+    "provider": "weltrade",
+    "symbol": "SFX Vol 99",
+    "timeframe": "M5",
+    "bars": 500,
+    "span_days": 1.7395833333333333,
+    "last_bar_closed_at_retrieval": false,
+    "qualification": "MANIFEST_METADATA_ONLY_NOT_CONTENT_OR_TIMEZONE_QUALIFICATION"
+  }
+]

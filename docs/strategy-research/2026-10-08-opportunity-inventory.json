@@ -1,0 +1,170 @@
+{
+  "scope": "SAVED_CANONICAL_TRAINING_ARTIFACT_EXTRACTION_NOT_NEW_BACKTEST",
+  "symbols": [
+    {
+      "symbol": "FX Vol 20",
+      "observations": 8632,
+      "opportunities": 2617,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2617
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:c1aa6cc8cf8365b08ef7babdcf8a54d6269377b2eaf3780b4f4382ae2aa8fdd4",
+      "source_file_sha256": "sha256:e6cc63b2c2bd6611fd71b528348502a97cd44d5bf6f4c69a060a95405063151c"
+    },
+    {
+      "symbol": "FX Vol 40",
+      "observations": 8632,
+      "opportunities": 2688,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2688
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:0c4ee675f67fda49114aad498465022da7809b3831c15c388aafc15609174ac3",
+      "source_file_sha256": "sha256:507c31c3182a0ae0d3e201a3a9d6fc0daa363cfb7649551039ec4447c880d5d4"
+    },
+    {
+      "symbol": "FX Vol 60",
+      "observations": 8632,
+      "opportunities": 2569,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2569
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:e4d6c3994e615386aa6ff95c1e35b3525e49dc4c6780e82c8b479d53c69ba0d4",
+      "source_file_sha256": "sha256:df57701d2e40552449a67cce95caffea020be6f6e469cca2a96c30a05ab2462a"
+    },
+    {
+      "symbol": "FX Vol 80",
+      "observations": 8632,
+      "opportunities": 2562,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2562
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:699deb1e1a006fd053f062dd7fb272c4bfbb99b1e77247d51c0c81a27a778cef",
+      "source_file_sha256": "sha256:673d0a9a032fc40036d03fe575dade7138725a359235ea4c84fef74f981f188e"
+    },
+    {
+      "symbol": "FX Vol 99",
+      "observations": 8632,
+      "opportunities": 2711,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2711
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:a9af75b2e7fc07c8bc8872b5072074e96e1dc58358b95b996e1bb51105122de2",
+      "source_file_sha256": "sha256:b8c7f3b56deb82558b0641695b54e65a8b9b575dacee6f1abf6f964c2b56a2c6"
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "observations": 8632,
+      "opportunities": 3127,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 3127
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:7926fa0af026a561274b5d7f5e9225fc5be7c24083d3f574080ec4918068196f",
+      "source_file_sha256": "sha256:abd0b2c761e950f928788e15a07f143ae67731fe44ae910db18b281e5341b875"
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "observations": 8632,
+      "opportunities": 2698,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2698
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:d88dc9ef267a602ac7318b104d3deccfbfdb3a3e2acd3a132d2f390940635fca",
+      "source_file_sha256": "sha256:ea9c691c84f0245e651b8616812b2d7ee6c0463061f4c2f2f3099e8809b03ffa"
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "observations": 8632,
+      "opportunities": 2784,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2784
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:3e9e4045cee7d1f87bb79c68354e75d154e7408980683ee16048521f5995207e",
+      "source_file_sha256": "sha256:eb5172af6142494617805aadddeb2651f3fcb554265775033e1ef7f96899bece"
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "observations": 8632,
+      "opportunities": 2827,
+      "executed_labels": 0,
+      "states": {
+        "QUEUED": 2827
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:1dbfbfa3cce2bb6c61446795e869144e8c1bcfefe4c8b6b29b8c7a92cb71e8d3",
+      "source_file_sha256": "sha256:7e8fd911de10abb417364400b504c5f6d1d0baa7ae6a11b3d3f244d1763fde77"
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "observations": 8632,
+      "opportunities": 2876,
+      "executed_labels": 266,
+      "states": {
+        "QUEUED": 1554,
+        "REJECTED_CANDIDATE": 1322
+      },
+      "history_first_bar": "2026-08-27T11:20:00.000000+00:00",
+      "history_last_bar": "2026-10-08T04:15:00.000000+00:00",
+      "history_bars": 12000,
+      "history_manifest_sha256": "sha256:e8ce222060faeb922cc8572a607aae8360426346ac33f6dab5ee968cfc897b98",
+      "source_file_sha256": "sha256:82bdcafde3aa3e1c159ecb2f90109c263ec7733500649bdb22d1a0b56e611087"
+    }
+  ],
+  "models_fitted": 0,
+  "candidate_configurations": 0,
+  "holdouts_read": false,
+  "opportunity_file_sha256": "sha256:c6e866cef64dacf4bd64e00a4b29848f59f872837cc87a8f0d1205cf26e05b83",
+  "ml_fit_status": "BLOCKED: counterfactual labels, additional history, costs and fresh registration required",
+  "totals": {
+    "observations": 86320,
+    "opportunities": 27459,
+    "executed_labels": 266,
+    "unlabelled": 27193
+  },
+  "extractor_source_sha256": "sha256:bd5f70e5b031ff9a82ac90f8931d343837e60b34555affafbc110d268f4ebcc1",
+  "completed_extraction_directory": "reports/opportunity-inventory-20261008-02",
+  "extraction_attempts": [
+    {
+      "directory": "reports/opportunity-inventory-20261008-01",
+      "status": "COMPLETED_BEFORE_COVERAGE_CHECK_ADDITION"
+    },
+    {
+      "directory": "reports/opportunity-inventory-20261008-02",
+      "status": "COMPLETED_WITH_COVERAGE_CHECK",
+      "same_opportunity_payload_as_first": true
+    }
+  ]
+}

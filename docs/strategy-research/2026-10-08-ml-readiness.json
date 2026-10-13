@@ -1,0 +1,30 @@
+{
+  "evidence": {
+    "closed_training_events": 266,
+    "calendar_days": 30,
+    "executed_symbols": 1,
+    "exact_costs_verified": false,
+    "financing_calendar_verified": false,
+    "all_canonical_opportunities_labelled": false,
+    "fresh_ml_holdout_registered": false,
+    "canonical_replay_equivalence_verified": false
+  },
+  "assessment": {
+    "status": "BLOCKED",
+    "blocks": [
+      "exact_costs_verified",
+      "financing_calendar_verified",
+      "all_canonical_opportunities_labelled",
+      "fresh_ml_holdout_registered",
+      "canonical_replay_equivalence_verified",
+      "fewer_than_1000_training_events",
+      "fewer_than_90_calendar_days"
+    ],
+    "promotion_authorized": false,
+    "claim_scope": "symbol-specific until independently tested across symbols",
+    "threshold_scope": "project research design choices, not statistical sufficiency guarantees"
+  },
+  "models_fitted": 0,
+  "ml_configurations_evaluated": 0,
+  "performance_claim": "NONE"
+}

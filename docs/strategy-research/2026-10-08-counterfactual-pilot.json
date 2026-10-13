@@ -1,0 +1,126 @@
+{
+  "attempts": [
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "event_id": "sha256:803a3257bc85078712440735b70d28bfe8d9db57ba68766d8efd0aaa0aa7f3e0",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:729a332e3ce059111fe3adff30d74bf48ea9a546977864992112367dd94ef521",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "double_spread_commission",
+      "event_id": "sha256:803a3257bc85078712440735b70d28bfe8d9db57ba68766d8efd0aaa0aa7f3e0",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:54111aadfbeafccccef765eaf13fd16bd979e5920abd74d05c871f5f2641861d",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "event_id": "sha256:803a3257bc85078712440735b70d28bfe8d9db57ba68766d8efd0aaa0aa7f3e0",
+      "rejection_reasons": [],
+      "result_hash": "sha256:b04607158280a2b0812b32531ab4d65ab64e8bf03eda71db58f94f339b85bd7b",
+      "return_label": {
+        "available_at": "2026-09-08T02:40:00+00:00",
+        "net_modelled_usd": 0.63,
+        "net_r": 1.96875
+      },
+      "status": "EXECUTED"
+    },
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "event_id": "sha256:30eac975bba922aa2f7eab0166de02b71527c27410bc8659db0042ab0f442f24",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:063f7818c0c661485494f62f254b38693ccdc8131d4400c86ac99f59cbd51758",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "double_spread_commission",
+      "event_id": "sha256:30eac975bba922aa2f7eab0166de02b71527c27410bc8659db0042ab0f442f24",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:eb7721c53d688e55b2a42d09106fda450a0ea3c1f5a505232440450e0b1ceb9d",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "event_id": "sha256:30eac975bba922aa2f7eab0166de02b71527c27410bc8659db0042ab0f442f24",
+      "rejection_reasons": [],
+      "result_hash": "sha256:b8538398ce4c0d8e6ce31c1a6291bf15b951443359df5b0a2a24e192ed8970f6",
+      "return_label": {
+        "available_at": "2026-09-08T02:40:00+00:00",
+        "net_modelled_usd": 0.65,
+        "net_r": 1.9696969696969697
+      },
+      "status": "EXECUTED"
+    },
+    {
+      "cost": "assumed_3usd_per_lot_per_side",
+      "event_id": "sha256:a06b1a741ebfb31f82b7435652033e486e33ef1e91c4327b7077a7f88afd0c16",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:9f654c01275596720e833382b0bf20954dd6ef80bc618061d55fc687e6581ba7",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "double_spread_commission",
+      "event_id": "sha256:a06b1a741ebfb31f82b7435652033e486e33ef1e91c4327b7077a7f88afd0c16",
+      "rejection_reasons": [
+        "Trend alignment",
+        "Strong momentum confirmation",
+        "Trending market condition",
+        "Minimum lot cannot satisfy frozen cash-risk/margin limits"
+      ],
+      "result_hash": "sha256:9b94885e3754be2b44f1b0019598807271f722624655eaf3df85b48fd710a04e",
+      "return_label": null,
+      "status": "NON_EXECUTABLE"
+    },
+    {
+      "cost": "optimistic_zero_commission",
+      "event_id": "sha256:a06b1a741ebfb31f82b7435652033e486e33ef1e91c4327b7077a7f88afd0c16",
+      "rejection_reasons": [],
+      "result_hash": "sha256:0b7f5f3a4037b1f4f574b6fd80b7a8a97bb330b9c05c72e3a4ff9c65fc6ed382",
+      "return_label": {
+        "available_at": "2026-09-08T02:40:00+00:00",
+        "net_modelled_usd": 0.66,
+        "net_r": 2.0
+      },
+      "status": "EXECUTED"
+    }
+  ],
+  "distinct_events": 3,
+  "holdouts_read": false,
+  "models_fitted": 0,
+  "promotion_authorized": false,
+  "status": "IMPLEMENTATION_PILOT_COMPLETE_NOT_ML_READY",
+  "first_pilot_trade_equals_saved_stateful_baseline": true,
+  "implementation_plan_sha256": "sha256:c4399f59b350b33fb1ff0174a3459aa71ad1d3fd9e1c168ca75c74a24e069219",
+  "trial_ledger_sha256": "sha256:0dadaa600005f2a21b9aec6d85f97b54042c89dd81447765311283c5d075d517"
+}

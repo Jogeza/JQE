@@ -1,0 +1,230 @@
+{
+  "source_sha256": "da590647b3e5b27f093a8c9df6ecd3f4f64c03149775cd8424d4380e962d2c6e",
+  "demo_verified": true,
+  "returned_deals": 19,
+  "closed_positions": 9,
+  "simple_complete_round_trips": 9,
+  "balance_reconstruction": {
+    "all_returned_deal_cashflows": 142.97,
+    "reported_balance": 142.97,
+    "residual": 0.0,
+    "open_positions": 0,
+    "scope": "Returned history reconciles; server archival completeness not guaranteed"
+  },
+  "positions": [
+    {
+      "position_sha256": "9d502141b57cc3c6884225c4e1a9e575bddcd25e049d7ecd585caeef15c4ad66",
+      "symbol": "FX Vol 60",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1789675629,
+      "closing_raw_epoch": 1789675835,
+      "lots": 0.02,
+      "opening_price": 33224.11,
+      "closing_price": 33277.88,
+      "side": "SELL",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": -1.08
+    },
+    {
+      "position_sha256": "c44633bd8b91234c5382b0ead13b404e6aa5bf845b36910dd1715f16080a3376",
+      "symbol": "FX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1790191319,
+      "closing_raw_epoch": 1790235262,
+      "lots": 0.02,
+      "opening_price": 119859.8,
+      "closing_price": 120779.34,
+      "side": "SELL",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": -0.13,
+      "profit": -18.39
+    },
+    {
+      "position_sha256": "ca4710a81b3b437302b680a4d30219fef0519f17078b0b0c054bac6e4e792e6f",
+      "symbol": "FX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1790191321,
+      "closing_raw_epoch": 1790235262,
+      "lots": 0.02,
+      "opening_price": 119862.23,
+      "closing_price": 120779.34,
+      "side": "SELL",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": -0.13,
+      "profit": -18.34
+    },
+    {
+      "position_sha256": "2448a79a3f0f76e5f62a57d21828fc6da214b363083efc2659339b8855c9294d",
+      "symbol": "FX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1790191523,
+      "closing_raw_epoch": 1790235261,
+      "lots": 0.02,
+      "opening_price": 119913.78,
+      "closing_price": 120778.28,
+      "side": "SELL",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": -0.13,
+      "profit": -17.29
+    },
+    {
+      "position_sha256": "bc5b9d5bb1ead8ed09d8a35dca23d7791768cbadc5a4730b514131ed1ef6208f",
+      "symbol": "SFX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1790678430,
+      "closing_raw_epoch": 1790678440,
+      "lots": 0.01,
+      "opening_price": 36643.01,
+      "closing_price": 36527.33,
+      "side": "BUY",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": -1.16
+    },
+    {
+      "position_sha256": "386c9cbee8c732ed0f6e885af5d5abd201314e8b6e39d9a86d9be6e0b34191b7",
+      "symbol": "SFX Vol 99",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1791152115,
+      "closing_raw_epoch": 1791155473,
+      "lots": 0.03,
+      "opening_price": 1747.87,
+      "closing_price": 1713.94,
+      "side": "BUY",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": -1.02
+    },
+    {
+      "position_sha256": "3663af925c806fab15390197277976fbe77b9c5c1eaad01cb8e72ff04ffedc13",
+      "symbol": "SFX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1791155414,
+      "closing_raw_epoch": 1791155578,
+      "lots": 0.02,
+      "opening_price": 33020.3,
+      "closing_price": 33099.06,
+      "side": "BUY",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": 1.58
+    },
+    {
+      "position_sha256": "c82b147483a4d63b4995691ba596e615ac0686c8789fbbe53b8f9cb602d1c412",
+      "symbol": "SFX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1791265511,
+      "closing_raw_epoch": 1791266996,
+      "lots": 0.01,
+      "opening_price": 32769.73,
+      "closing_price": 32725.27,
+      "side": "BUY",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": -0.44
+    },
+    {
+      "position_sha256": "eade89785d62c2cb73e99f5026186973f1484212db54032500a9bea6f101e3dd",
+      "symbol": "SFX Vol 20",
+      "complete_simple_round_trip": true,
+      "opening_raw_epoch": 1791300009,
+      "closing_raw_epoch": 1791301744,
+      "lots": 0.01,
+      "opening_price": 32700.04,
+      "closing_price": 32650.22,
+      "side": "BUY",
+      "commission": 0.0,
+      "fee": 0.0,
+      "swap": 0.0,
+      "profit": -0.5
+    }
+  ],
+  "overnight_reconciliation": [
+    {
+      "position_sha256": "c44633bd8b91234c5382b0ead13b404e6aa5bf845b36910dd1715f16080a3376",
+      "symbol": "FX Vol 20",
+      "checks": [
+        {
+          "raw_to_utc_shift_seconds": 0,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        },
+        {
+          "raw_to_utc_shift_seconds": 10800,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        }
+      ],
+      "inference": "One ordinary annual-interest charge is consistent; clock and exact price not identified"
+    },
+    {
+      "position_sha256": "ca4710a81b3b437302b680a4d30219fef0519f17078b0b0c054bac6e4e792e6f",
+      "symbol": "FX Vol 20",
+      "checks": [
+        {
+          "raw_to_utc_shift_seconds": 0,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        },
+        {
+          "raw_to_utc_shift_seconds": 10800,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        }
+      ],
+      "inference": "One ordinary annual-interest charge is consistent; clock and exact price not identified"
+    },
+    {
+      "position_sha256": "2448a79a3f0f76e5f62a57d21828fc6da214b363083efc2659339b8855c9294d",
+      "symbol": "FX Vol 20",
+      "checks": [
+        {
+          "raw_to_utc_shift_seconds": 0,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        },
+        {
+          "raw_to_utc_shift_seconds": 10800,
+          "assumed_rollover_utc": "2026-09-23T21:00:00+00:00",
+          "crosses_one_boundary": true,
+          "prior_closed_bid_proxy": 120048.84,
+          "predicted_signed_swap": -0.13,
+          "observed_signed_swap": -0.13,
+          "matches_cents": true
+        }
+      ],
+      "inference": "One ordinary annual-interest charge is consistent; clock and exact price not identified"
+    }
+  ],
+  "fee_status": "ZERO_OBSERVED_ALL_RETURNED_DEALS; PUBLISHED_SOURCES_CONFLICT; NO_UNIVERSAL_TARIFF_VERIFIED",
+  "financing_status": "THREE_ORDINARY_FX20_CHARGES_RECONCILE_CONDITIONALLY; NO_TRIPLE_OR_WEEKEND_OR_SFX99_OBSERVATION"
+}

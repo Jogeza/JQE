@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-10-08T04:16:06.606530+00:00",
+  "baseline": "jqe-canonical-strategy-v2",
+  "entrypoint": "strategy.pipeline.generate_trading_signal",
+  "provider": "weltrade",
+  "timeframe": "M5",
+  "symbols": [
+    "FX Vol 20",
+    "FX Vol 40",
+    "FX Vol 60",
+    "FX Vol 80",
+    "FX Vol 99",
+    "SFX Vol 20",
+    "SFX Vol 40",
+    "SFX Vol 60",
+    "SFX Vol 80",
+    "SFX Vol 99"
+  ],
+  "scope": "Volatility families only; jump families excluded before acquisition",
+  "windows": {
+    "train": {
+      "start_inclusive": "2026-09-08T00:00:00+00:00",
+      "end_exclusive": "2026-10-08T00:00:00+00:00"
+    },
+    "validation": {
+      "start_inclusive": "2026-10-09T00:00:00+00:00",
+      "end_exclusive": "2026-10-16T00:00:00+00:00"
+    },
+    "test": {
+      "start_inclusive": "2026-10-16T00:00:00+00:00",
+      "end_exclusive": "2026-10-30T00:00:00+00:00"
+    }
+  },
+  "warmup": "200 closed bars preceding each evaluated partition; flat at partition boundaries",
+  "embargo": "Registration UTC day excluded; no outcomes in future validation/test are currently available",
+  "hypothesis": "Rejecting entries farther than 2.0 ATR from EMA50 improves net expectancy relative to v2 on the identical future test sample",
+  "parameter_grid": {
+    "maximum_entry_distance_ema50_atr": [
+      2.0
+    ]
+  },
+  "maximum_candidate_configurations": 1,
+  "training_gate": "Diagnose baseline training losers before implementing the candidate; no candidate if fewer than 100 closed baseline trades",
+  "validation_rule": "Evaluate the one frozen candidate once; reject if expectancy delta <=0 at base or doubled spread/commission. No retuning",
+  "test_rule": "Evaluate once only after validation passes and code/data/costs are frozen; otherwise leave test sealed",
+  "acceptance": {
+    "minimum_closed_test_trades_each": 100,
+    "positive_net_expectancy_r": true,
+    "positive_paired_symbol_day_delta_ci95_lower_bound": true,
+    "double_spread_commission_must_pass": true,
+    "resampling": "10000 paired circular 3-day block-bootstrap draws; seed 20261008; preserve simultaneous symbols",
+    "disclosure": "Equal weight symbol summaries plus pooled trade summaries; no dropping losing symbols; missing symbols block full-universe claims"
+  },
+  "cost_gate": "Verified contract economics and observed spread/commission evidence required. Slippage must be explicitly stressed, never assumed verified",
+  "execution": "No orders, gate changes, safety-state mutation or live-path modifications",
+  "strategy_configurations_evaluated": 0,
+  "candidate_configurations_evaluated": 0,
+  "status": "PREREGISTERED_NOT_EVALUATED"
+}

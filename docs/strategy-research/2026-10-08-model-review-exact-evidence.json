@@ -1,0 +1,455 @@
+{
+  "scope": "EXACT_QUOTE_SIDE_SAVED_TRAIN_REVIEW_NO_SIGNAL_REPLAY",
+  "records": [
+    {
+      "symbol": "FX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "FX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 20",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 40",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 60",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "double_spread_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 80",
+      "cost": "optimistic_zero_commission",
+      "trades": 0,
+      "quote_side_violations": []
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "assumed_3usd_per_lot_per_side",
+      "trades": 175,
+      "quote_side_violations": [
+        {
+          "trade_id": 107,
+          "side": "SELL",
+          "stop_distance": 17.109999999999673,
+          "target_distance": 40.86000000000013,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 129,
+          "side": "SELL",
+          "stop_distance": 16.820000000000164,
+          "target_distance": 39.960000000000036,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 130,
+          "side": "SELL",
+          "stop_distance": 16.63000000000011,
+          "target_distance": 39.570000000000164,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 153,
+          "side": "SELL",
+          "stop_distance": 16.850000000000136,
+          "target_distance": 38.789999999999964,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 165,
+          "side": "SELL",
+          "stop_distance": 16.560000000000173,
+          "target_distance": 37.909999999999854,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 166,
+          "side": "SELL",
+          "stop_distance": 16.899999999999864,
+          "target_distance": 38.47000000000003,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 168,
+          "side": "SELL",
+          "stop_distance": 16.84999999999991,
+          "target_distance": 38.31000000000017,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 169,
+          "side": "SELL",
+          "stop_distance": 16.769999999999982,
+          "target_distance": 38.02999999999997,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 170,
+          "side": "SELL",
+          "stop_distance": 17.089999999999918,
+          "target_distance": 38.720000000000255,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 172,
+          "side": "SELL",
+          "stop_distance": 16.940000000000055,
+          "target_distance": 38.25,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 173,
+          "side": "SELL",
+          "stop_distance": 16.62999999999988,
+          "target_distance": 37.87000000000012,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 174,
+          "side": "BUY",
+          "stop_distance": 16.74000000000001,
+          "target_distance": 38.299999999999955,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 175,
+          "side": "SELL",
+          "stop_distance": 16.839999999999918,
+          "target_distance": 38.2800000000002,
+          "minimum": 17.16
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "double_spread_commission",
+      "trades": 72,
+      "quote_side_violations": [
+        {
+          "trade_id": 22,
+          "side": "BUY",
+          "stop_distance": 16.81999999999971,
+          "target_distance": 48.24000000000024,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 39,
+          "side": "SELL",
+          "stop_distance": 16.88000000000011,
+          "target_distance": 44.809999999999945,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 46,
+          "side": "SELL",
+          "stop_distance": 16.53999999999951,
+          "target_distance": 43.650000000000546,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 56,
+          "side": "SELL",
+          "stop_distance": 16.88000000000011,
+          "target_distance": 43.07999999999993,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 57,
+          "side": "SELL",
+          "stop_distance": 16.920000000000073,
+          "target_distance": 42.98000000000002,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 59,
+          "side": "SELL",
+          "stop_distance": 17.09999999999991,
+          "target_distance": 43.25000000000023,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 60,
+          "side": "SELL",
+          "stop_distance": 17.039999999999964,
+          "target_distance": 42.98000000000002,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 64,
+          "side": "SELL",
+          "stop_distance": 16.519999999999982,
+          "target_distance": 41.33999999999992,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 65,
+          "side": "BUY",
+          "stop_distance": 16.639999999999873,
+          "target_distance": 41.820000000000164,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 72,
+          "side": "SELL",
+          "stop_distance": 16.580000000000155,
+          "target_distance": 40.22000000000003,
+          "minimum": 17.16
+        }
+      ]
+    },
+    {
+      "symbol": "SFX Vol 99",
+      "cost": "optimistic_zero_commission",
+      "trades": 279,
+      "quote_side_violations": [
+        {
+          "trade_id": 208,
+          "side": "SELL",
+          "stop_distance": 17.109999999999673,
+          "target_distance": 40.86000000000013,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 233,
+          "side": "SELL",
+          "stop_distance": 16.820000000000164,
+          "target_distance": 39.960000000000036,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 234,
+          "side": "SELL",
+          "stop_distance": 16.63000000000011,
+          "target_distance": 39.570000000000164,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 257,
+          "side": "SELL",
+          "stop_distance": 16.850000000000136,
+          "target_distance": 38.789999999999964,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 269,
+          "side": "SELL",
+          "stop_distance": 16.560000000000173,
+          "target_distance": 37.909999999999854,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 270,
+          "side": "SELL",
+          "stop_distance": 16.899999999999864,
+          "target_distance": 38.47000000000003,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 272,
+          "side": "SELL",
+          "stop_distance": 16.84999999999991,
+          "target_distance": 38.31000000000017,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 273,
+          "side": "SELL",
+          "stop_distance": 16.769999999999982,
+          "target_distance": 38.02999999999997,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 274,
+          "side": "SELL",
+          "stop_distance": 17.089999999999918,
+          "target_distance": 38.720000000000255,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 276,
+          "side": "SELL",
+          "stop_distance": 16.940000000000055,
+          "target_distance": 38.25,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 277,
+          "side": "SELL",
+          "stop_distance": 16.62999999999988,
+          "target_distance": 37.87000000000012,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 278,
+          "side": "BUY",
+          "stop_distance": 16.74000000000001,
+          "target_distance": 38.299999999999955,
+          "minimum": 17.16
+        },
+        {
+          "trade_id": 279,
+          "side": "SELL",
+          "stop_distance": 16.839999999999918,
+          "target_distance": 38.2800000000002,
+          "minimum": 17.16
+        }
+      ]
+    }
+  ],
+  "risk_rounding_reproduction": {
+    "balance": 31.8,
+    "risk_percent": 1,
+    "budget": 0.318,
+    "entry": 1000,
+    "stop": 969.6,
+    "exit_slippage": 1.4,
+    "accepted_lots": 0.01,
+    "actual_rounded_stop_plus_slippage_cash": 0.32,
+    "risk_budget_violated": true
+  },
+  "aggregate": {
+    "trades_reviewed": 526,
+    "quote_side_violations": 36
+  }
+}

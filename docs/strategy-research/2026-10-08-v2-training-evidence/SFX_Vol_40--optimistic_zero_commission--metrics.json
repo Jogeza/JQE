@@ -1,0 +1,49 @@
+{
+  "symbol": "SFX Vol 40",
+  "cost": "optimistic_zero_commission",
+  "start": "2026-09-08 00:00:00+00:00",
+  "end_exclusive": "2026-10-08 00:00:00+00:00",
+  "parent_content_hash": "sha256:50d5c3276b2184c3fc4b3dcf2cc8d5ffc1b43b4fc810e3782b4711397d3e86f3",
+  "dataset_hash": "sha256:e1de64ae58017dc43049ef57cb627340857ae26348e8c14476d7875db0211cab",
+  "run_fingerprint": "sha256:1fe9fc780123f9e408b755ebf66e744aee1eee22a1b05a2f2b1cfdd5c323c4a9",
+  "result_hash": "sha256:3c1269e9b0c7bd962a4d6242ee9d15d4e697b0ae4648a68fe991d26abf115614",
+  "metrics": {
+    "trades": 0,
+    "expectancy_account_currency": null,
+    "expectancy_r": null,
+    "profit_factor": null,
+    "win_rate_percent": null,
+    "max_realized_drawdown_percent": 0.0,
+    "sharpe_unannualized_trade_returns": null,
+    "sortino_unannualized_trade_returns": null,
+    "exposure_bar_fraction": 0.0,
+    "holding_bars": null,
+    "mae_r_upper_bound": null,
+    "mfe_r_upper_bound": null,
+    "decision_states": {
+      "QUEUED": 2698,
+      "EXECUTION_REJECTED": 2697,
+      "NO_TRADE": 5934
+    },
+    "clusters": {},
+    "trade_details": [],
+    "claim_scope": "TRAIN_ONLY_CONDITIONAL_MODELLED_USD_NOT_VERIFIED_ACCOUNT_RESULTS",
+    "expectancy_modelled_usd": null,
+    "average_win_modelled_usd": null,
+    "average_loss_modelled_usd": null,
+    "max_bar_close_drawdown_modelled_usd": 0.0,
+    "drawdown_basis": "BAR_CLOSE_LIQUIDATION_EQUITY",
+    "net_modelled_usd": 0.0,
+    "commission_modelled_usd": 0,
+    "financing_modelled_usd": 0,
+    "rejection_reasons": {
+      "Minimum lot cannot satisfy frozen cash-risk/margin limits": 2697
+    },
+    "exit_reasons": {},
+    "holding_minutes_upper_bound_p10_p50_p90": null,
+    "exposure_wall_time_upper_bound_fraction": 0.0,
+    "sharpe_bar_returns_unannualized": null,
+    "sortino_bar_returns_unannualized": null,
+    "bar_return_periods": 8632
+  }
+}

@@ -1,0 +1,92 @@
+[
+  {
+    "Symbol": "FX Vol 20",
+    "PublishedAnnualLong": 2.0,
+    "PublishedAnnualShort": 2.0,
+    "TerminalAnnualLong": -2.0,
+    "TerminalAnnualShort": -2.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "FX Vol 40",
+    "PublishedAnnualLong": 4.0,
+    "PublishedAnnualShort": 4.0,
+    "TerminalAnnualLong": -4.0,
+    "TerminalAnnualShort": -4.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "FX Vol 60",
+    "PublishedAnnualLong": 6.0,
+    "PublishedAnnualShort": 6.0,
+    "TerminalAnnualLong": -6.0,
+    "TerminalAnnualShort": -6.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "FX Vol 80",
+    "PublishedAnnualLong": 8.0,
+    "PublishedAnnualShort": 8.0,
+    "TerminalAnnualLong": -8.0,
+    "TerminalAnnualShort": -8.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "FX Vol 99",
+    "PublishedAnnualLong": 10.0,
+    "PublishedAnnualShort": 10.0,
+    "TerminalAnnualLong": -10.0,
+    "TerminalAnnualShort": -10.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "SFX Vol 20",
+    "PublishedAnnualLong": 6.5,
+    "PublishedAnnualShort": 6.5,
+    "TerminalAnnualLong": -6.5,
+    "TerminalAnnualShort": -6.5,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "SFX Vol 40",
+    "PublishedAnnualLong": 13.0,
+    "PublishedAnnualShort": 13.0,
+    "TerminalAnnualLong": -13.0,
+    "TerminalAnnualShort": -13.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "SFX Vol 60",
+    "PublishedAnnualLong": 19.0,
+    "PublishedAnnualShort": 19.0,
+    "TerminalAnnualLong": -19.0,
+    "TerminalAnnualShort": -19.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "SFX Vol 80",
+    "PublishedAnnualLong": 25.5,
+    "PublishedAnnualShort": 25.5,
+    "TerminalAnnualLong": -25.5,
+    "TerminalAnnualShort": -25.5,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  },
+  {
+    "Symbol": "SFX Vol 99",
+    "PublishedAnnualLong": 32.0,
+    "PublishedAnnualShort": 32.0,
+    "TerminalAnnualLong": -32.0,
+    "TerminalAnnualShort": -32.0,
+    "MagnitudeMatch": true,
+    "PublishedHasCommissionField": ""
+  }
+]

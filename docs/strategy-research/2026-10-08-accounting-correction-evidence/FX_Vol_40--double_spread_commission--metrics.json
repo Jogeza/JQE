@@ -1,0 +1,49 @@
+{
+  "symbol": "FX Vol 40",
+  "cost": "double_spread_commission",
+  "start": "2026-09-08 00:00:00+00:00",
+  "end_exclusive": "2026-10-08 00:00:00+00:00",
+  "parent_content_hash": "sha256:2d466b4727ca308f1d3afd59c1a33dac52a7a4d3a75b29014a1c4a5663af3d13",
+  "dataset_hash": "sha256:7ef35c4c09919a23d4897282d5027ef0f05fbfd5a3facd84bc9a22b528bf8133",
+  "run_fingerprint": "sha256:d861862b605c4a958ec4f84d178b86cbda72ecf3374e981143532806a60d402b",
+  "result_hash": "sha256:70f1d42b32ae7acff5ab1a5ac30ac10e08216df3a620d8900f5a67fc704c6b4b",
+  "metrics": {
+    "trades": 0,
+    "expectancy_account_currency": null,
+    "expectancy_r": null,
+    "profit_factor": null,
+    "win_rate_percent": null,
+    "max_realized_drawdown_percent": 0.0,
+    "sharpe_unannualized_trade_returns": null,
+    "sortino_unannualized_trade_returns": null,
+    "exposure_bar_fraction": 0.0,
+    "holding_bars": null,
+    "mae_r_upper_bound": null,
+    "mfe_r_upper_bound": null,
+    "decision_states": {
+      "NO_TRADE": 5944,
+      "QUEUED": 2688,
+      "EXECUTION_REJECTED": 2688
+    },
+    "clusters": {},
+    "trade_details": [],
+    "claim_scope": "TRAIN_ONLY_CONDITIONAL_MODELLED_USD_NOT_VERIFIED_ACCOUNT_RESULTS",
+    "expectancy_modelled_usd": null,
+    "average_win_modelled_usd": null,
+    "average_loss_modelled_usd": null,
+    "max_bar_close_drawdown_modelled_usd": 0.0,
+    "drawdown_basis": "BAR_CLOSE_LIQUIDATION_EQUITY",
+    "net_modelled_usd": 0.0,
+    "commission_modelled_usd": 0,
+    "financing_modelled_usd": 0,
+    "rejection_reasons": {
+      "Minimum lot cannot satisfy frozen cash-risk/margin limits": 2688
+    },
+    "exit_reasons": {},
+    "holding_minutes_upper_bound_p10_p50_p90": null,
+    "exposure_wall_time_upper_bound_fraction": 0.0,
+    "sharpe_bar_returns_unannualized": null,
+    "sortino_bar_returns_unannualized": null,
+    "bar_return_periods": 8632
+  }
+}
