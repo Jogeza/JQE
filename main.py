@@ -163,6 +163,7 @@ async def authorize_broker_execution_quantity(
         quantity, facts = await gateway.authorize_account_currency_risk(
             symbol=symbol, side=side, balance=balance,
             risk_percent=risk_percent, entry=entry, stop_loss=stop_loss,
+            **({"split_for_partials": True} if getattr(settings,"weltrade_partial_management_enabled",False) else {}),
         )
         return ExecutionSizingDecision(
             authorized_risk_amount=float(facts["authorized_risk_amount"]),
@@ -259,6 +260,9 @@ async def _observe_confirmed_weltrade_fill(
             ),
             timeframe=timeframe,
         )
+        if getattr(settings,"weltrade_partial_management_enabled",False):
+            from execution.partial_manager import register_fill
+            await register_fill(settings,gateway,position)
         send_once = composition.position_ledger.claim_open_notification_once(
             broker="weltrade", position_id=position.position_id,
         )

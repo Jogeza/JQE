@@ -796,7 +796,7 @@ class MT5Gateway(BrokerGateway):
             },
         )
 
-    async def close_position(self, position_id: str, *, volume: float | None = None) -> OrderResult:
+    async def close_position(self, position_id: str, *, volume: float | None = None, expected_volume: float | None = None) -> OrderResult:
         """Close an authoritative MT5 position by ticket and confirm final state."""
         self._require_connected()
         if await asyncio.to_thread(self._verify_connection_identity, require_trading=True) is not True:
@@ -810,11 +810,18 @@ class MT5Gateway(BrokerGateway):
         if not native:
             raise ExecutionError("MT5 position was not found", position_id=position_id)
         position = native[0]
+        if expected_volume is not None and not math.isclose(float(position.volume),expected_volume,abs_tol=1e-8):
+            raise ExecutionError("MT5 position volume changed before close")
         info = await asyncio.to_thread(mt5.symbol_info, position.symbol)
         tick = await asyncio.to_thread(mt5.symbol_info_tick, position.symbol)
         if info is None or tick is None:
             raise ExecutionError("MT5 close preflight data is unavailable", position_id=position_id)
         close_volume = _normalize_volume(float(volume if volume is not None else position.volume), info)
+        if close_volume > float(position.volume)+1e-8:
+            raise ExecutionError("Close volume exceeds authoritative position")
+        remaining_volume=float(position.volume)-close_volume
+        if remaining_volume>1e-8 and remaining_volume<float(info.volume_min)-1e-8:
+            raise ExecutionError("Partial close would leave invalid minimum volume")
         is_buy = position.type == mt5.ORDER_TYPE_BUY
         price = round(float(tick.bid if is_buy else tick.ask), int(info.digits))
         request = {

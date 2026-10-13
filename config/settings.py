@@ -218,6 +218,9 @@ class Settings(BaseSettings):
     execution_lifetime_store_path: Path = Path("state/execution_lifetime.sqlite3")
     daily_instrument_trade_store_path: Path = Path("state/daily_instrument_trades.sqlite3")
     max_daily_trades_per_instrument: int = Field(default=20, gt=0)
+    weltrade_partial_management_enabled: bool = False
+    weltrade_partial_store_path: Path = Path("state/weltrade_partial_management.sqlite3")
+
     weltrade_demo_max_open_positions: int = Field(default=1, ge=1, le=5)
     weltrade_demo_position_equity_floor_usd: float = Field(default=50.0, ge=50.0, allow_inf_nan=False)
     emergency_stop: EmergencyStopState = EmergencyStopState.UNKNOWN

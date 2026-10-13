@@ -13,6 +13,7 @@ from config.settings import settings
 from execution.safety import DailyStateAuthority, EmergencyStopState
 from main import _armed_by_supervisor, run_watchlist
 from monitoring.weltrade_close_monitor import monitor_weltrade_closes
+from execution.partial_manager import manage_partials, PartialProtectionPending
 from monitoring.observation_supervisor import ObservationMutex
 from tools.evaluate_execution_safety import evaluate
 
@@ -60,6 +61,7 @@ async def run_cycle_once() -> tuple:
     """Preflight, then delegate every candidate to the canonical guarded path."""
     _require_process_authorization()
     await monitor_weltrade_closes(settings)
+    await manage_partials(settings)
     preflight = evaluate(settings)
     if (
         preflight.daily_state_authority is not DailyStateAuthority.AUTHORITATIVE
@@ -79,6 +81,11 @@ async def _wait_for_cycle(cycle, status, reason):
         remaining -= delay
         _require_process_authorization()
         await monitor_weltrade_closes(settings)
+        try:
+            await manage_partials(settings)
+        except PartialProtectionPending:
+            _publish(cycle=cycle,status="BLOCKED",reason="PARTIAL_PROFIT_STOP_PENDING")
+            continue
         # Refresh prerequisite evidence without authorizing or submitting an order.
         preflight = evaluate(settings)
         if (preflight.daily_state_authority is not DailyStateAuthority.AUTHORITATIVE
@@ -104,6 +111,10 @@ async def run_forever() -> None:
                 await _wait_for_cycle(cycle, status, reason)
                 try:
                     results = await run_cycle_once()
+                except PartialProtectionPending:
+                    status,reason="BLOCKED","PARTIAL_PROFIT_STOP_PENDING"
+                    _publish(cycle=cycle,status=status,reason=reason)
+                    continue
                 except PreflightBlocked as exc:
                     status = "BLOCKED"
                     reason = "OPEN_POSITION_LIMIT_REACHED" if exc.retry_position_limit else type(exc).__name__

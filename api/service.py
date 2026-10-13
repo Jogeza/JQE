@@ -1590,12 +1590,18 @@ class ApplicationService:
         verifications: dict[str, dict[str, Any]] = {}
         try:
             import sqlite3
-            with sqlite3.connect(evidence_path, timeout=5.0) as conn:
+            with sqlite3.connect(
+                f"file:{evidence_path.resolve().as_posix()}?mode=ro", uri=True, timeout=1.0
+            ) as conn:
                 cur = conn.cursor()
                 rows = cur.execute(
                     """
                     SELECT broker, account_id, checked_field, observed_value, status, verified_at, facts_json
                     FROM broker_account_verifications
+                    WHERE id IN (
+                        SELECT MAX(id) FROM broker_account_verifications
+                        GROUP BY LOWER(TRIM(broker))
+                    )
                     ORDER BY id DESC
                     """
                 ).fetchall()
@@ -1843,7 +1849,7 @@ class ApplicationService:
         ``/execution`` so a stale safety observation cannot masquerade as the
         current broker connection state.
         """
-        snapshot_status = self.get_broker_status()
+        snapshot_status = await asyncio.to_thread(self.get_broker_status)
         if snapshot_status.active_broker != "weltrade":
             return snapshot_status.model_copy(update={
                 "live_connection_state": "NOT_APPLICABLE",
@@ -1871,7 +1877,7 @@ class ApplicationService:
 
         # Opening the live session records fresh DemoOnlyGuard evidence. Re-read
         # it so the response cannot retain a stale pre-connection identity.
-        snapshot_status = self.get_broker_status()
+        snapshot_status = await asyncio.to_thread(self.get_broker_status)
         items = [
             item.model_copy(update={"connected": execution.connected})
             if item.is_active else item

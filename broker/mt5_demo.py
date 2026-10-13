@@ -135,7 +135,7 @@ class MT5DemoGateway(MT5Gateway):
 
     async def authorize_account_currency_risk(
         self, *, symbol: str, side: OrderSide, balance: float, risk_percent: float,
-        entry: float, stop_loss: float,
+        entry: float, stop_loss: float, split_for_partials: bool = False,
     ) -> tuple[ExecutionQuantity, dict[str, float | str]]:
         """Size lots using MT5's authoritative account-currency P/L and margin models."""
         spec = await self.verify_instrument_risk_spec(symbol)
@@ -157,6 +157,12 @@ class MT5DemoGateway(MT5Gateway):
         lots = min(lots, maximum) if maximum > 0 else lots
         if lots + 1e-12 < minimum:
             raise BrokerConnectionError("MT5 authorized risk is below the broker minimum lot risk")
+        if split_for_partials:
+            from execution.partial_policy import split_lots
+            try:
+                lots, _ = split_lots(lots, minimum, step)
+            except ValueError as exc:
+                raise BrokerConnectionError(str(exc)) from exc
         lots = round(lots, 8)
         actual_profit = await asyncio.to_thread(
             mt5.order_calc_profit, order_type, real_symbol, lots, entry, stop_loss
