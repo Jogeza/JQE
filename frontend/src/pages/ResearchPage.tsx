@@ -190,10 +190,10 @@ export function ResearchPage() {
     return (
       <div className="dashboard-page-container research-terminal">
         <div className="research-context-bar">
-          <div><span className="research-eyebrow">Research workspace</span><strong>Explore historical market behaviour</strong></div>
+          <div><span className="research-eyebrow">Research workspace</span><strong>Research</strong></div>
         </div>
         <nav className="research-view-tabs" aria-label="Research views">
-          <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>
+          <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Charts</button>
           <button aria-current={researchView === 'experiments' ? 'page' : undefined} onClick={() => setResearchView('experiments')}>Experiment catalog</button>
         </nav>
         {researchView === 'charts' && <p role={catalogueError ? 'alert' : undefined} style={{ color: catalogueError ? 'var(--quant-red)' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -225,9 +225,9 @@ export function ResearchPage() {
       <div className="research-context-bar">
         <div>
           <span className="research-eyebrow">Research workspace</span>
-          <strong>Explore historical market behaviour</strong>
+          <strong>Research</strong>
           <span>
-            {comparisonEnabled ? 'Compare two independent datasets side by side.' : 'Inspect cached data, indicators, and replay outcomes.'}
+            {comparisonEnabled ? 'Two datasets' : 'Historical data · simulation only'}
           </span>
         </div>
         <button
@@ -240,17 +240,18 @@ export function ResearchPage() {
       </div>
 
       <nav className="research-view-tabs" aria-label="Research views">
-        <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Chart workspace</button>
+        <button aria-current={researchView === 'charts' ? 'page' : undefined} onClick={() => setResearchView('charts')}>Charts</button>
         <button aria-current={researchView === 'experiments' ? 'page' : undefined} onClick={() => setResearchView('experiments')}>Experiment catalog</button>
       </nav>
 
-      <aside role="status" style={{ border: '1px solid var(--quant-red)', padding: '10px 12px', marginBottom: '12px' }}>
-        <strong>No demonstrated positive edge.</strong>{' '}
-        PainX family BUY failed in corrected exploratory research. PainX 1200 M1 BUY remains an unconfirmed forward candidate with insufficient prospective evidence.
+      <aside className="research-qualification" role="status">
+        <strong>No demonstrated positive edge.</strong>
+        <details><summary>Research limits</summary><p>PainX family BUY failed in corrected exploratory research. PainX 1200 M1 BUY remains an unconfirmed forward candidate with insufficient prospective evidence.</p></details>
       </aside>
 
       {/* Main Research Layout */}
       <div className="research-layout" hidden={researchView !== 'charts'}>
+        <details className="research-market-picker"><summary>Browse markets &amp; favourites</summary>
         <MarketSidebar
           markets={markets}
           items={visibleMarkets}
@@ -264,6 +265,7 @@ export function ResearchPage() {
           }
         />
 
+        </details>
         <main className="research-workspace">
           <div className="quant-panel research-toolbar">
             <div className="quant-panel-header">

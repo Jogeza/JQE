@@ -11,6 +11,7 @@ interface PositionsPageProps {
 export const PositionsPage: React.FC<PositionsPageProps> = ({ execution, loading, currency }) => {
   return (
     <div className="dashboard-page-container">
+      <div className="editorial-heading"><div><h1>Positions</h1></div><p>Broker exposure</p></div>
       <PositionsTable
         positions={execution?.positions || []}
         brokerName={execution?.broker}

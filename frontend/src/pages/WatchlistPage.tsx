@@ -7,6 +7,8 @@ interface WatchlistPageProps {
   watchlist?: WatchlistItemDTO[] | null;
   capUsage?: WatchlistCapUsageDTO[] | null;
   loading: boolean;
+  capEvidenceState?: 'CURRENT' | 'STALE' | 'UNAVAILABLE';
+  capObservedAt?: string;
   onRefresh: () => void;
 }
 
@@ -14,6 +16,8 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
   watchlist,
   capUsage,
   loading,
+  capEvidenceState = 'UNAVAILABLE',
+  capObservedAt,
   onRefresh,
 }) => {
   const [newSymbol, setNewSymbol] = useState('');
@@ -80,8 +84,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
     <div className="dashboard-page-container watchlist-page">
       <div className="editorial-heading">
         <div>
-          <span className="editorial-kicker">Multi-Instrument Universe & Risk Guard</span>
-          <h1>Durable Watchlist<span>.</span></h1>
+          <h1>Watchlist</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -117,6 +120,8 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
       )}
 
       {/* Inline Add Instrument Form */}
+      <details className="watchlist-add-disclosure">
+        <summary>Add instrument</summary>
       <div className="quant-panel" style={{ marginBottom: '16px' }}>
         <div className="quant-panel-header">
           <div className="quant-panel-title">
@@ -177,18 +182,21 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
           </form>
         </div>
       </div>
+      </details>
 
       {/* Instruments Grid & Cap Usage */}
       <div className="quant-panel">
         <div className="quant-panel-header">
           <div className="quant-panel-title">
             <ListChecks size={14} color="var(--quant-cyan)" />
-            <span>Watched Instruments & Daily Instrument Caps</span>
+            <span>Instruments & limits</span>
           </div>
           <span className="badge badge-cyan">{items.length} ACTIVE</span>
         </div>
 
         <div className="quant-panel-body" style={{ padding: '16px' }}>
+          <p className="watchlist-evidence-note">Cap status does not authorize orders.</p>
+          <p className="watchlist-evidence-note">Cap evidence: {capEvidenceState.toLowerCase()} · {capObservedAt || 'observation unavailable'}</p>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
               Watchlist is empty. Add a Weltrade synthetic index above.
@@ -197,12 +205,15 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
                 gap: '14px',
               }}
             >
               {items.map(item => {
                 const cap = capMap.get(item.symbol.toUpperCase());
+                const capCurrent = capEvidenceState === 'CURRENT' && !!cap
+                  && Number.isFinite(cap.daily_count) && Number.isFinite(cap.daily_limit)
+                  && cap.daily_count >= 0 && cap.daily_limit > 0;
                 const dailyCount = cap ? cap.daily_count : 0;
                 const dailyLimit = cap ? cap.daily_limit : 20;
                 const isCapped = dailyCount >= dailyLimit;
@@ -244,6 +255,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
                       </button>
                     </div>
 
+                    {!capCurrent ? <p className="watchlist-evidence-note">{capEvidenceState === 'STALE' ? 'Cap evidence stale' : 'Cap evidence unavailable'} · remaining capacity unknown</p> : <>
                     {/* Cap Progress Bar */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '4px' }}>
@@ -304,13 +316,14 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
                       >
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--status-green)', fontWeight: 600 }}>
                           <CheckCircle2 size={12} />
-                          {dailyLimit - dailyCount} trades available
+                          {dailyLimit - dailyCount} cap slots remaining
                         </span>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--text-muted)' }}>
                           <Clock size={10} /> Reset: {resetAtFormatted}
                         </span>
                       </div>
                     )}
+                    </>}
                   </div>
                 );
               })}

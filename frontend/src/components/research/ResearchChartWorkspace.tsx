@@ -16,6 +16,7 @@ import type {
 import { acquisitionSelectionKey, isTerminalAcquisition, jobSelectionKey } from '../chart/acquisitionAdapter';
 import { isCached, symbolIdentity } from '../chart/marketCatalogueAdapter';
 import { ReplayControls } from './ReplayControls';
+import { serialPoll } from '../../services/serialPoll';
 import {
   indicatorVisibility,
   type ResearchWorkspaceAction,
@@ -163,7 +164,7 @@ export function ResearchChartWorkspace({
     if (!acquisition || isTerminalAcquisition(acquisition)) return;
     let cancelled = false;
     const selectionAtStart = jobSelectionKey(acquisition);
-    const poll = window.setInterval(async () => {
+    const stopPolling = serialPoll(async () => {
       try {
         const next = await read<HistoricalAcquisitionJobDTO>(
           `/api/v1/research/history/acquisitions/${acquisition.job_id}`
@@ -174,22 +175,23 @@ export function ResearchChartWorkspace({
           instrument.canonical_symbol,
           timeframe
         );
-        if (cancelled || current !== selectionAtStart) return;
+        if (cancelled || current !== selectionAtStart) return false;
         setAcquisition(next);
         if (isTerminalAcquisition(next)) {
-          window.clearInterval(poll);
           if (next.state === 'COMPLETED' || (next.outcome && next.outcome.stored_after > 0)) {
             onMarketsChanged(await read('/api/v1/research/markets'));
           }
+          return false;
         }
+        return true;
       } catch (reason) {
         if (!cancelled) setError(String(reason));
-        window.clearInterval(poll);
+        return false;
       }
     }, 1000);
     return () => {
       cancelled = true;
-      window.clearInterval(poll);
+      stopPolling();
     };
   }, [acquisition?.job_id, acquisition?.state, selectionKey]);
 
@@ -480,6 +482,7 @@ export function ResearchChartWorkspace({
             </button>
           </div>
 
+          <details className="research-overlay-details"><summary>Fibonacci overlay</summary>
           <div className="research-fibonacci-controls" aria-label="Fibonacci research overlay">
             <div className="research-fibonacci-modes">
               <strong>Fibonacci</strong>
@@ -504,6 +507,8 @@ export function ResearchChartWorkspace({
             )}
             <small>Research overlay on displayed replay candles. Auto A/B use the last 100 bars; C is the latest close. Review or edit anchors before interpreting levels. No signal or order uses these lines.</small>
           </div>
+
+          </details>
 
           <MarketChart
             symbol={session.dataset.symbol}

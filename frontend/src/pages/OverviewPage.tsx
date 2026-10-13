@@ -25,6 +25,8 @@ import {
   PaperRuntimeStatusResponse,
   PaperDiagnosticsResponse,
   MarketSetup,
+  ResourceState,
+  TerminalObservationResponse,
 } from '../types/api';
 import { canonicalSignalFromAssessment, TelemetryLifecycle } from '../services/telemetryLifecycle';
 import { formatMoney } from '../utils/format';
@@ -35,6 +37,7 @@ interface OverviewPageProps {
   candlesData: CandlesResponse | null;
   signalData: SignalResponse | null;
   riskData: RiskStatusResponse | null;
+  terminalObservation: ResourceState<TerminalObservationResponse>;
   executionData: ExecutionStateResponse | null;
   safetyData: ExecutionSafetyResponse | null;
   safetyUnavailable: boolean;
@@ -65,6 +68,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   candlesData,
   signalData,
   riskData,
+  terminalObservation,
   executionData,
   safetyData,
   safetyUnavailable,
@@ -92,37 +96,44 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const assessmentIsLive = telemetryLifecycle.state === 'LIVE';
   const assessmentIsStale = !assessmentIsLive;
   const canonicalSignal = canonicalSignalFromAssessment(telemetryLifecycle.assessment);
-  const balance = riskData?.balance;
-  const equity = riskData?.equity;
+  const terminal = terminalObservation.data;
+  const accountCurrent = !terminalObservation.error && !terminalObservation.stale
+    && terminal?.state === 'CONNECTED' && terminal.environment === 'DEMO';
+  const balance = accountCurrent ? terminal.balance : null;
+  const equity = accountCurrent ? terminal.equity : null;
+  const accountNote = accountCurrent
+    ? `Terminal · ${terminal.currency || '—'} · ${new Date(terminal.observed_at).toLocaleTimeString()}`
+    : 'Current terminal account unavailable';
   const openPositions = executionData?.positions || [];
   const openPnL = openPositions.reduce((acc, p) => acc + (p.profit || 0), 0);
   const recentTrades = executionData?.recent_trades || [];
   const tradesToday = riskData?.daily_trades_count ?? 0;
   const dailyLoss = riskData?.daily_loss_percent ?? 0.0;
+  const riskEvidenceCurrent = !telemetryStale.risk && riskData?.observation_status === 'FRESH';
   const compatibleWinRate = setupData?.historical_win_rate;
 
   return (
     <div className="dashboard-page-container overview-page">
       <div className="editorial-heading">
-        <div><span className="editorial-kicker">The market, in perspective</span><h1>Overview<span>.</span></h1></div>
-        <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}<small>Account, market & system health</small></p>
+        <div><h1>Home</h1></div>
+        <p>{selectedSymbol} <span aria-hidden="true">/</span> {selectedTimeframe}</p>
       </div>
 
       <div className="grid-metrics">
         <MetricCard
-          label="Account Equity"
-          value={equity === undefined ? null : formatMoney(equity, riskData?.currency)}
-          subtext={`Currency: ${riskData?.currency || '—'}`}
+          label="Equity"
+          value={equity == null ? null : formatMoney(equity, terminal?.currency ?? undefined)}
+          subtext={accountNote}
           badge={systemStatus?.broker?.toUpperCase() || 'UNKNOWN'}
           badgeType="cyan"
-          loading={loading && !riskData}
+          loading={terminalObservation.loading && !terminal}
         />
 
         <MetricCard
-          label="Account Balance"
-          value={balance === undefined ? null : formatMoney(balance, riskData?.currency)}
-          subtext="Settled Capital Base"
-          loading={loading && !riskData}
+          label="Balance"
+          value={balance == null ? null : formatMoney(balance, terminal?.currency ?? undefined)}
+          subtext={accountNote}
+          loading={terminalObservation.loading && !terminal}
         />
 
         <MetricCard
@@ -130,8 +141,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           value={`${dailyLoss.toFixed(2)}%`}
           subtext={riskData ? `Max Cap: ${riskData.max_daily_loss.toFixed(1)}%` : 'Max Cap: —'}
           trend={dailyLoss > 0 ? 'down' : 'neutral'}
-          badge={riskData ? (riskData.risk_allowed ? 'PERMITTED' : 'LOCKED') : 'UNKNOWN'}
-          badgeType={riskData ? (riskData.risk_allowed ? 'green' : 'red') : 'neutral'}
+          badge={riskData ? (riskEvidenceCurrent ? (riskData.risk_allowed ? 'PERMITTED' : 'LOCKED') : 'STALE') : 'UNKNOWN'}
+          badgeType={riskData ? (riskEvidenceCurrent ? (riskData.risk_allowed ? 'green' : 'red') : 'amber') : 'neutral'}
           loading={loading && !riskData}
         />
 
@@ -154,8 +165,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           label="Trades Today"
           value={riskData ? tradesToday : null}
           subtext={riskData ? `Max Allowance: ${riskData.max_trades_daily}` : 'Max Allowance: —'}
-          badge={riskData ? (tradesToday >= riskData.max_trades_daily ? 'CAPPED' : 'AVAILABLE') : 'UNKNOWN'}
-          badgeType={riskData && tradesToday >= riskData.max_trades_daily ? 'amber' : 'neutral'}
+          badge={riskData ? (riskEvidenceCurrent ? (tradesToday >= riskData.max_trades_daily ? 'CAPPED' : 'AVAILABLE') : 'STALE') : 'UNKNOWN'}
+          badgeType={riskData && (!riskEvidenceCurrent || tradesToday >= riskData.max_trades_daily) ? 'amber' : 'neutral'}
           loading={loading && !riskData}
         />
       </div>

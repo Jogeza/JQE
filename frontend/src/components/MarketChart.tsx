@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { EmptyStateIllustration } from './EmptyStateIllustration';
-import { CandlestickChart as ChartIcon, Maximize2, Minimize2 } from 'lucide-react';
+import { CandlestickChart as ChartIcon, Maximize2, Minimize2, ArrowLeftRight } from 'lucide-react';
 import type { CandleItemDTO, MarketSetup, SignalResponse } from '../types/api';
 import { JQEChart } from './chart/JQEChart';
 import { ChartIndicatorPicker } from './ChartIndicatorPicker';
@@ -74,8 +74,9 @@ export const MarketChart: React.FC<MarketChartProps> = ({
       {dataStatus === 'UNKNOWN' && <span className="badge badge-neutral">FRESHNESS UNKNOWN</span>}
       {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
       <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
+        aria-label={compactPriceScale ? 'Full prices' : 'Compact prices'}
         title="Use smaller price labels and a narrower right price axis"
-        onClick={toggleCompactPriceScale}>{compactPriceScale ? 'Full prices' : 'Compact prices'}</button>
+        onClick={toggleCompactPriceScale}><ArrowLeftRight size={16} aria-hidden="true" /><span className="chart-control-label">{compactPriceScale ? 'Full prices' : 'Compact prices'}</span></button>
       <button type="button" className="chart-fullscreen-toggle" aria-pressed={fullscreen}
         aria-label={fullscreen ? 'Exit fullscreen chart' : 'Fullscreen chart'}
         title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand chart to fill the screen'}

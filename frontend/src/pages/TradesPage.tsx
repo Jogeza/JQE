@@ -16,15 +16,18 @@ export const TradesPage: React.FC<TradesPageProps> = ({ execution, loading, curr
   const trades = execution?.recent_trades || [];
 
   return (
-    <div className="dashboard-page-container">
+    <div className="dashboard-page-container journal-page">
+      <div className="editorial-heading"><div><h1>Journal</h1></div><p>Broker history</p></div>
       <PnlSummary trades={trades} currency={currency} />
-      <TradeCalendar
-        trades={trades}
-        currency={currency}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
-      />
-      <DecisionJournal />
+      <details className="journal-disclosure">
+        <summary>Calendar{selectedDay ? ` · ${selectedDay} UTC` : ''}</summary>
+        <TradeCalendar
+          trades={trades}
+          currency={currency}
+          selectedDay={selectedDay}
+          onSelectDay={setSelectedDay}
+        />
+      </details>
       <RecentTradesTable
         trades={trades}
         loading={loading}
@@ -33,6 +36,10 @@ export const TradesPage: React.FC<TradesPageProps> = ({ execution, loading, curr
         dayFilter={selectedDay}
         onClearDayFilter={() => setSelectedDay(null)}
       />
+      <details className="journal-disclosure">
+        <summary>Decision evidence</summary>
+        <DecisionJournal />
+      </details>
     </div>
   );
 };

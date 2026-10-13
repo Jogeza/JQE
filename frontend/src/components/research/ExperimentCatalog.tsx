@@ -175,7 +175,8 @@ export function ExperimentCatalog() {
 
   return (
     <section className="experiment-catalog" aria-labelledby="experiment-catalog-title">
-      <header className="experiment-catalog-header"><div><span className="research-eyebrow">Persisted research runs · validation pending</span><h2 id="experiment-catalog-title">Durable experiment catalog</h2><p>September 27 results await Antigravity’s timestamp and partition audit. Returns here are unverified simulations and do not establish profitability. Job activity is not reported by this catalog.</p></div><div className="comparison-actions"><span aria-live="polite">{selected.length} of 2 selected</span><button className="btn-quant btn-quant-primary" disabled={selected.length !== 2 || comparisonLoading} onClick={compare}>Compare selected</button><button className="btn-quant" disabled={!selected.length} onClick={() => setSelected([])}>Clear selection</button></div></header>
+      <header className="experiment-catalog-header"><div><span className="research-eyebrow">Persisted research runs · validation pending</span><h2 id="experiment-catalog-title">Experiments</h2><p>Unverified simulations · audit pending.</p><details className="research-catalog-notes"><summary>Audit and scope</summary><p>September 27 results await Antigravity’s timestamp and partition audit. Returns here are unverified simulations and do not establish profitability. Job activity is not reported by this catalog.</p></details></div><div className="comparison-actions"><span aria-live="polite">{selected.length} of 2 selected</span><button className="btn-quant btn-quant-primary" disabled={selected.length !== 2 || comparisonLoading} onClick={compare}>Compare selected</button><button className="btn-quant" disabled={!selected.length} onClick={() => setSelected([])}>Clear selection</button></div></header>
+      <details className="research-filter-drawer"><summary>Filter experiments</summary>
       <form className="experiment-filters" onSubmit={(event) => { event.preventDefault(); apply(); }}>
         <label><span>Symbol</span><input value={draft.symbol ?? ''} onChange={(e) => setDraft({ ...draft, symbol: e.target.value })} /></label>
         <label><span>Timeframe</span><input value={draft.timeframe ?? ''} onChange={(e) => setDraft({ ...draft, timeframe: e.target.value })} /></label>
@@ -185,6 +186,7 @@ export function ExperimentCatalog() {
         <label className="identity-filter"><span>Run fingerprint</span><input value={draft.run_fingerprint ?? ''} onChange={(e) => setDraft({ ...draft, run_fingerprint: e.target.value })} /></label>
         <div className="filter-actions"><button className="btn-quant btn-quant-primary" type="submit">Apply filters</button><button className="btn-quant" type="button" onClick={clear}>Reset</button></div>
       </form>
+      </details>
 
       {data?.issues.length ? <div className="catalog-warning" role="status"><strong>Some catalog records could not be read.</strong>{data.issues.map((issue) => <span key={`${issue.file_name}-${issue.message}`}>{issue.file_name} {'\u00b7'} {issue.code} {'\u00b7'} {issue.message}</span>)}</div> : null}
       {loading && !data && <p className="experiment-state">Loading persisted experiments\u2026</p>}

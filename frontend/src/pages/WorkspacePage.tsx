@@ -369,6 +369,22 @@ export const WorkspacePage: React.FC<Props> = ({
     </details>}
     </>}
 
+    {!configurationOnly && <section className="workspace-account-summary" aria-label="Account summary" data-state={terminalState}>
+      <div className="workspace-account-heading">
+        <strong>Weltrade · {terminal?.environment ?? 'Account unavailable'}</strong>
+        <details className="workspace-account-menu">
+          <summary><span>Balance · account details</span><strong>{terminalState === 'LIVE' && terminal && terminal.balance != null ? `${terminal.balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${terminal.currency ?? ''}` : 'Unavailable'}</strong></summary>
+          <div className="workspace-account-amounts">
+            <div><span>Equity</span><strong>{terminalState === 'LIVE' && terminal && terminal.equity != null ? `${terminal.equity.toFixed(2)} ${terminal.currency ?? ''}` : 'Unavailable'}</strong></div>
+            <div><span>Free margin</span><strong>{terminalState === 'LIVE' && terminal && terminal.free_margin != null ? `${terminal.free_margin.toFixed(2)} ${terminal.currency ?? ''}` : 'Unavailable'}</strong></div>
+            <div><span>Realized net P&amp;L · UTC</span><strong>{terminalState === 'LIVE' && terminal && terminal.daily_accounting ? `${terminal.daily_accounting.realized_net_pnl.toFixed(2)} ${terminal.daily_accounting.currency}` : 'Unavailable'}</strong></div>
+          </div>
+          <span>{terminal?.account_id_masked ?? 'Account unavailable'} · {terminal?.server ?? 'Server unavailable'}</span>
+          <span>Read-only account observation</span>
+        </details>
+      </div>
+      <small>{terminalState} · observed {formatTime(terminal?.observed_at)}</small>
+    </section>}
     {!configurationOnly && <div className="workspace-grid workspace-primary">
       <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className="workspace-chart">
         <MarketChart
@@ -381,7 +397,7 @@ export const WorkspacePage: React.FC<Props> = ({
           loading={activeAnalysis?.loading}
           error={activeAnalysis?.error ? 'Market data unavailable. See Notifications.' : null}
           dataStatus={chartDataStatus}
-          height={aiDocked ? 560 : 460}
+          height={wideWorkspace ? 560 : 440}
           compactPriceScale={compactPriceScale}
           onToggleCompactPriceScale={toggleCompactPriceScale}
           symbolControls={<div className="chart-symbol-controls" aria-label="Chart market controls">
@@ -394,16 +410,16 @@ export const WorkspacePage: React.FC<Props> = ({
           </div>}
           sourceLabel={`Weltrade · ${marketFreshness}`}
           emptyMessage="No market snapshot. See Notifications."
-          overlay={<ChartDecisionCard signal={activeSignal} setup={activeSetup} priceDecimals={activeCandles?.price_decimals}
-            freshness={marketFreshness} latestClosedCandle={marketContext?.latest_closed_candle_at ? formatTime(marketContext.latest_closed_candle_at) : null} />}
         />
       </Panel>
       <aside className="workspace-rail" aria-label="Decision and execution rail">
         <ChartDecisionCard signal={activeSignal} setup={activeSetup} priceDecimals={activeCandles?.price_decimals}
           freshness={marketFreshness} latestClosedCandle={marketContext?.latest_closed_candle_at ? formatTime(marketContext.latest_closed_candle_at) : null} />
+      </aside>
+      <div className="workspace-activity">
         <ExecutionToolbox positions={toolboxPositions} trades={toolboxTrades} state={toolboxState}
           currency={toolboxCurrency} observedAt={toolboxObservedAt} />
-      </aside>
+      </div>
       <Panel title="Decision trail" source="GET /monitoring/offline · offline assessment" state={monitoringState} observed={assessment?.observed_at} className="workspace-decision">
         {!assessment ? <div className="workspace-no-assessment"><p className="workspace-empty">No current assessment</p><details className="workspace-inline-details"><summary>Factor availability</summary><div className="workspace-factors">{factors.map(name => <span key={name}>{name}: unavailable</span>)}</div></details></div> : <>
         <ol className="workspace-stages">

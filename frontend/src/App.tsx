@@ -148,7 +148,8 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
     lastRefreshContext.current = { tab: activeTab, symbol: requestedSymbol, timeframe: requestedTimeframe };
     const profile: readonly (keyof Resources)[] = marketOnly
       ? ['activeAnalysis', 'terminalObservation', 'risk']
-      : activeTab === 'workspace' ? workspaceProfile : legacyProfile;
+      : activeTab === 'workspace' ? workspaceProfile
+        : activeTab === 'overview' ? [...legacyProfile, 'terminalObservation'] : legacyProfile;
     const names = profile.filter(name => replaceInFlight
       || observationSchedule.current.due(name, Date.now()));
     if (!names.length) { inFlightRef.current = false; return; }
@@ -379,6 +380,7 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
       case 'overview':
         return (
           <OverviewPage
+            terminalObservation={resources.terminalObservation}
             systemStatus={systemStatus}
             marketSummary={marketSummary}
             candlesData={candlesData}
@@ -443,6 +445,13 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
           <WatchlistPage
             watchlist={resources.watchlist.data?.items}
             capUsage={resources.watchlistCapUsage.data?.items}
+            capObservedAt={resources.watchlistCapUsage.data?.observed_at}
+            capEvidenceState={!resources.watchlistCapUsage.data || resources.watchlistCapUsage.error
+              ? 'UNAVAILABLE' : resources.watchlistCapUsage.stale
+                || !Number.isFinite(Date.parse(resources.watchlistCapUsage.data.observed_at))
+                || lifecycleNow.getTime() - Date.parse(resources.watchlistCapUsage.data.observed_at) > 60000
+                || lifecycleNow.getTime() < Date.parse(resources.watchlistCapUsage.data.observed_at)
+                ? 'STALE' : 'CURRENT'}
             loading={resources.watchlist.loading || resources.watchlistCapUsage.loading}
             onRefresh={() => fetchAllData(true, false)}
           />
@@ -506,11 +515,9 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
           {headerActions}
           <details className="header-account-menu"><summary>Menu</summary>{menuContent}</details>
         </div>
-        {activeTab !== 'workspace' && <Header
+        {activeTab !== 'workspace' && activeTab !== 'backtesting' && <Header
           pageTitle={
-            activeTab === 'backtesting'
-              ? 'Research'
-              : activeTab === 'trades'
+            activeTab === 'trades'
               ? 'Journal'
               : activeTab === 'risk'
               ? 'Risk Control'

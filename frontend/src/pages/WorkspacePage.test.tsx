@@ -128,7 +128,7 @@ describe('Workspace and Settings evidence views', () => {
     expect(host.textContent).not.toContain('Source and observation details');
     expect(host.textContent).not.toContain('GET /');
   });
-  it('docks the decision card and MT5-style execution toolbox beside the chart', async () => {
+  it('keeps the decision beside the chart and broker records in the activity area', async () => {
     await render({ terminalObservation: resource({ state: 'CONNECTED', observed_at: observed, currency: 'USD',
       positions: [{ id: '1', symbol: 'FX Vol 20', side: 'BUY', volume: 0.1, open_price: 1, current_price: 1.1, stop_loss: 0.9, take_profit: 1.2, profit: 1.5, price_decimals: 2 }],
       recent_trades: [{ id: '2', symbol: 'FX Vol 20', side: 'SELL', volume: 0.2, open_price: 1, close_price: 1.1, profit: -0.5, open_time: observed, close_time: observed, price_decimals: 2 }],
@@ -136,7 +136,7 @@ describe('Workspace and Settings evidence views', () => {
     const rail = plain().querySelector('.workspace-rail') as HTMLElement;
     expect(rail.querySelector('[aria-label="Decision card"]')).not.toBeNull();
     const toolbox = panel('Execution and history');
-    expect(toolbox.closest('.workspace-rail')).toBe(rail);
+    expect(toolbox.closest('.workspace-activity')).toBe(plain().querySelector('.workspace-activity'));
     expect(toolbox.dataset.state).toBe('LIVE');
     expect(toolbox.textContent).toContain('#1');
     expect(toolbox.textContent).toContain('+1.50 USD');

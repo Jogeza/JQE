@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Fragment, useState } from 'react';
 import { Briefcase, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { PositionDTO } from '../types/api';
 import { formatInstrumentPrice, formatMoney } from '../utils/format';
@@ -15,8 +15,9 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
   loading,
   currency,
 }) => {
+  const [openId, setOpenId] = useState<string | null>(null);
   return (
-    <div className="quant-panel">
+    <div className="quant-panel positions-panel">
       <div className="quant-panel-header">
         <div className="quant-panel-title">
           <Briefcase size={14} color="var(--quant-cyan)" />
@@ -51,9 +52,13 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
               positions.map((pos) => {
                 const isBuy = pos.side.toUpperCase() === 'BUY';
                 const isProfitable = pos.profit >= 0;
+                const open = openId === pos.id;
+                const toggle = () => setOpenId(open ? null : pos.id);
 
                 return (
-                  <tr key={pos.id}>
+                  <Fragment key={pos.id}>
+                  <tr className="position-row" tabIndex={0} aria-expanded={open} onClick={toggle}
+                    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } }}>
                     <td style={{ color: 'var(--text-dim)' }}>#{pos.id}</td>
                     <td style={{ fontWeight: 700 }}>{pos.symbol}</td>
                     <td>
@@ -79,6 +84,17 @@ export const PositionsTable: React.FC<PositionsTableProps> = ({
                       {formatMoney(pos.profit, currency, true)}
                     </td>
                   </tr>
+                  {open && <tr className="position-detail-row"><td colSpan={9}>
+                    <div className="trade-detail">
+                      <span><em>Ticket ID</em>#{pos.id}</span>
+                      <span><em>Volume</em>{pos.volume.toFixed(2)}</span>
+                      <span><em>Open price</em>{formatInstrumentPrice(pos.open_price, pos.price_decimals)}</span>
+                      <span><em>Current price</em>{pos.current_price == null ? '—' : formatInstrumentPrice(pos.current_price, pos.price_decimals)}</span>
+                      <span><em>Stop loss</em>{pos.stop_loss == null ? '—' : formatInstrumentPrice(pos.stop_loss, pos.price_decimals)}</span>
+                      <span><em>Take profit</em>{pos.take_profit == null ? '—' : formatInstrumentPrice(pos.take_profit, pos.price_decimals)}</span>
+                    </div>
+                  </td></tr>}
+                  </Fragment>
                 );
               })
             )}

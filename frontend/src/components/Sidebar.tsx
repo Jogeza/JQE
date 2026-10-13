@@ -251,6 +251,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
+      <nav className="workspace-bottom-nav" aria-label="Quick navigation">
+        {([
+          ['workspace', 'Workspace', CandlestickChart],
+          ['markets', 'Markets', LayoutGrid],
+          ['positions', 'Positions', Briefcase],
+          ['trades', 'Journal', History],
+        ] as const).map(([id, label, Icon]) => <button key={id} type="button"
+          aria-current={activeTab === id ? 'page' : undefined}
+          onClick={() => onTabChange(id)}><Icon size={18} aria-hidden="true" /><span>{label}</span></button>)}
+        <button type="button" onClick={() => setDrawerOpen(true)} aria-label="More pages"><Menu size={18} aria-hidden="true" /><span>More</span></button>
+      </nav>
       {/* ── Mobile drawer ────────────────────────────────────────── */}
       <dialog
         ref={drawer}

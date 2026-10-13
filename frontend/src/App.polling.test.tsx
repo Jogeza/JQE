@@ -213,7 +213,7 @@ describe('App polling profiles', () => {
     expect(paths().filter(path => path === '/market/active-analysis')).toHaveLength(3);
   });
 
-  it('aborts Workspace and starts the full legacy profile on navigation', async () => {
+  it('aborts Workspace and starts Home feeds including terminal account observation', async () => {
     await mount();
     const first = calls[0];
     await nav('Overview');
@@ -223,6 +223,7 @@ describe('App polling profiles', () => {
       '/execution/safety', '/performance', '/execution/recovery', '/execution/paper-runtime',
       '/research/paper-diagnostics', '/monitoring/offline', '/observation/health',
       '/brokers/status', '/watchlist', '/watchlist/cap-usage', '/notifications/status', '/assistant/status',
+      '/brokers/terminal-observation',
     ]);
   });
 

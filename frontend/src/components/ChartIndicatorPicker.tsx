@@ -38,7 +38,6 @@ export const ChartIndicatorPicker: React.FC<ChartIndicatorPickerProps> = ({ indi
       aria-label="Chart indicators" title="Choose which indicators are drawn on the synthetic index chart"
       onClick={() => setOpen(value => !value)}>
       <SlidersHorizontal size={12} aria-hidden="true" />
-      <span>Indicators</span>
       <ChevronDown size={12} aria-hidden="true" />
     </button>
     {open && <fieldset className="chart-indicator-popover">
