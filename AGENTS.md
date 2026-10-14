@@ -1,5 +1,10 @@
 # AGENTS.md — JQE AI Development & Architecture Guide
 
+Latest UI continuation: section 78 deduplicates page text and extends the
+green-live/red-stale dot language across header, telemetry ribbon, chart,
+Markets, SyntX, Home and Watchlist; committed locally on owner request,
+nothing deployed. Campaign 17,772/241,938 pairs; full coverage still gates ML.
+
 Latest continuation: supervisor RUNNING (worker 16492, cycle 3); order
 575518694 closed TAKE_PROFIT +0.96, 575522313 open; balance 141.90 exact.
 Local read-only frontend session live at http://localhost:5173/workstation
@@ -1545,3 +1550,41 @@ Replays historical data through the identical signal and risk pipeline via `Back
   241,938; one active, zero FAILED, owner 21232 alive, no summary; 76.45GB
   free. A take-profit close and a populated UI are operational evidence,
   not expectancy.
+
+## 78. Minimal text and green/red status dots across pages (2026-10-14)
+
+- Read `docs/strategy-research/2026-10-14-minimal-status-dots.md`. Presentation
+  only: duplicated text removed page-by-page; dot language green pulse = live/
+  fresh, red = stale/unavailable/error, muted = loading/unknown. State words
+  stay visually hidden in the DOM for tests/screen readers. No backend, replay,
+  strategy, terminal, execution, environment or safety-state change.
+- Header connection pill is now one dot (Wifi icon/word removed); telemetry
+  ribbon rows dot+name+@time; chart header badges removed except ERROR
+  "retained data"; Home account note once; Markets one feed dot row; SyntX
+  disclaimer once; Watchlist cap evidence dot + UTC timestamp.
+- Latent CSS discovery: editorial.css neutralizes `--quant-*` vars inside the
+  header (#eee, line 99) and chart panel (#ddd, line 169) and flattens every
+  `.status-dot` (line 184) — stale/error dots were previously gray. Fixed with
+  new `--status-red` token (theme.css) and scoped clarity.css overrides.
+- Browser verified (computed styles; screenshots blocked): chart/header/ribbon/
+  markets green rgb(34,197,94) pulsing; watchlist cap flipped CURRENT->STALE
+  live with red rgb(239,68,68). Evidence
+  `reports/frontend-session-20261014-01/ui-minimal-dots-evidence.json`.
+- Frontend 243/build passed; full backend 2,810 passed/four explicit opt-in
+  skips/zero external network attempts/exit 0 (isolated TEMP/TMP, campaign
+  holds global OS lock; log `reports/frontend-session-20261014-01/
+  backend-tests-minimal-dots.txt`).
+- Campaign segment `long-history-label-campaign-resume-20261013-01`: ledger
+  3,681 NEW + 14,091 inherited = 17,772 of 241,938, one active, zero FAILED,
+  no summary. Supervisor worker 16492 RUNNING from the 00:06 UTC re-arm.
+- Owner follow-up ("the charts in markets aint adjusted"): the flat chart-control
+  styling was scoped to `.workspace-chart` only, so Markets/Overview chart panels
+  kept native button chrome (2px outset, gray face) and the 16px header.
+  clarity.css scope extended to `.app-container .chart-panel` (buttons, hover,
+  header padding, density label). Browser-verified flat 36x36/45x36 + 8px header
+  on Markets/Overview/Workspace; no workspace regression. Frontend 243/build
+  passed; backend log `reports/frontend-session-20261014-01/
+  backend-tests-markets-chart.txt`.
+- Next: continue page review as owner directs; full label coverage still gates
+  feature extraction and ML. UI changes committed locally on owner request as
+  a frontend commit plus this docs/agent-guide commit; nothing deployed.
