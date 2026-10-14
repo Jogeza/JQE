@@ -1,5 +1,11 @@
 # AGENTS.md — JQE AI Development & Architecture Guide
 
+Latest continuation: section 79 deploys the frontend to Vercel production at
+https://jqe.jokiholdings.com on owner request (supersedes the earlier
+"nothing deployed" notes); verified by content. Supervisor RUNNING
+(worker 16492); campaign 18,263/241,938 pairs, zero FAILED. Full coverage
+still gates ML.
+
 Latest UI continuation: section 78 deduplicates page text and extends the
 green-live/red-stale dot language across header, telemetry ribbon, chart,
 Markets, SyntX, Home and Watchlist; committed locally on owner request,
@@ -1588,3 +1594,31 @@ Replays historical data through the identical signal and risk pipeline via `Back
 - Next: continue page review as owner directs; full label coverage still gates
   feature extraction and ML. UI changes committed locally on owner request as
   a frontend commit plus this docs/agent-guide commit; nothing deployed.
+
+## 79. Frontend released to Vercel production (2026-10-14)
+
+- Read reports/vercel-deploy-20261014-01/deployment.json. Owner requested the
+  hosted release: production deploy dpl_GLmnGyzMvMWVHE1Pz6nAcVAr9y1R ready in
+  45s via `vercel --prod --yes --scope joki-holdings` from D:\JQE; aliases
+  https://jqe.jokiholdings.com and https://jqe.vercel.app. One deploy ships the
+  frontend plus the four hosted Python functions (hosted_auth, hosted_assistant,
+  hosted_monitor, unavailable). Source: working tree at HEAD 8bea470, the same
+  code pushed to origin as feat/institutional-architecture (aedde91..8bea470)
+  earlier on 2026-10-14.
+- Verified by content: served assets assets/index-C8yWvnyR.js and
+  assets/index-CtIGEQOU.css contain markers that exist only in commit 1ca3738
+  (`--status-red` token, `.state-text-hidden`), so the live site runs the
+  minimal-dots UI, not the previous bundle. Browser check: the domain loads,
+  the SPA mounts, and an unauthenticated visit redirects to /onboarding
+  (expected access gate). Authenticated dotted views were not visually
+  verified (no hosted login used).
+- Nothing else changed by the deploy: supervisor worker 16492 RUNNING (cycle
+  25; four closes today — TP +0.96, stops -0.48/-0.73/-0.64; one open SELL
+  575602030; daily count 4/5; balance 140.05), research campaign 4,172 NEW +
+  14,091 inherited = 18,263 of 241,938 with zero FAILED; MT5, execution gates,
+  local read-only API and safety state untouched. Hosted functions remain
+  separate from the local API; this release does not wire hosted pages to the
+  local terminal.
+- Next: hosted authenticated visual verification when an owner session exists;
+  continue page review as owner directs. Full label coverage still gates
+  feature extraction and ML.
