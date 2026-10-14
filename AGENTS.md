@@ -1,5 +1,12 @@
 # AGENTS.md — JQE AI Development & Architecture Guide
 
+Latest continuation: supervisor RUNNING (worker 16492, cycle 3); order
+575518694 closed TAKE_PROFIT +0.96, 575522313 open; balance 141.90 exact.
+Local read-only frontend session live at http://localhost:5173/workstation
+with populated account/chart/positions (evidence reports/frontend-session-
+20261014-01/); nothing deployed. Campaign 17,291/241,938 pairs; full
+coverage still gates ML.
+
 Latest UI/runtime continuation: section 57 restores read-only API and populated
 chart/account observation; supervisor stale, no execution readiness established.
 
@@ -1409,3 +1416,132 @@ Replays historical data through the identical signal and risk pipeline via `Back
 - 16existinghistory/timestamp tests passed; convenience repair not implemented.
 - Broker file is campaign-hashed. Next qualified research-only source transition
   or campaign completion before patch; no in-place source edits/restarts.
+
+## 77. Sleep diagnosis and fifth qualified resume (2026-10-13)
+
+- Read docs/strategy-research/2026-10-13-resume-relaunch.md. Windows event
+  log shows repeated unexpected shutdowns; Oct 11 ledger stopped 23:01:47
+  with idle-standby 15min AC. Standby/hibernate now zero, reversible,
+  evidence reports/power-settings-20261013-01.json. All four "cause unknown"
+  interruptions were host power events, not campaign code.
+- Dirty tree safety-committed 1fe8179..35a247b without content changes;
+  current source still matches the qualified transition contract.
+- Fourth interruption inherited state verified: 14,091 unique completions
+  (53/178/11,383/2,477), four unfinished STARTED, zero FAILED, no summary,
+  all owners dead, ancestor chains exact prefixes.
+- NEW segment reports/long-history-label-campaign-resume-20261013-01,
+  runtime reports/label-resume-runtime-20261013-01, launcher redirector 1604
+  / worker 21232, watcher 5744/19564; 227,847 attempts remaining.
+- Launcher did structural preflight only; canonical CLI revalidates all
+  inherited artifacts fail-closed before replay (hours, silent). Watcher
+  audits all five segments after owner exit or records STOPPED_WITHOUT_
+  SUMMARY; never auto-resumes; capacity alert below 12GB. Launch is not
+  completion; full coverage still gates features and ML.
+- Supervisor remains down (correct Oct 11 22:48 PreflightBlocked
+  DAILY_HISTORY_UNAVAILABLE). No ML/candidate/holdout work here.
+- Position/cap verification 17:11 UTC, read-only MT5 attach only
+  (reports/demo-position-close-check-20261013-01.json): both ledger-open
+  positions actually closed at broker Oct 11 after supervisor exit —
+  572269526 STOP_LOSS -0.70, 572302885 TAKE_PROFIT +1.13; account 43268111
+  balance=equity 138.80 USD, zero open positions, reconciles exactly; no
+  integrity halt. Oct 11 daily cap: no overshoot under the implemented
+  check (max_trades_daily counts trades CLOSED today, was 4 at the 6th
+  entry; closed-trade cap not submission cap — disclosed quirk;
+  per-instrument usage 6/20 and 2/20).
+- Owner-authorized canonical ledger reconciliation 17:13 UTC
+  (tools/inspect_close_history.py --reconcile, backup
+  execution_positions-pre-close-reconcile-20261013T171313Z.sqlite3 sha256
+  8f983d7c...7730, notify off, attach-only): both rows now
+  CLOSE_CONFIRMED matching broker deals exactly, zero open ledger rows,
+  halt table empty.
+- Owner-authorized supervisor re-arm completed 2026-10-13 17:32–17:43 UTC
+  (supersedes the prior "remains down" state). Attempt 01
+  reports/demo-supervisor-rearm-20261013-01 preserved: transient WinError 5
+  heartbeat atomic-replace contention, zero orders/mutations, fail-closed.
+  Attempt 02 RUNNING: launcher 10596/worker 8216, process-local flags only
+  (execution=true, cap5, partial management, telegram off; shared dotenv
+  unchanged). Verification reads stay sparse to avoid heartbeat contention.
+- Cycle 1 (17:35 UTC): 8 NO_TRADE/6 canonical-size rejections, zero orders.
+  Cycle 2 (17:40 UTC): first accepted supervised order in this segment —
+  SFX VOL 20 M1 BUY 0.02 (order 575159424) filled 33701.24, SL 33672.30/
+  TP 33770.94, expected loss 0.66 within authorized 0.694 USD, two 0.01
+  portions registered; broker stopped it out 17:42:11 (−0.58 USD, zero
+  fees); ledger auto-reconciled CLOSE_CONFIRMED, partial row CLOSED.
+  Account flat 138.22 USD; closed trades 1/5, daily loss 0.42% vs 3%,
+  submissions SFX VOL 20 1/20. No risk relaxation or min-lot rounding.
+  A fill/stop-out is operational evidence, not expectancy. Evidence:
+  reports/demo-supervisor-rearm-20261013-02/verification.json.
+- Supervisor trading continuation (18:22 UTC snapshot): five orders total;
+  three closes realized +1.66 USD net (zero fees) — first live
+  partial-management execution on 575166027 (0.01 at +1.5R +0.54, stop
+  moved to +0.5R PROTECTED, remainder TP +0.61) plus TAKE_PROFIT +1.09 on
+  575192335; two positions open (575179941/575213140); duplicate-symbol
+  guard blocked correctly; closed 3/5, submissions 4/20 + 1/20; balance
+  140.46 exact. Snapshot reports/supervisor-campaign-monitor-20261013-01.json.
+  Campaign still in silent inherited-artifact verification (worker CPU
+  advancing, no ledger yet). Not expectancy evidence.
+- Supervisor session close 18:29:18 UTC (evidence reports/supervisor-daily-
+  cap-stop-20261013-01.json): stopped fail-closed at cycle 11 —
+  DAILY_RISK_LIMIT_REACHED (5/5 closing deals, UTC day; the 18:29:16 partial
+  close of 575213140 was the 5th; cap counts broker closing deals so partial
+  halves consume slots) + READ_ONLY_PREFLIGHT_NO_ORDER_INTENT. Launcher
+  10596/worker 8216 dead, zero residual supervisor processes. Daily count
+  resets at 00:00 UTC; re-arm NOT performed (section-77 authorization was
+  launch-scoped; no auto-restart exists).
+- All five positions broker-confirmed closed: 575159424 -0.58 SL; 575166027
+  +1.15 (partial +0.54 at +1.5R, remainder TP +0.61); 575192335 +1.09 TP;
+  575213140 +1.12 (second live partial: +0.50 at +1.5R, stop to +0.5R
+  PROTECTED, remainder TP +0.62 at 18:31:28 after exit); 575179941 -0.64 SL
+  18:32:57 at its original stop. Session net +2.14, zero observed fees,
+  balance 138.80 -> 140.94, account flat (read-only probe 23:58 UTC). Ledger
+  rows for 575179941/575213140 remain unreconciled (no close-monitor cycle
+  after exit); next supervisor start auto-reconciles them before trading;
+  no manual repair; halt table empty, zero unresolved intents.
+- Campaign: inherited-artifact verification finished 19:43:49 UTC (first new
+  file), then steady ~5.3s/attempt; 2,894 new + 14,091 inherited = 16,985/
+  241,938 at 00:01 UTC, zero FAILED, worker 21232 alive, no summary; sampled
+  saved-artifact audit PASS 10 pairs/zero errors (read-only
+  reports/audit-qualified-label-sampled-20261013-01.py, evidence
+  reports/qualified-label-sampled-audit-20261013-01.json). ~2 weeks projected
+  remaining at current pace; full coverage still gates features/ML.
+- Owner-authorized re-arm 2026-10-14 00:06 UTC (new authorization; the
+  section-77 one was launch-scoped). Launcher reports/launch-demo-supervisor-
+  rearm-20261014-01.py asserted stop heartbeat/dead pid, halt-free intents,
+  exactly the two broker-verified pending ledger rows (any other unreconciled
+  row aborts), CLEAR stop, >12GB disk; redirector 19320/worker 16492,
+  process-local flags only (execution=true, cap5, partial management, telegram
+  off; shared dotenv unchanged). Evidence
+  reports/demo-supervisor-rearm-20261014-01/verification.json.
+- Startup catch-up reconciliation before the first preflight: 575179941 ->
+  CLOSE_CONFIRMED STOP_LOSS -0.64 and 575213140 -> CLOSE_CONFIRMED UNKNOWN
+  +1.12 (mixed partial+TP), both matching broker deals exactly; partial row
+  575179941 self-healed READY -> CLOSED. No manual repair.
+- Cycle 1 (00:10 UTC): 14 pairs - 7 NO_TRADE/6 pre-submission rejections/1
+  accepted order 575518694 SFX VOL 20 M1 BUY 0.02 planned 34554.64 fill
+  34561.27 SL 34528.08/TP 34607.76, two 0.01 portions READY, expected loss
+  0.53 within authorized 0.7047; daily 0/5, halt-free, zero unresolved
+  intents, balance 140.94. Operational evidence, not expectancy.
+- Cycle 2 (00:15:10 UTC) accepted order 575522313 SFX VOL 99 BUY 0.02 (still
+  open at checkpoint, +0.08 floating). Order 575518694 closed 00:22:12 UTC
+  TAKE_PROFIT +0.96; close monitor auto-reconciled CLOSE_CONFIRMED; balance
+  140.94 -> 141.90 exact (equity 141.99); daily 1/5 closed deals today UTC;
+  halt-free, zero unresolved, CLEAR. Cycle 3 heartbeat 00:25:03 UTC.
+- Local read-only frontend session for owner review (no deployment):
+  read-only API uvicorn api.app:app 127.0.0.1:8000 (launcher 10888/server
+  16748, observation API orders Disabled) + Vite dev pid 12156; URL
+  http://localhost:5173/ (IPv6-bound; 127.0.0.1 refused), workstation at
+  /workstation (dev-only direct render, frontend/src/main.tsx:13).
+  Populated views verified 00:23-00:25 UTC: DEMO account 141.90 USD, FX Vol
+  20 M5 chart with EMA50/EMA200 LIVE, open position 575522313, decision card
+  NO TRADE/Risk BLOCKED (evidence only), terminal panel supervisor RUNNING
+  cycle 3 DEMO ****8111 balance 141.9/equity 142 realized net UTC +0.96.
+  Known display lag: History tab misses the newest close because convenience
+  Mt5Gateway.get_trade_history (broker/mt5_gateway.py:920-928) passes
+  unshifted UTC bounds (server-offset trail; the AGENTS section-76
+  diagnosis) — authoritative snapshot reader and the close monitor are
+  correct. Evidence reports/frontend-session-20261014-01/ (session.json,
+  workstation-desktop.png, logs).
+- Campaign checkpoint 00:33 UTC: 3,200 new + 14,091 inherited = 17,291/
+  241,938; one active, zero FAILED, owner 21232 alive, no summary; 76.45GB
+  free. A take-profit close and a populated UI are operational evidence,
+  not expectancy.
