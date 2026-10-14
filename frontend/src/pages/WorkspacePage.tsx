@@ -62,7 +62,7 @@ const Panel: React.FC<React.PropsWithChildren<{
 }>> = ({ title, source, state, observed, className = '', children }) => {
   const internalDetails = React.useContext(InternalDetailsContext);
   return <section className={`workspace-card ${className}`} data-state={state} aria-label={title}>
-    <div className="workspace-card-heading"><h2>{title}</h2><span className="workspace-state">{state === 'ERROR' ? 'UNAVAILABLE' : state}</span></div>
+    <div className="workspace-card-heading"><h2>{title}</h2><span className="workspace-state" data-state={state}>{state === 'LIVE' ? <i className="workspace-live-dot" role="img" aria-label="Live" title="Live" /> : state === 'ERROR' ? 'UNAVAILABLE' : state}</span></div>
     {internalDetails && <details className="workspace-inline-details workspace-provenance"><summary>Source details</summary><p className="workspace-eyebrow">{source}</p>
       {observed !== undefined && <p className="workspace-source-time">Source observation: {formatTime(observed)} / age {formatAge(observed)}</p>}
     </details>}
@@ -383,7 +383,7 @@ export const WorkspacePage: React.FC<Props> = ({
           <span>Read-only account observation</span>
         </details>
       </div>
-      <small>{terminalState} · observed {formatTime(terminal?.observed_at)}</small>
+      <small>{terminalState === 'LIVE' ? <i className="workspace-live-dot" role="img" aria-label="Live" title="Live" /> : terminalState} · observed {formatTime(terminal?.observed_at)}</small>
     </section>}
     {!configurationOnly && <div className="workspace-grid workspace-primary">
       <Panel title="Market chart" source="GET /market/active-analysis · canonical snapshot" state={initialMarketLoading ? 'LOADING' : activeCandles ? activeAnalysisState : 'UNAVAILABLE'} className="workspace-chart">
@@ -434,7 +434,7 @@ export const WorkspacePage: React.FC<Props> = ({
           <li><strong>Risk</strong><span>{value(assessment.risk_authorization.status)}</span><small>{reasonText(assessment.risk_authorization.reason_codes)}</small></li>
           <li><strong>Execution policy</strong><span>{value(assessment.execution_authorization.status)}</span><small>{reasonText(assessment.execution_authorization.reason_codes)}</small></li>
           <li><strong>Daily cap</strong><span>{capState === 'LIVE' ? `${caps.data!.items.length} instrument rows` : 'unavailable'}</span><small>Observed {capState === 'LIVE' ? formatTime(caps.data?.observed_at) : 'unavailable'}</small></li>
-          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>{brokerData ? brokerData.observation_state : 'unavailable'}</small></li>
+          <li><strong>Broker</strong><span>{brokerData ? brokerData.active_broker : 'unavailable'}</span><small>{brokerData ? brokerData.observation_state === 'LIVE' ? <i className="workspace-live-dot" role="img" aria-label="Live" title="Live" /> : brokerData.observation_state : 'unavailable'}</small></li>
         </ol></>}
       </Panel>
       <Panel title="Weltrade terminal" source="Direct MT5 observation · execution disabled" state={terminalState} observed={terminal?.observed_at} className="workspace-terminal">

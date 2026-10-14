@@ -343,7 +343,7 @@ export const SyntXMarketsPage: React.FC<Props> = ({ onSelectSymbol }) => {
             <span className="syntx-hero-badge">{totalCount} instruments</span>
           </h1>
           <p className="syntx-hero-sub">
-            Native Weltrade synthetic indices · Cached closes from MT5 terminal · Not live quotes
+            Native Weltrade synthetic indices
           </p>
         </div>
         <div className="syntx-hero-right">
@@ -476,9 +476,6 @@ export const SyntXMarketsPage: React.FC<Props> = ({ onSelectSymbol }) => {
           Cached closes from Weltrade MT5 terminal · Prices are NOT live quotes ·
           Observation only · Not investment advice
         </span>
-        <a href={referralUrl} target="_blank" rel="noopener noreferrer" className="syntx-footer-link">
-          Open a Weltrade account <ExternalLink size={10} />
-        </a>
       </footer>
     </div>
   );

@@ -146,8 +146,6 @@ button, a, summary, select, input, textarea, [role="button"], .chart-indicator-o
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-card);
-  background: var(--surface);
   color: var(--text-secondary);
   border-radius: 7px;
   padding: 4px 6px;
@@ -164,7 +162,6 @@ button, a, summary, select, input, textarea, [role="button"], .chart-indicator-o
 
 .chart-fullscreen-toggle[aria-pressed="true"] {
   color: var(--brand-cyan);
-  border-color: var(--brand-cyan-border);
 }
 
 /* Chart indicator picker */
@@ -177,8 +174,6 @@ button, a, summary, select, input, textarea, [role="button"], .chart-indicator-o
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--border-card);
-  background: var(--surface);
   color: var(--text-secondary);
   border-radius: 7px;
   padding: 5px 8px;
@@ -194,7 +189,6 @@ button, a, summary, select, input, textarea, [role="button"], .chart-indicator-o
 
 .chart-indicator-picker.is-open .chart-indicator-toggle {
   color: var(--brand-cyan);
-  border-color: var(--brand-cyan-border);
 }
 
 .chart-indicator-popover {
@@ -314,10 +308,6 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
     flex-wrap: wrap;
   }
 
-  .chart-panel.is-fullscreen .chart-source-label {
-    display: none;
-  }
-
   .chart-overlay {
     left: 10px;
     right: 10px;
@@ -356,11 +346,64 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
 }
 
 .chart-source-label {
+  display: inline-flex;
+  align-items: center;
   font-size: 9px;
   font-weight: 500;
   letter-spacing: .04em;
   color: var(--text-dark-muted);
   white-space: nowrap;
+}
+
+.chart-source-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.state-text-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.chart-source-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dark-muted);
+}
+
+.chart-source-label[data-state="LIVE"] .chart-source-dot {
+  background: var(--status-green);
+  box-shadow: 0 0 6px var(--status-green);
+  animation: chart-source-pulse 1.8s ease-in-out infinite;
+}
+
+.chart-source-label[data-state="LOADING"] .chart-source-dot {
+  background: var(--text-dark-muted);
+  animation: chart-source-pulse 2.2s ease-in-out infinite;
+}
+
+.chart-source-label[data-state="STALE"] .chart-source-dot,
+.chart-source-label[data-state="UNAVAILABLE"] .chart-source-dot,
+.chart-source-label[data-state="ERROR"] .chart-source-dot {
+  background: var(--status-red);
+}
+
+@keyframes chart-source-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-source-dot { animation: none; }
 }
 
 .symbol-picker {
@@ -1284,6 +1327,10 @@ body.chart-fullscreen-lock .app-container[data-theme] :is(.workspace-card, .quan
 .status-dot-amber {
   background-color: var(--quant-amber);
   box-shadow: 0 0 5px var(--quant-amber);
+}
+
+.status-dot-muted {
+  background-color: var(--text-dark-muted);
 }
 
 .status-dot-cyan {

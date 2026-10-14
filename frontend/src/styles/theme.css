@@ -35,6 +35,7 @@
   --status-green:        #22C55E;
   --status-green-soft:   rgba(34, 197, 94, 0.10);
   --status-green-border: rgba(34, 197, 94, 0.30);
+  --status-red:          #EF4444;
 
   /* ── Chart semantics (shared across all chart surfaces) ───────── */
   --chart-bg:            #07090d;

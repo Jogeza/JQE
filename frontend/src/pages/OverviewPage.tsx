@@ -132,7 +132,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         <MetricCard
           label="Balance"
           value={balance == null ? null : formatMoney(balance, terminal?.currency ?? undefined)}
-          subtext={accountNote}
           loading={terminalObservation.loading && !terminal}
         />
 

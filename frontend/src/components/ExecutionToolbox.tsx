@@ -19,7 +19,7 @@ export const ExecutionToolbox: React.FC<ExecutionToolboxProps> = ({ positions, t
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
   return <section className="workspace-card workspace-toolbox" data-state={state} aria-label="Execution and history">
-    <div className="workspace-card-heading"><h2>Execution &amp; history</h2><span className="workspace-state">{state === 'ERROR' ? 'UNAVAILABLE' : state}</span></div>
+    <div className="workspace-card-heading"><h2>Execution &amp; history</h2><span className="workspace-state" data-state={state}>{state === 'LIVE' ? <i className="workspace-live-dot" role="img" aria-label="Live" title="Live" /> : state === 'ERROR' ? 'UNAVAILABLE' : state}</span></div>
     <div className="workspace-toolbox-tabs" role="tablist" aria-label="Execution and history views">
       <button type="button" role="tab" aria-selected={tab === 'positions'} onClick={() => setTab('positions')}>
         Positions <em>{positions.length}</em>

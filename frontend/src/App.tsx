@@ -549,27 +549,20 @@ export const App: React.FC<{ authenticated?: boolean; workstation?: boolean; adm
               : resource.stale ? 'STALE'
               : resource.data ? 'FRESH'
               : 'UNAVAILABLE';
-            const color = state === 'FRESH' ? 'var(--status-green)'
-              : state === 'STALE' ? 'var(--quant-amber)'
-              : state === 'OFFLINE' ? 'var(--quant-red)'
-              : 'var(--text-dark-muted)';
             const dotClass = state === 'FRESH' ? 'status-dot-green'
-              : state === 'STALE' ? 'status-dot-amber'
-              : state === 'OFFLINE' ? 'status-dot-red'
-              : '';
+              : state === 'STALE' || state === 'OFFLINE' ? 'status-dot-red'
+              : 'status-dot-muted';
             return (
               <span
                 key={name}
-                title={resource.error || (resource.lastUpdated ? `Updated ${resource.lastUpdated.toLocaleString('en-GB')}` : 'Never updated')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                title={resource.error || `${state} · ${resource.lastUpdated ? `updated ${resource.lastUpdated.toLocaleString('en-GB')}` : 'never updated'}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                <span className={`status-dot ${dotClass}`} style={{ width: '3.5px', height: '3.5px' }} />
+                <span className={`status-dot ${dotClass}`} aria-hidden="true" />
                 <span style={{ fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600, color: 'var(--text-dark-secondary)' }}>
                   {name.toUpperCase()}
                 </span>
-                <span className="font-mono" style={{ fontSize: '9px', fontWeight: 600, color }}>
-                  {state}
-                </span>
+                <span className="state-text-hidden">{state}</span>
                 {resource.lastUpdated && (
                   <span style={{ color: 'var(--text-dark-dim)', fontFamily: 'var(--font-mono)', fontSize: '8.5px', opacity: 0.75 }}>
                     @{resource.lastUpdated.toLocaleTimeString('en-GB')}

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Wifi,
-  WifiOff,
   RefreshCw,
   Clock,
   Layers,
@@ -84,22 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
 
   const env = systemStatus?.environment?.toUpperCase() || 'UNKNOWN';
   const isConnected = systemStatus?.broker_connected;
-
-  const connectionColor = telemetryStale
-    ? 'var(--quant-amber)'
-    : isConnected === undefined
-      ? 'var(--text-dark-muted)'
-      : isConnected
-        ? 'var(--quant-green)'
-        : 'var(--quant-amber)';
-
-  const connectionLabel = telemetryStale
+  const connectionState = telemetryStale
     ? 'STALE'
     : isConnected === undefined
       ? 'UNKNOWN'
       : isConnected
-        ? 'ONLINE'
+        ? 'LIVE'
         : 'OFFLINE';
+  const connectionLabel = connectionState === 'LIVE' ? 'ONLINE' : connectionState;
 
   return (
     <header className="application-header" aria-label="Application header">
@@ -109,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="header-env-badge">
           <span
             className="header-env-dot"
-            style={{ backgroundColor: env.includes('PROD') || env === 'LIVE' ? 'var(--quant-red)' : env.includes('DEMO') ? 'var(--quant-green)' : 'var(--quant-amber)' }}
+            style={{ backgroundColor: env.includes('PROD') || env === 'LIVE' ? 'var(--status-red)' : env.includes('DEMO') ? 'var(--status-green)' : 'var(--text-dark-muted)' }}
           />
           <span className="header-env-text">{env}</span>
         </div>
@@ -198,12 +188,15 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* ── Right: Broker selector, connection, clocks, sync ── */}
       <div className="header-right">
-        {/* Connection pill */}
-        <div className="header-connection-pill" style={{ color: connectionColor }}>
-          {telemetryStale || !isConnected
-            ? <WifiOff size={12} />
-            : <Wifi size={12} />}
-          <span className="header-connection-label">{connectionLabel}</span>
+        {/* Connection pill: green dot = live broker connection, red = stale/offline */}
+        <div
+          className="header-connection-pill"
+          data-state={connectionState}
+          role="img"
+          aria-label={`Broker connection ${connectionLabel}`}
+          title={`Broker connection ${connectionLabel}`}
+        >
+          <span className="header-connection-dot" aria-hidden="true" />
         </div>
 
         {/* Clock */}

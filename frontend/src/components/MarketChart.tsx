@@ -42,6 +42,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
   const compactPriceScale = controlledCompactPriceScale ?? internalCompactPriceScale;
   const toggleCompactPriceScale = onToggleCompactPriceScale ?? (() => setInternalCompactPriceScale(value => !value));
   const effectiveIndicators = indicators ?? internalIndicators;
+  const statusState = error ? 'ERROR' : loading ? 'LOADING' : candles.length === 0 || dataStatus === 'UNAVAILABLE' ? 'UNAVAILABLE' : dataStatus === 'CURRENT' ? 'LIVE' : dataStatus === 'CACHED' ? 'STALE' : 'UNKNOWN';
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -55,7 +56,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
   }, [fullscreen]);
 
   return (
-  <div className={`quant-panel chart-panel${fullscreen ? ' is-fullscreen' : ''}`} data-state={error ? 'ERROR' : loading ? 'LOADING' : candles.length === 0 || dataStatus === 'UNAVAILABLE' ? 'UNAVAILABLE' : dataStatus === 'CURRENT' ? 'LIVE' : dataStatus === 'CACHED' ? 'STALE' : 'UNKNOWN'} style={{ minHeight: '360px' }}>
+  <div className={`quant-panel chart-panel${fullscreen ? ' is-fullscreen' : ''}`} data-state={statusState} style={{ minHeight: '360px' }}>
     <div className="quant-panel-header">
       <div className="quant-panel-title">
         <ChartIcon size={14} color="var(--chart-accent)" />
@@ -67,12 +68,9 @@ export const MarketChart: React.FC<MarketChartProps> = ({
           {effectiveIndicators.rsi && <span className="chart-legend-item rsi"><i className="chart-legend-dot" />RSI(14)</span>}
           {effectiveIndicators.volume && <span className="chart-legend-item volume"><i className="chart-legend-dot" />VOL</span>}
         </span>
-        {sourceLabel && <span className="chart-source-label">{sourceLabel}</span>}
+        {sourceLabel && <span className="chart-source-label" data-state={statusState} title={`${typeof sourceLabel === 'string' ? sourceLabel : 'Data source'} · ${statusState}`}><i className="chart-source-dot" role="img" aria-label={`Data state ${statusState}`} /><span className="chart-source-text">{sourceLabel}</span></span>}
       </div>
       {!indicators && <ChartIndicatorPicker indicators={internalIndicators} onChange={setInternalIndicators} />}
-      {dataStatus === 'CACHED' && <span className="badge badge-neutral">CACHED · STALE · DEGRADED</span>}
-      {dataStatus === 'UNKNOWN' && <span className="badge badge-neutral">FRESHNESS UNKNOWN</span>}
-      {dataStatus === 'UNAVAILABLE' && <span className="badge badge-neutral">UNAVAILABLE</span>}
       <button type="button" className="chart-density-toggle" aria-pressed={compactPriceScale}
         aria-label={compactPriceScale ? 'Full prices' : 'Compact prices'}
         title="Use smaller price labels and a narrower right price axis"
@@ -83,7 +81,7 @@ export const MarketChart: React.FC<MarketChartProps> = ({
         onClick={() => setFullscreen(value => !value)}>
         {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
       </button>
-      <span className="badge badge-neutral" role="status">{error ? 'ERROR · retained data' : loading ? 'LOADING' : dataStatus === 'CURRENT' ? 'LIVE' : dataStatus === 'CACHED' ? 'STALE' : dataStatus ?? 'UNKNOWN'}</span>
+      {statusState === 'ERROR' && <span className="badge badge-neutral" role="status">ERROR · retained data</span>}
     </div>
     {fullscreen && overlay && <div className="chart-overlay">{overlay}</div>}
     {loading && candles.length === 0 ? (

@@ -96,6 +96,11 @@
   .market-strategy-level > strong { font-size: 14px; }
   .markets-page .chart-panel [aria-label$="candlestick chart"] { height: 480px !important; }
 }
+.markets-feed-state { display: inline-flex; align-items: center; gap: 7px; min-height: 22px; color: var(--text-secondary); font: 600 11px var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+.markets-feed-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dark-muted); flex-shrink: 0; }
+.markets-feed-state[data-state='LIVE'] .markets-feed-dot { background: var(--status-green); box-shadow: 0 0 5px var(--status-green); }
+.markets-feed-state[data-state='STALE'] .markets-feed-dot { background: var(--status-red); box-shadow: 0 0 5px var(--status-red); }
+
 .markets-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .markets-heading h1 { margin: 4px 0 0; font-size: clamp(20px, 3vw, 28px); line-height: 1.2; }
 .markets-timeframe { display: grid; text-align: right; gap: 3px; font-weight: 700; }

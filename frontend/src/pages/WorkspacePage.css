@@ -73,7 +73,7 @@
 .workspace-terminal-records > div { display: grid; gap: 6px; font-size: 12px; }
 .workspace-terminal-records span { color: var(--text-secondary); overflow-wrap: anywhere; }
 .workspace-state { font-size: 10px; font-weight: 700; border: 1px solid var(--border-card-strong); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
-.workspace-card[data-state='LIVE'] .workspace-state { color: var(--status-green); border-color: var(--status-green-border); }
+.workspace-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--status-green); box-shadow: 0 0 5px var(--status-green); vertical-align: middle; }
 .workspace-card[data-state='STALE'] .workspace-state,
 .workspace-card[data-state='OFFLINE'] .workspace-state,
 .workspace-card[data-state='ERROR'] .workspace-state { color: var(--text-primary); background: var(--surface-strong); }
@@ -297,12 +297,12 @@
 .workspace-utility-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 8px; min-height: 38px; padding: 4px 14px; border-bottom: 1px solid var(--border-card); }
 .workspace-execution-status { margin-right: auto; color: var(--text-secondary); font-size: 10px; }
 .chart-symbol-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.chart-timeframes { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
-.chart-timeframes button { border: 1px solid var(--border-dark-medium); background: transparent; color: var(--text-dark-secondary); padding: 5px 9px; border-radius: 7px; font-size: 10px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
-.chart-timeframes button[aria-pressed="true"] { background: var(--brand-cyan-dim); border-color: var(--brand-cyan-border); color: var(--brand-cyan); }
+.chart-timeframes { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; padding: 2px; border: 1px solid var(--border-dark-medium); border-radius: 9px; }
+.chart-timeframes button { border: 0; background: transparent; color: var(--text-dark-secondary); padding: 4px 10px; border-radius: 7px; font-size: 10px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
+.chart-timeframes button[aria-pressed="true"] { background: var(--brand-cyan-dim); color: var(--brand-cyan); }
 @media (hover: hover) { .chart-timeframes button:not([aria-pressed="true"]):hover { color: var(--text-dark-primary); } }
-.chart-density-toggle { margin-left: auto; border: 1px solid var(--border-card); background: var(--surface); color: var(--text-secondary); border-radius: 7px; padding: 5px 8px; font-size: 10px; cursor: pointer; }
-.chart-density-toggle[aria-pressed="true"] { color: var(--brand-cyan); border-color: var(--brand-cyan-border); }
+.chart-density-toggle { margin-left: auto; color: var(--text-secondary); border-radius: 7px; padding: 5px 8px; font-size: 10px; cursor: pointer; }
+.chart-density-toggle[aria-pressed="true"] { color: var(--brand-cyan); }
 @media (max-width: 768px) { .workspace-chart .quant-panel-header { padding: 6px 8px; } .workspace-chart .chart-legend { display: none; } .workspace-chart .quant-panel-title { min-width: 0; } }
 .workspace-ai-prompts { display: grid; gap: 8px; margin-bottom: 20px; }
 .workspace-ai-prompts button { text-align: left; border: 1px solid var(--border-card); background: var(--surface-raised, var(--surface)); padding: 10px; border-radius: 8px; color: inherit; cursor: pointer; }

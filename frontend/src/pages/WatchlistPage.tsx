@@ -196,7 +196,10 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({
 
         <div className="quant-panel-body" style={{ padding: '16px' }}>
           <p className="watchlist-evidence-note">Cap status does not authorize orders.</p>
-          <p className="watchlist-evidence-note">Cap evidence: {capEvidenceState.toLowerCase()} · {capObservedAt || 'observation unavailable'}</p>
+          <p className="watchlist-evidence-note watchlist-cap-evidence" data-state={capEvidenceState} title={`Cap evidence ${capEvidenceState.toLowerCase()}`}>
+            <i className="watchlist-cap-evidence-dot" aria-hidden="true" />
+            <span><span className="state-text-hidden">Cap evidence {capEvidenceState.toLowerCase()} · </span>{capObservedAt ? formatUtcTime(capObservedAt) : 'observation unavailable'}</span>
+          </p>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
               Watchlist is empty. Add a Weltrade synthetic index above.

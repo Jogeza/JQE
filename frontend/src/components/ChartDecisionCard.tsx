@@ -47,7 +47,7 @@ export const ChartDecisionCard: React.FC<ChartDecisionCardProps> = ({ signal, se
         <em data-status={setup.risk_authorization.status}>Risk {setup.risk_authorization.status}</em>
         {setup.execution_authorization && <em data-status={setup.execution_authorization.status}>Execution {setup.execution_authorization.status}</em>}
       </div>}
-      <small className="chart-decision-freshness">Weltrade · {freshness} · candle {latestClosedCandle ?? 'unavailable'}</small>
+      <small className="chart-decision-freshness"><span className="chart-source-text">Weltrade · {freshness} · </span>candle {latestClosedCandle ?? 'unavailable'}</small>
       <small className="chart-decision-note">Evidence only · orders need risk and execution authorization.</small>
     </div>}
   </aside>;

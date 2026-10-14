@@ -36,14 +36,17 @@ export const MarketsPage: React.FC<MarketsPageProps> = ({
   return (
     <div className="dashboard-page-container markets-page">
       <header className="markets-heading"><div><span className="editorial-kicker">Weltrade markets</span><h1>{symbol}</h1></div><span className="markets-timeframe">{timeframe}<small>Closed-candle analysis</small></span></header>
-      <div role="status" style={{ display: 'flex', gap: '7px', alignItems: 'center', minHeight: '22px' }}>
-        <span className={`badge ${candles?.degraded ? 'badge-neutral' : 'badge-cyan'}`}>
-          {candles?.market_data_source?.replace('_', ' ') ?? 'UNAVAILABLE'}
+      <div
+        role="status"
+        className="markets-feed-state"
+        data-state={!candles ? 'UNKNOWN' : candles.market_data_status === 'CURRENT' && !candles.stale && !candles.degraded ? 'LIVE' : 'STALE'}
+        title={candles?.stale ? 'Snapshot degraded · cached closes' : undefined}
+      >
+        <i className="markets-feed-dot" aria-hidden="true" />
+        <span>
+          {candles?.market_data_source?.replace(/_/g, ' ') ?? 'UNAVAILABLE'} · {candles?.market_data_status ?? 'UNAVAILABLE'}
+          {candles?.stale ? ' · STALE' : ''}{candles?.degraded ? ' · DEGRADED' : ''}
         </span>
-        <span className={`badge ${candles?.market_data_status === 'CURRENT' ? 'badge-cyan' : 'badge-neutral'}`}>
-          {candles?.market_data_status ?? 'UNAVAILABLE'}
-        </span>
-        {candles?.stale && <span className="badge badge-neutral">STALE · DEGRADED</span>}
       </div>
       {/* Header Snapshot Row */}
       <div

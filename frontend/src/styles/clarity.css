@@ -248,12 +248,16 @@
   .app-container .workspace-studio .workspace-ai-launcher { display: flex; }
   .app-container .workspace-studio .workspace-primary { margin-top: 12px; }
 }
-.app-container .workspace-chart .quant-panel-header { gap: 8px; padding: 8px; }
-.app-container .workspace-chart :is(.chart-density-toggle, .chart-fullscreen-toggle, .chart-indicator-toggle) { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; padding: 8px; }
+.app-container .chart-panel .quant-panel-header { gap: 8px; padding: 8px; }
+.app-container .chart-panel :is(.chart-density-toggle, .chart-fullscreen-toggle, .chart-indicator-toggle) { min-width: 36px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; border-radius: 8px; padding: 8px; }
+@media (hover: hover) {
+  .app-container .chart-panel :is(.chart-density-toggle, .chart-fullscreen-toggle, .chart-indicator-toggle):hover { color: var(--brand-cyan); }
+}
+.app-container .workspace-state[data-state='LIVE'] { border: 0; padding: 0; background: none; }
 .app-container .workspace-chart .chart-timeframes button { min-height: 32px; font-size: 11px; }
-.app-container .workspace-chart .chart-legend { font-size: 10px; }
+.app-container .chart-panel .chart-legend { font-size: 10px; }
 .chart-control-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.app-container .workspace-chart .chart-density-toggle .chart-control-label { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
+.app-container .chart-panel .chart-density-toggle .chart-control-label { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 .app-container .overview-page .grid-metrics { gap: 12px; }
 .app-container .overview-page .metric-card { border-radius: 14px; padding: 16px; box-shadow: none; }
 .app-container .overview-page .editorial-heading { margin-bottom: 16px; }
@@ -350,3 +354,20 @@
   .watchlist-add-disclosure form { flex-wrap: wrap; }
 }
 .watchlist-evidence-note { margin: 0 0 12px; font-size: 11px; color: var(--text-muted); }
+
+/* Shared status dots: green = live, red = stale/offline (same language as the charts). */
+.telemetry-ribbon .status-dot-green { background: var(--status-green); box-shadow: 0 0 5px var(--status-green) !important; }
+.telemetry-ribbon .status-dot-red { background: var(--status-red); box-shadow: 0 0 5px var(--status-red) !important; }
+.telemetry-ribbon .status-dot-muted { background: var(--text-dark-muted); }
+.header-connection-pill { padding: 2px; }
+.header-connection-pill .header-connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dark-muted); flex-shrink: 0; }
+.header-connection-pill[data-state='LIVE'] .header-connection-dot { background: var(--status-green); box-shadow: 0 0 6px var(--status-green); animation: chart-source-pulse 1.8s ease-in-out infinite; }
+.header-connection-pill[data-state='STALE'] .header-connection-dot,
+.header-connection-pill[data-state='OFFLINE'] .header-connection-dot { background: var(--status-red); box-shadow: 0 0 6px rgba(239, 68, 68, .45); }
+@media (prefers-reduced-motion: reduce) { .header-connection-pill .header-connection-dot { animation: none; } }
+
+.watchlist-cap-evidence { display: inline-flex; align-items: center; gap: 6px; }
+.watchlist-cap-evidence-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dark-muted); flex-shrink: 0; }
+.watchlist-cap-evidence[data-state='CURRENT'] .watchlist-cap-evidence-dot { background: var(--status-green); box-shadow: 0 0 5px var(--status-green); }
+.watchlist-cap-evidence[data-state='STALE'] .watchlist-cap-evidence-dot,
+.watchlist-cap-evidence[data-state='UNAVAILABLE'] .watchlist-cap-evidence-dot { background: var(--status-red); }
